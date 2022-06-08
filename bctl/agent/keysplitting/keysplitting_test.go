@@ -1,7 +1,6 @@
 package keysplitting_test
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
@@ -48,16 +47,12 @@ var _ = Describe("Agent keysplitting", func() {
 
 	// Helper build daemon message funcs
 	BuildSynWithPayload := func(payload []byte) *ksmsg.KeysplittingMessage {
-		// TODO-Yuval: See if I can remove this
-		payloadBytes, err := json.Marshal(payload)
-		Expect(err).ShouldNot(HaveOccurred())
-
 		// Build the keysplitting message
 		synPayload := ksmsg.SynPayload{
 			SchemaVersion: GetDaemonSchemaVersionAsSemVer().String(),
 			Type:          string(ksmsg.Syn),
 			Action:        testAction,
-			ActionPayload: payloadBytes, // payload
+			ActionPayload: payload,
 			TargetId:      agentKeypair.Base64EncodedPublicKey,
 			Nonce:         util.Nonce(),
 			// We mock the BZCertVerifier elsewhere. We only need to set
