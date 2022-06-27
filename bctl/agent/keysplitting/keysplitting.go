@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	"github.com/Masterminds/semver"
@@ -177,10 +176,7 @@ func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action str
 	var responseMessage ksmsg.KeysplittingMessage
 	var err error
 
-	schemaVersion, err := k.getSchemaVersionToUse()
-	if err != nil {
-		return responseMessage, err
-	}
+	schemaVersion := k.getSchemaVersionToUse()
 
 	switch ksMessage.Type {
 	case ksmsg.Syn:
@@ -216,15 +212,10 @@ func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action str
 	}
 }
 
-func (k *Keysplitting) getSchemaVersionToUse() (*semver.Version, error) {
-	agentVersion, err := semver.NewVersion(message.SchemaVersion)
-	if err != nil {
-		return nil, err
-	}
-
-	if k.daemonSchemaVersion.LessThan(agentVersion) {
-		return k.daemonSchemaVersion, nil
+func (k *Keysplitting) getSchemaVersionToUse() *semver.Version {
+	if k.daemonSchemaVersion.LessThan(k.agentSchemaVersion) {
+		return k.daemonSchemaVersion
 	} else {
-		return agentVersion, nil
+		return k.agentSchemaVersion
 	}
 }
