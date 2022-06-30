@@ -298,10 +298,6 @@ var _ = Describe("Agent keysplitting", func() {
 				CommonAssertBehavior()
 			})
 		})
-
-		// Describe("the failure path", func() {
-
-		// })
 	})
 
 	Describe("validate daemon messages", func() {
