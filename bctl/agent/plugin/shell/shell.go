@@ -38,6 +38,7 @@ func New(
 	if err := json.Unmarshal(payload, &synPayload); err != nil {
 		return nil, fmt.Errorf("malformed Shell plugin SYN payload %s", string(payload))
 	}
+	fmt.Println("HERE 2.3.2.1")
 
 	// Create our plugin
 	plugin := &ShellPlugin{
@@ -47,17 +48,29 @@ func New(
 		runAsUser:        synPayload.TargetUser,
 	}
 
+	fmt.Println("HERE 2.3.2.2")
+
 	// Start up the action for this plugin
 	subLogger := plugin.logger.GetActionLogger(action)
+
+	fmt.Println("HERE 2.3.2.3")
+
 	if parsedAction, err := parseAction(action); err != nil {
+		fmt.Println("Err 2.3.2.4", err)
+
 		return nil, err
 	} else {
+		fmt.Println("HERE 2.3.2.4.1")
+
 		switch parsedAction {
 		case shell.DefaultShell:
+			fmt.Println("HERE 2.3.2.5")
+
 			plugin.action = defaultshell.New(subLogger, plugin.streamOutputChan, plugin.doneChan, plugin.runAsUser)
 			plugin.logger.Infof("Shell plugin started %v action", action)
 			return plugin, nil
 		default:
+			fmt.Println("HERE 2.3.2.6")
 			return nil, fmt.Errorf("could not start unhandled shell action: %v", action)
 		}
 	}
@@ -74,10 +87,16 @@ func (s *ShellPlugin) Receive(action string, actionPayload []byte) ([]byte, erro
 }
 
 func parseAction(action string) (shell.ShellAction, error) {
+	fmt.Println("HERE 2.3.2.3.1", action)
+
 	parsedAction := strings.Split(action, "/")
+	fmt.Println("HERE 2.3.2.3.2", parsedAction)
+
 	if len(parsedAction) < 2 {
 		return "", fmt.Errorf("malformed action: %s", action)
 	}
+	fmt.Println("HERE 2.3.2.3.3", parsedAction[1])
+
 	return shell.ShellAction(parsedAction[1]), nil
 }
 

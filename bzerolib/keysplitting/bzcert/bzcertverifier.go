@@ -3,6 +3,7 @@ package bzcert
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/sha3"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -82,8 +84,84 @@ func getMicrosoftIssUrl(orgId string) string {
 	return microsoftUrl + "/" + tenantId + "/v2.0"
 }
 
+// jws, err := jose.ParseSigned(rawIDToken)
+// if err != nil {
+// 	return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
+// }
+
+// // Throw out tokens with invalid claims before trying to verify the token. This lets
+// // us do cheap checks before possibly re-syncing keys.
+// payload, err := parseJWT(rawIDToken)
+// if err != nil {
+// 	return nil, fmt.Errorf("oidc: malformed jwt: %v", err)
+// }
+// var token idToken
+// if err := json.Unmarshal(payload, &token); err != nil {
+// 	return nil, fmt.Errorf("oidc: failed to unmarshal claims: %v", err)
+// }
+
+// ERH~
+func IsGCPServiceAcc(idtoken string) (bool, string, error) {
+	var idTstruct struct {
+		HD       string `json:"hd"`     // Google Org ID
+		Nonce    string `json:"nonce"`  // BastionZero-issued nonce
+		TID      string `json:"tid"`    // Microsoft Tenant ID
+		IssuedAt int64  `json:"iat"`    // Unix datetime of issuance
+		Death    int64  `json:"exp"`    // Unix datetime of token expiry
+		BZSAcc   bool   `json:"bzsacc"` // Self-signed service account token
+	}
+
+	jws, err := jose.ParseSigned(idtoken)
+	// payload, err := oidc.parseJWT(rawIDToken)
+	fmt.Println("jws.UnsafePayloadWithoutVerification() ", base64.StdEncoding.EncodeToString(
+		jws.UnsafePayloadWithoutVerification()))
+
+	if err != nil {
+		return false, "", nil
+	}
+	// var idTT oidc.IDToken
+	if err := json.Unmarshal(jws.UnsafePayloadWithoutVerification(), &idTstruct); err != nil {
+		return false, "", fmt.Errorf("oidc2: failed to unmarshal claims: %v", err)
+	}
+	fmt.Println("idTstruct ", idTstruct, idTstruct.Nonce, idTstruct.BZSAcc)
+
+	if idTstruct.BZSAcc && idTstruct.HD != "" {
+		return true, idTstruct.HD, nil
+	} else {
+		return false, "", nil
+	}
+
+	// fmt.Println("idTT ", idTT, idTT.Nonce, idTT.Audience)
+
+	// var claims struct {
+	// 	HD     string `json:"hd"`     // Google Org ID
+	// 	BZSAcc bool   `json:"bzsacc"` // Self-signed service account token
+	// }
+
+	// idTT.Claims(claims)
+	// fmt.Println("claims.BZSAcc ", claims.BZSAcc)
+	// fmt.Println("claims.HD ", claims.HD)
+	// if claims.BZSAcc && claims.HD != "" {
+	// 	return true, claims.HD, nil
+	// } else {
+	// 	return false, "", nil
+	// }
+}
+
 // This function verifies id_tokens
 func (u *BZCertVerifier) VerifyIdToken(idtoken string, skipExpiry bool, verifyNonce bool) (time.Time, error) {
+	// Check if service account
+	serAcc, gcpProjId, err := IsGCPServiceAcc(idtoken)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	fmt.Println("Checking...")
+	if serAcc {
+		fmt.Println("GCP Proj Id :", gcpProjId)
+		return time.Now().Add(bzCustomTokenLifetime), nil
+	}
+	fmt.Println("Not GCP service account")
 	// Verify Token Signature
 
 	// If there is no issuer URL, skip id token verification
@@ -115,11 +193,12 @@ func (u *BZCertVerifier) VerifyIdToken(idtoken string, skipExpiry bool, verifyNo
 
 	// the claims we care about checking
 	var claims struct {
-		HD       string `json:"hd"`    // Google Org ID
-		Nonce    string `json:"nonce"` // BastionZero-issued nonce
-		TID      string `json:"tid"`   // Microsoft Tenant ID
-		IssuedAt int64  `json:"iat"`   // Unix datetime of issuance
-		Death    int64  `json:"exp"`   // Unix datetime of token expiry
+		HD       string `json:"hd"`     // Google Org ID
+		Nonce    string `json:"nonce"`  // BastionZero-issued nonce
+		TID      string `json:"tid"`    // Microsoft Tenant ID
+		IssuedAt int64  `json:"iat"`    // Unix datetime of issuance
+		Death    int64  `json:"exp"`    // Unix datetime of token expiry
+		BZSAcc   bool   `json:"bzsacc"` // Self-signed service account token
 	}
 
 	if err := token.Claims(&claims); err != nil {
@@ -141,6 +220,7 @@ func (u *BZCertVerifier) VerifyIdToken(idtoken string, skipExpiry bool, verifyNo
 			return time.Time{}, err
 		}
 	}
+	var gcpProjName string = "gcp-proj-name"
 
 	// Only validate org claim if there is an orgId associated with this agent. This will be empty
 	// for orgs associated with a personal gsuite/microsoft account. We do not need to check against
@@ -148,6 +228,9 @@ func (u *BZCertVerifier) VerifyIdToken(idtoken string, skipExpiry bool, verifyNo
 	// virtue of getting the claims, we are assured it's for the specific Okta tenant.
 	switch u.orgProvider {
 	case Google:
+		if claims.BZSAcc && gcpProjName != claims.HD {
+			return time.Time{}, fmt.Errorf("user's GCP service account projectId does not match target's expected Google HD")
+		}
 		if u.orgId != claims.HD {
 			return time.Time{}, fmt.Errorf("user's OrgId does not match target's expected Google HD")
 		}
