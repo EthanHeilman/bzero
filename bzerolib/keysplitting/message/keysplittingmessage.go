@@ -160,16 +160,27 @@ func (k *KeysplittingMessage) VerifySignature(publicKey string) error {
 }
 
 func (k *KeysplittingMessage) Sign(privateKey string) error {
+	fmt.Println("siggy 1")
+
 	keyBytes, _ := base64.StdEncoding.DecodeString(privateKey)
+	fmt.Println("siggy 1.11")
 	if len(keyBytes) != 64 {
+		fmt.Println("siggy 1.111")
 		return fmt.Errorf("invalid private key length: %v", len(keyBytes))
 	}
+	fmt.Println("siggy 1.1111")
+
 	privkey := ed.PrivateKey(keyBytes)
+	fmt.Println("siggy 1.2")
 
 	hashBits, _ := util.HashPayload(k.KeysplittingPayload)
+	fmt.Println("siggy 1.3")
 
 	sig := ed.Sign(privkey, hashBits)
+	fmt.Println("siggy 1.4")
+
 	k.Signature = base64.StdEncoding.EncodeToString(sig)
+	fmt.Println("siggy 2", k.Signature, sig)
 
 	return nil
 }

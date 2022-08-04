@@ -78,6 +78,8 @@ func New(
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
 	runAsUser string) *DefaultShell {
+	fmt.Println("HERE 2.3.2.2.1")
+
 	return &DefaultShell{
 		logger:               logger,
 		runAsUser:            runAsUser,

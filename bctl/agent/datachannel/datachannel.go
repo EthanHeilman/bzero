@@ -62,6 +62,7 @@ func New(
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {
+	fmt.Println("HERE")
 
 	datachannel := &DataChannel{
 		logger:       logger,
@@ -74,6 +75,7 @@ func New(
 
 	// register with websocket so datachannel can send a receive messages
 	websocket.Subscribe(id, datachannel)
+	fmt.Println("HERE")
 
 	// validate the Syn message
 	var synPayload ksmsg.KeysplittingMessage
@@ -82,6 +84,7 @@ func New(
 	} else if synPayload.Type != ksmsg.Syn {
 		return nil, fmt.Errorf("datachannel must be started with a SYN message")
 	}
+	fmt.Println("HERE 2")
 
 	// process our syn to startup the plugin
 	if err := datachannel.handleKeysplittingMessage(&synPayload); err != nil {
@@ -89,6 +92,7 @@ func New(
 		datachannel.flushAllOutputChannelMessages()
 		return nil, err
 	}
+	fmt.Println("HERE 3")
 
 	// listener for incoming messages
 	datachannel.tmb.Go(func() error {
@@ -124,6 +128,7 @@ func New(
 			}
 		}
 	})
+	fmt.Println("HERE")
 
 	return datachannel, nil
 }
@@ -209,15 +214,22 @@ func (d *DataChannel) processInput(agentMessage am.AgentMessage) {
 }
 
 func (d *DataChannel) handleKeysplittingMessage(keysplittingMessage *ksmsg.KeysplittingMessage) error {
+	fmt.Println("HERE 2.1")
+
 	if err := d.keysplitting.Validate(keysplittingMessage); err != nil {
 		rerr := fmt.Errorf("invalid keysplitting message: %s", err)
 		d.sendError(bzerror.KeysplittingValidationError, rerr, keysplittingMessage.Hash())
 		return rerr
 	}
 
+	fmt.Println("HERE 2.2")
+
 	switch keysplittingMessage.Type {
 	case ksmsg.Syn:
+		fmt.Println("HERE 2.3")
+
 		synPayload := keysplittingMessage.KeysplittingPayload.(ksmsg.SynPayload)
+		fmt.Println("HERE 2.3.1")
 
 		if d.plugin == nil {
 			// Grab user's action
@@ -228,14 +240,21 @@ func (d *DataChannel) handleKeysplittingMessage(keysplittingMessage *ksmsg.Keysp
 			} else {
 				// Start plugin based on action
 				actionPrefix := parsedAction[0]
+				fmt.Println("HERE 2.3.2")
+
 				if err := d.startPlugin(bzplugin.PluginName(actionPrefix), synPayload.Action, synPayload.ActionPayload, synPayload.SchemaVersion); err != nil {
 					d.sendError(bzerror.ComponentStartupError, err, keysplittingMessage.Hash())
+					fmt.Println("Err:", err)
+
 					return err
 				}
 			}
 		}
+		fmt.Println("HERE 2.4")
 
 		d.sendKeysplitting(keysplittingMessage, "", []byte{}) // empty payload
+		fmt.Println("HERE 2.5")
+
 	case ksmsg.Data:
 		dataPayload := keysplittingMessage.KeysplittingPayload.(ksmsg.DataPayload)
 
@@ -268,10 +287,14 @@ func (d *DataChannel) handleKeysplittingMessage(keysplittingMessage *ksmsg.Keysp
 		d.sendError(bzerror.ComponentProcessingError, rerr, keysplittingMessage.Hash())
 		return rerr
 	}
+	fmt.Println("HERE 2.6")
+
 	return nil
 }
 
 func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string, payload []byte, version string) error {
+	fmt.Println("Starting plugin", pluginName)
+
 	d.logger.Infof("Starting %v plugin", pluginName)
 
 	// create channel and listener and pass it to the new plugin
