@@ -28,6 +28,7 @@ type WebWebsocketAction struct {
 
 	// plugin done channel for signalling to the datachannel we're done
 	doneChan chan struct{}
+	err      error
 
 	sequenceNumber int
 }
@@ -128,6 +129,14 @@ func (w *WebWebsocketAction) handleWebsocketRequest(writer http.ResponseWriter, 
 func (w *WebWebsocketAction) Kill() {
 	w.tmb.Kill(fmt.Errorf("death requested by higher ups"))
 	w.tmb.Wait()
+}
+
+func (w *WebWebsocketAction) Done() <-chan struct{} {
+	return w.doneChan
+}
+
+func (w *WebWebsocketAction) Err() error {
+	return w.err
 }
 
 func (w *WebWebsocketAction) ReceiveStream(smessage smsg.StreamMessage) {

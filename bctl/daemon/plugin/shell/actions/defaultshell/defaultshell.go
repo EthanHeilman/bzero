@@ -32,6 +32,8 @@ type DefaultShell struct {
 
 	// channel where we push each individual keypress byte from StdIn
 	stdInChan chan byte
+
+	isConnected bool
 }
 
 func New(logger *logger.Logger, outboxQueue chan plugin.ActionWrapper, doneChan chan struct{}) *DefaultShell {
@@ -45,6 +47,10 @@ func New(logger *logger.Logger, outboxQueue chan plugin.ActionWrapper, doneChan 
 
 func (d *DefaultShell) Done() <-chan struct{} {
 	return d.doneChan
+}
+
+func (d *DefaultShell) Err() error {
+	return d.tmb.Err()
 }
 
 func (d *DefaultShell) Kill() {
@@ -102,6 +108,19 @@ func (d *DefaultShell) Start(attach bool) error {
 					return fmt.Errorf("error reading last keypress from Stdin: %s", err)
 				}
 
+				if !d.isConnected {
+					switch b[0] {
+					// this appears to be cross-platform between Linux and MacOS
+					// NOTE: there is a brief period when the user could press ctrl+\ right
+					// 		when the zli is starting up that can put them in a weird state.
+					//		This is not something we can catch right now but the user can
+					//		press ctrl+d to get out of it
+					case uint8(3), uint8(4), uint8(28):
+						return &bzshell.ShellCancelledError{}
+					default:
+					}
+				}
+
 				d.stdInChan <- b[0]
 			}
 		}
@@ -124,6 +143,8 @@ func (d *DefaultShell) ReceiveStream(smessage smsg.StreamMessage) {
 	d.logger.Debugf("Default shell received %v stream", smessage.Type)
 
 	switch smsg.StreamType(smessage.Type) {
+	case smsg.Ready:
+		d.isConnected = true
 	case smsg.StdOut:
 		if contentBytes, err := base64.StdEncoding.DecodeString(smessage.Content); err != nil {
 			d.logger.Errorf("Error decoding ShellStdOut stream content: %s", err)
@@ -133,7 +154,7 @@ func (d *DefaultShell) ReceiveStream(smessage smsg.StreamMessage) {
 			}
 		}
 	case smsg.Stop:
-		d.tmb.Kill(fmt.Errorf("received shell quit stream message"))
+		d.tmb.Kill(&bzshell.ShellQuitError{})
 		return
 	default:
 		d.logger.Errorf("unhandled stream type: %s", smessage.Type)

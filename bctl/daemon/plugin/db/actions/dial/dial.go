@@ -33,6 +33,7 @@ type DialAction struct {
 
 	// done channel for letting the plugin know we're done
 	doneChan chan struct{}
+	err      error
 }
 
 func New(
@@ -46,8 +47,9 @@ func New(
 		logger:    logger,
 		requestId: requestId,
 
-		outputChan:      outboxQueue,
-		streamInputChan: make(chan smsg.StreamMessage, 10),
+		outputChan: outboxQueue,
+		// TODO: CWC-2015: reduce this buffer size when we have improved the websocket queue model
+		streamInputChan: make(chan smsg.StreamMessage, 256),
 		doneChan:        doneChan,
 	}
 
@@ -172,6 +174,10 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 
 func (d *DialAction) Done() <-chan struct{} {
 	return d.doneChan
+}
+
+func (d *DialAction) Err() error {
+	return d.err
 }
 
 func (d *DialAction) Kill() {

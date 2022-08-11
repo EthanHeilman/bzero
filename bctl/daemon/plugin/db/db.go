@@ -18,6 +18,7 @@ type IDbDaemonAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(lconn *net.TCPConn) error
 	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 
@@ -79,6 +80,10 @@ func (d *DbDaemonPlugin) Kill() {
 
 func (d *DbDaemonPlugin) Done() <-chan struct{} {
 	return d.doneChan
+}
+
+func (d *DbDaemonPlugin) Err() error {
+	return d.action.Err()
 }
 
 func (d *DbDaemonPlugin) Outbox() <-chan plugin.ActionWrapper {

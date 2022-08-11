@@ -62,6 +62,8 @@ type IWebsocket interface {
 	Unsubscribe(id string)
 	Subscribe(id string, channel IChannel)
 	Close(error)
+	Done() <-chan struct{}
+	Err() error
 	Ready() bool
 }
 
@@ -202,26 +204,50 @@ func New(logger *logger.Logger,
 	return &ws, nil
 }
 
+func (w *Websocket) Done() <-chan struct{} {
+	return w.tmb.Dead()
+}
+
+func (w *Websocket) Err() error {
+	return w.tmb.Err()
+}
+
+// Close kills all datachannels subscribed to this websocket, kills the
+// websocket tomb, disconnects the websocket connection, and waits for all
+// goroutines tracked by the websocket tomb to finish running.
 func (w *Websocket) Close(reason error) {
+	if !w.tmb.Alive() {
+		return
+	}
+	w.close(reason)
+
+	// It is not safe for tracked goroutines within the websocket struct to call
+	// Wait() otherwise there is a deadlock when calling .Wait()
+	w.tmb.Wait()
+	w.logger.Infof("websocket done")
+}
+
+// close kills all datachannels subscribed to this websocket, kills the
+// websocket tomb, and disconnects the websocket connection.
+//
+// Tracked goroutines that wish to close the websocket must call this function,
+// instead of the publicly exposed one, to ensure there is no deadlock.
+func (w *Websocket) close(reason error) {
 	w.logger.Infof("websocket closing because: %s", reason)
 
 	// close all of our existing datachannels
 	for _, channel := range w.channels {
 		channel.Close(reason)
 	}
-
 	// mark the tmb as dying so we ignore any errors that occur when closing the
 	// websocket
 	w.tmb.Kill(reason)
-
 	// close the websocket connection. This will cause errors when reading from
 	// websocket in receive
 	if w.client != nil {
 		w.ready = false
 		w.client.Close()
 	}
-
-	w.tmb.Wait()
 }
 
 // add channel to channels dictionary for forwarding incoming messages
@@ -255,7 +281,7 @@ func (w *Websocket) receive() error {
 		// Check if it's a clean exit or we don't need to reconnect
 		if websocket.IsCloseError(err, websocket.CloseNormalClosure) || !w.autoReconnect {
 			rerr := errors.New("websocket closed")
-			w.Close(rerr)
+			w.close(rerr)
 			return rerr
 		} else { // else, reconnect
 			msg := fmt.Errorf("error in websocket, will attempt to reconnect: %s", err)
@@ -272,7 +298,7 @@ func (w *Websocket) receive() error {
 				switch message.Target {
 				case DaemonCloseConnection:
 					rerr := errors.New("the bzero agent terminated the connection")
-					w.Close(rerr)
+					w.close(rerr)
 					return rerr
 				case AgentConnected:
 					// Signal the agentReady channel when we receive a message
@@ -291,7 +317,7 @@ func (w *Websocket) receive() error {
 
 					// Otherwise assume that the invocation contains a single AgentMessage argument
 					if len(message.Arguments) != 1 {
-						return fmt.Errorf("expected a single agent message argument but got %d arguments.", len(message.Arguments))
+						return fmt.Errorf("expected a single agent message argument but got %d arguments", len(message.Arguments))
 					}
 
 					var agentMessage am.AgentMessage
@@ -405,7 +431,7 @@ func (w *Websocket) processOutput(message signalRInvocationMessage) {
 		w.logger.Error(fmt.Errorf("error marshalling outgoing SignalR Message: %v", signalRMessage))
 	} else {
 		if err := w.client.WriteMessage(websocket.TextMessage, append(msgBytes, signalRMessageTerminatorByte)); err != nil {
-			w.logger.Error(err)
+			w.logger.Errorf("failed to send %s message: %s", message.agentMessage.MessageType, err)
 		}
 	}
 }
@@ -420,7 +446,7 @@ func (w *Websocket) websocketMethodSelector(agentMessage am.AgentMessage) (Signa
 	case AgentWebsocket:
 		return agentDataChannelWebsocketMethodSelector(agentMessage)
 	default:
-		return "", fmt.Errorf("Unhandled signalR method for websocket type %d", w.targetType)
+		return "", fmt.Errorf("unhandled signalR method for websocket type %d", w.targetType)
 	}
 }
 
@@ -764,7 +790,7 @@ func (w *Websocket) waitForAgentWebsocketReady() {
 		case <-w.agentReadyChan:
 			w.sendQueueReady = true
 		case <-time.After(AgentConnectedWebsocketTimeout):
-			w.Close(fmt.Errorf("Timed out waiting for agent websocket to connect"))
+			w.close(fmt.Errorf("timed out waiting for agent websocket to connect"))
 		}
 	} else {
 		w.sendQueueReady = true

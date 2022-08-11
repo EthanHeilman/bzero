@@ -24,6 +24,7 @@ type ExecAction struct {
 	logId           string
 	commandBeingRun string
 	doneChan        chan struct{}
+	err             error
 
 	// input and output channels relative to this plugin
 	outputChan      chan plugin.ActionWrapper
@@ -53,6 +54,14 @@ func New(
 func (e *ExecAction) Kill() {
 	e.tmb.Kill(nil)
 	e.tmb.Wait()
+}
+
+func (e *ExecAction) Done() <-chan struct{} {
+	return e.doneChan
+}
+
+func (e *ExecAction) Err() error {
+	return e.err
 }
 
 func (e *ExecAction) ReceiveKeysplitting(actionPayload []byte) {}
