@@ -8,13 +8,11 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
@@ -38,28 +36,31 @@ type StatusMessage struct {
 }
 
 type KubeServer struct {
-	logger      *logger.Logger
-	websocket   *websocket.Websocket // TODO: This will need to be a dictionary for when we have multiple
-	tmb         tomb.Tomb
+	logger  *logger.Logger
+	errChan chan error
+
+	websocket   *websocket.Websocket
 	exitMessage string
 
 	// fields for processing incoming kubectl commands
 	localhostToken string
 
-	// fields for opening websockets
-	serviceUrl string
-	params     map[string]string
-	headers    map[string]string
+	// fields for new websockets
+	cert     *bzcert.DaemonBZCert
+	certPath string
+	keyPath  string
 
 	// fields for new datachannels
-	cert         *bzcert.DaemonBZCert
 	targetUser   string
 	targetGroups []string
 	agentPubKey  string
+	localPort    string
+	localHost    string
 }
 
-func StartKubeServer(
+func New(
 	logger *logger.Logger,
+	errChan chan error,
 	localPort string,
 	localHost string,
 	certPath string,
@@ -72,47 +73,62 @@ func StartKubeServer(
 	params map[string]string,
 	headers map[string]string,
 	agentPubKey string,
-) error {
+) (*KubeServer, error) {
 
 	server := &KubeServer{
 		logger:         logger,
+		errChan:        errChan,
 		exitMessage:    "",
 		localhostToken: localhostToken,
-		serviceUrl:     serviceUrl,
-		params:         params,
-		headers:        headers,
 		cert:           cert,
+		certPath:       certPath,
+		keyPath:        keyPath,
+		targetUser:     targetUser,
 		targetGroups:   targetGroups,
 		agentPubKey:    agentPubKey,
+		localPort:      localPort,
+		localHost:      localHost,
 	}
 
 	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String()); err != nil {
-		server.logger.Error(err)
-		return err
+	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
+		return nil, fmt.Errorf("failed to create websocket: %s", err)
 	}
 
+	go server.listenForWebsocketDone()
+
+	return server, nil
+}
+
+func (k *KubeServer) Start() error {
 	// Create HTTP Server listens for incoming kubectl commands
 	go func() {
 		// Define our http handlers
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			server.rootCallback(logger, w, r)
+			k.rootCallback(k.logger, w, r)
 		})
 
 		http.HandleFunc("/bastionzero-ready", func(w http.ResponseWriter, r *http.Request) {
-			server.isReadyCallback(w, r)
+			k.isReadyCallback(w, r)
 		})
 
 		http.HandleFunc("/bastionzero-status", func(w http.ResponseWriter, r *http.Request) {
-			server.statusCallback(w, r)
+			k.statusCallback(w, r)
 		})
 
-		if err := http.ListenAndServeTLS(localHost+":"+localPort, certPath, keyPath, nil); err != nil {
-			logger.Error(err)
+		if err := http.ListenAndServeTLS(k.localHost+":"+k.localPort, k.certPath, k.keyPath, nil); err != nil {
+			k.logger.Error(err)
 		}
 	}()
 
 	return nil
+}
+
+func (k *KubeServer) Close(err error) {
+	if k.websocket != nil {
+		k.websocket.Close(err)
+	}
+	k.errChan <- err
 }
 
 // TODO: this logic may no longer be necessary, but would require a zli change to remove
@@ -136,14 +152,20 @@ func (k *KubeServer) statusCallback(w http.ResponseWriter, r *http.Request) {
 }
 
 // for creating new websockets
-func (k *KubeServer) newWebsocket(wsId string) error {
+func (k *KubeServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
 	subLogger := k.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, k.serviceUrl, k.params, k.headers, autoReconnect, getChallenge, websocket.Cluster); err != nil {
+	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Cluster); err != nil {
 		return err
 	} else {
 		k.websocket = wsClient
 		return nil
 	}
+}
+
+func (k *KubeServer) listenForWebsocketDone() {
+	// blocks until the underlying tomb is dead
+	<-k.websocket.Done()
+	k.Close(k.websocket.Err())
 }
 
 // for creating new datachannels
@@ -166,38 +188,11 @@ func (k *KubeServer) newDataChannel(dcId string, action string, websocket *webso
 
 	action = "kube/" + action
 	attach := false
-	dc, dcTmb, err := datachannel.New(subLogger, dcId, &k.tmb, websocket, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, action, synPayload, attach, true)
+
 	if err != nil {
 		return err
 	}
-
-	// create a function to listen to the datachannel dying and then laugh
-	go func() {
-		for {
-			select {
-			case <-k.tmb.Dying():
-				dc.Close(errors.New("kube server closing"))
-				return
-			case <-dcTmb.Dead():
-				// only report the error if it's not nil.  Otherwise,  we assume the datachannel closed legitimately.
-				if err := dcTmb.Err(); err != nil {
-					errs := strings.Split(dcTmb.Err().Error(), ": ")
-					msg := fmt.Sprintf("error: %s", errs[len(errs)-1])
-					k.bubbleUpError(writer, msg, 500)
-				}
-
-				// notify agent to close the datachannel
-				k.logger.Info("Sending DataChannel Close")
-				cdMessage := am.AgentMessage{
-					ChannelId:   dcId,
-					MessageType: string(am.CloseDataChannel),
-				}
-				k.websocket.Send(cdMessage)
-
-				return
-			}
-		}
-	}()
 	return nil
 }
 

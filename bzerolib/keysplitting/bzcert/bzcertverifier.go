@@ -95,9 +95,9 @@ func getMicrosoftIssUrl(orgId string) string {
 
 func (v *BZCertVerifier) Verify(bzcert *BZCert) (exp time.Time, err error) {
 	if err = v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
-		return exp, NewInitialIdTokenError(err)
+		return exp, &InitialIdTokenError{InnerError: err}
 	} else if exp, err = v.verifyCurrentIdToken(bzcert.CurrentIdToken); err != nil {
-		return exp, NewCurrentIdTokenError(err)
+		return exp, &CurrentIdTokenError{InnerError: err}
 	} else {
 		return
 	}

@@ -46,6 +46,7 @@ type IPlugin interface {
 	ReceiveStream(smessage smsg.StreamMessage)
 	Outbox() <-chan bzplugin.ActionWrapper
 	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 
@@ -68,7 +69,6 @@ type DataChannel struct {
 func New(
 	logger *logger.Logger,
 	id string,
-	parentTmb *tomb.Tomb, // daemon has ability to rage quit and take everything down with it
 	websocket websocket.IWebsocket,
 	keysplitter IKeysplitting,
 	plugin IPlugin,
@@ -76,7 +76,7 @@ func New(
 	synPayload interface{},
 	attach bool, // bool to indicate if we are attaching to an existing datachannel
 	processInputChanBeforeExit bool,
-) (*DataChannel, *tomb.Tomb, error) {
+) (*DataChannel, error) {
 
 	dc := &DataChannel{
 		logger:                     logger,
@@ -96,20 +96,29 @@ func New(
 		// tell Bastion we're opening a datachannel and send SYN to agent initiates an authenticated datachannel
 		logger.Info("Sending request to agent to open a new datachannel")
 		if err := dc.openDataChannel(action, synPayload); err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else if _, err := keysplitter.BuildSyn(action, synPayload, true); err != nil {
-		return nil, nil, fmt.Errorf("failed to build and send syn for attachment flow")
+		return nil, fmt.Errorf("failed to build and send syn for attachment flow")
 	} else {
 		logger.Infof("Sending SYN on existing datachannel %s with actions %s.", dc.id, action)
 	}
 
 	dc.tmb.Go(func() error {
-		defer websocket.Unsubscribe(id) // causes decoupling from websocket
-		defer dc.logger.Info("Datachannel done")
+		var err error
+		defer func() {
+			dc.logger.Infof("sending CloseDataChannel message to the agent")
+			websocket.Send(am.AgentMessage{
+				ChannelId:   dc.id,
+				MessageType: string(am.CloseDataChannel),
+			})
+
+			websocket.Unsubscribe(id) // causes decoupling from websocket
+			dc.logger.Info("Datachannel done")
+		}()
 
 		// wait for the syn/ack to our intial syn message or an error
-		if err := dc.handshakeOrTimeout(); err != nil {
+		if err = dc.handshakeOrTimeout(); err != nil {
 			dc.logger.Error(err)
 			return err
 		}
@@ -117,10 +126,6 @@ func New(
 
 		for {
 			select {
-			case <-parentTmb.Dying(): // daemon is dying
-				dc.logger.Info("Datachannel was orphaned too young and can't be batman :'(")
-				dc.plugin.Kill()
-				return nil
 			case <-dc.tmb.Dying():
 				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err().Error())
 				dc.plugin.Kill()
@@ -129,9 +134,9 @@ func New(
 				dc.logger.Infof("%s is done", action)
 				if processInputChanBeforeExit {
 					// wait for any in-flight messages to come in and ensure all outgoing messages go out
-					return dc.waitForRemainingMessages()
+					dc.waitForRemainingMessages()
 				}
-				return nil
+				return dc.plugin.Err()
 			case agentMessage := <-dc.inputChan: // receive messages
 				if err := dc.processInputMessage(agentMessage); err != nil {
 					dc.logger.Error(err)
@@ -146,7 +151,7 @@ func New(
 	go dc.sendKeysplitting()
 	go dc.zapPluginOutput()
 
-	return dc, &dc.tmb, nil
+	return dc, nil
 }
 
 func (d *DataChannel) handshakeOrTimeout() error {
@@ -176,9 +181,10 @@ func (d *DataChannel) handshakeOrTimeout() error {
 	}
 }
 
-func (d *DataChannel) waitForRemainingMessages() error {
+func (d *DataChannel) waitForRemainingMessages() {
 	checkOutboxInterval := time.Second
-
+	absoluteTimeout := time.NewTimer(10 * time.Second)
+	defer absoluteTimeout.Stop()
 	for {
 		select {
 		// even if the plugin says it's done, we need to keep processing acks from the agent
@@ -189,8 +195,14 @@ func (d *DataChannel) waitForRemainingMessages() error {
 		case <-time.After(checkOutboxInterval):
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.keysplitter.IsPipelineEmpty() {
-				return nil
+				return
 			}
+			// there are cases, such as during an iperf download, when the agent-side plugin closes
+			// and thus stops sending acks. In this case, the pipeline does not empty completely,
+			// creating the need for an escape hatch
+		case <-absoluteTimeout.C:
+			d.logger.Errorf("timed out waiting for agent to finish sending messages after plugin closed")
+			return
 		}
 	}
 }
@@ -223,8 +235,20 @@ func (d *DataChannel) zapPluginOutput() error {
 	}
 }
 
+func (d *DataChannel) Done() <-chan struct{} {
+	return d.tmb.Dead()
+}
+
+func (d *DataChannel) Err() error {
+	return d.tmb.Err()
+}
+
 func (d *DataChannel) Close(reason error) {
+	if !d.tmb.Alive() {
+		return
+	}
 	d.tmb.Kill(reason) // kills all datachannel, plugin, and action goroutines
+	d.tmb.Wait()
 }
 
 func (d *DataChannel) openDataChannel(action string, synPayload interface{}) error {

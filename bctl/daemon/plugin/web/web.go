@@ -18,6 +18,8 @@ import (
 type IWebDaemonAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(writer http.ResponseWriter, request *http.Request) error
+	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 
@@ -88,6 +90,10 @@ func (w *WebDaemonPlugin) Outbox() <-chan plugin.ActionWrapper {
 
 func (w *WebDaemonPlugin) Done() <-chan struct{} {
 	return w.doneChan
+}
+
+func (w *WebDaemonPlugin) Err() error {
+	return w.action.Err()
 }
 
 func (w *WebDaemonPlugin) Kill() {

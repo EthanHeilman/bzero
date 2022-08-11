@@ -9,37 +9,21 @@ import (
 // via errors.Is or errors.As. See https://go.dev/blog/go1.13-errors
 
 type InitialIdTokenError struct {
-	message    string
-	innerError error
-}
-
-func NewInitialIdTokenError(innerError error) *InitialIdTokenError {
-	return &InitialIdTokenError{
-		message:    fmt.Sprintf("error verifying initial id token: %s", innerError),
-		innerError: innerError,
-	}
+	InnerError error
 }
 
 func (e *InitialIdTokenError) Error() string {
-	return e.message
+	return fmt.Sprintf("error verifying initial id token: %s", e.InnerError)
 }
 
-func (e *InitialIdTokenError) Unwrap() error { return e.innerError }
+func (e *InitialIdTokenError) Unwrap() error { return e.InnerError }
 
 type CurrentIdTokenError struct {
-	message    string
-	innerError error
-}
-
-func NewCurrentIdTokenError(innerError error) *CurrentIdTokenError {
-	return &CurrentIdTokenError{
-		message:    fmt.Sprintf("error verifying current id token: %s", innerError),
-		innerError: innerError,
-	}
+	InnerError error
 }
 
 func (e *CurrentIdTokenError) Error() string {
-	return e.message
+	return fmt.Sprintf("error verifying current id token: %s", e.InnerError)
 }
 
-func (e *CurrentIdTokenError) Unwrap() error { return e.innerError }
+func (e *CurrentIdTokenError) Unwrap() error { return e.InnerError }

@@ -27,7 +27,8 @@ var _ = Describe("Default Shell", Ordered, func() {
 	testContent := "BastionZero"
 
 	logger := logger.MockLogger()
-	streamMessageChan := make(chan smsg.StreamMessage)
+	// need to buffer this to avoid a deadlock because the test is run in series
+	streamMessageChan := make(chan smsg.StreamMessage, 2)
 	doneChan := make(chan struct{})
 
 	mockPT := createPseudoTerminal()
@@ -45,6 +46,11 @@ var _ = Describe("Default Shell", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(retActionPayload).To(Equal([]byte{}))
 
+			msg := <-streamMessageChan
+			_, err = base64.StdEncoding.DecodeString(string(msg.Content))
+			Expect(err).To(BeNil())
+			Expect(msg.Type).To(Equal(smsg.Ready))
+
 			By("passing Daemon input to pseudo terminal")
 			action = string(bzshell.ShellInput)
 			inputMessage := bzshell.ShellInputMessage{
@@ -58,7 +64,7 @@ var _ = Describe("Default Shell", Ordered, func() {
 
 			By("relaying previous output to the daemon")
 			// check to see if our output is the same as our input
-			msg := <-streamMessageChan
+			msg = <-streamMessageChan
 			content, err := base64.StdEncoding.DecodeString(string(msg.Content))
 			Expect(err).To(BeNil())
 			Expect(string(content)).To(Equal(testContent))

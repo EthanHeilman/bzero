@@ -1,19 +1,15 @@
 package dbserver
 
 import (
-	"errors"
+	"fmt"
 	"net"
-	"os"
 
 	"github.com/google/uuid"
-	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/exitcodes"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
@@ -27,9 +23,11 @@ const (
 )
 
 type DbServer struct {
-	logger    *logger.Logger
-	websocket *websocket.Websocket
-	tmb       tomb.Tomb
+	logger  *logger.Logger
+	errChan chan error
+
+	websocket   *websocket.Websocket
+	tcpListener *net.TCPListener
 
 	// Db specific vars
 	remotePort int
@@ -38,14 +36,12 @@ type DbServer struct {
 	// fields for new datachannels
 	localPort   string
 	localHost   string
-	params      map[string]string
-	headers     map[string]string
-	serviceUrl  string
 	agentPubKey string
 	cert        *bzcert.DaemonBZCert
 }
 
-func StartDbServer(logger *logger.Logger,
+func New(logger *logger.Logger,
+	errChan chan error,
 	localPort string,
 	localHost string,
 	remotePort int,
@@ -55,13 +51,11 @@ func StartDbServer(logger *logger.Logger,
 	params map[string]string,
 	headers map[string]string,
 	agentPubKey string,
-) error {
+) (*DbServer, error) {
 
 	server := &DbServer{
 		logger:      logger,
-		serviceUrl:  serviceUrl,
-		params:      params,
-		headers:     headers,
+		errChan:     errChan,
 		cert:        cert,
 		localPort:   localPort,
 		localHost:   localHost,
@@ -71,66 +65,90 @@ func StartDbServer(logger *logger.Logger,
 	}
 
 	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String()); err != nil {
-		server.logger.Error(err)
-		return err
+	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
+		return nil, fmt.Errorf("failed to create websocket: %s", err)
 	}
 
+	go server.listenForWebsocketDone()
+
+	return server, nil
+}
+
+func (d *DbServer) Start() error {
 	// Now create our local listener for TCP connections
-	logger.Infof("Resolving TCP address for host:port %s:%s", localHost, localPort)
-	localTcpAddress, err := net.ResolveTCPAddr("tcp", localHost+":"+localPort)
+	d.logger.Infof("Resolving TCP address for host:port %s:%s", d.localHost, d.localPort)
+	localTcpAddress, err := net.ResolveTCPAddr("tcp", d.localHost+":"+d.localPort)
 	if err != nil {
-		logger.Errorf("Failed to resolve TCP address %s", err)
-		os.Exit(exitcodes.UNSPECIFIED_ERROR)
+		d.websocket.Close(err)
+		return fmt.Errorf("failed to resolve TCP address %s", err)
 	}
 
-	logger.Infof("Setting up TCP listener")
-	localTcpListener, err := net.ListenTCP("tcp", localTcpAddress)
+	d.logger.Infof("Setting up TCP listener")
+	d.tcpListener, err = net.ListenTCP("tcp", localTcpAddress)
 	if err != nil {
-		logger.Errorf("Failed to open local port to listen: %s", err)
-		os.Exit(exitcodes.UNSPECIFIED_ERROR)
+		d.websocket.Close(err)
+		return fmt.Errorf("failed to open local port to listen: %s", err)
 	}
-
-	// Always ensure we close the local tcp connection when we exit
-	defer localTcpListener.Close()
 
 	// Do nothing with the first syn no-op call
-	localTcpListener.AcceptTCP()
+	d.tcpListener.AcceptTCP()
 
+	go d.handleConnections()
+
+	return nil
+}
+
+func (d *DbServer) Close(err error) {
+	if d.websocket != nil {
+		d.websocket.Close(err)
+	}
+	if d.tcpListener != nil {
+		d.tcpListener.Close()
+	}
+	d.errChan <- err
+}
+
+// for creating new websockets
+func (d *DbServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
+	subLogger := d.logger.GetWebsocketLogger(wsId)
+	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Db); err != nil {
+		return err
+	} else {
+		d.websocket = wsClient
+		return nil
+	}
+}
+
+func (d *DbServer) listenForWebsocketDone() {
+	// blocks until the underlying tomb is dead
+	<-d.websocket.Done()
+	d.Close(d.websocket.Err())
+}
+
+func (d *DbServer) handleConnections() {
 	// Block and keep listening for new tcp events
 	for {
-		conn, err := localTcpListener.AcceptTCP()
+		conn, err := d.tcpListener.AcceptTCP()
 		if err != nil {
-			logger.Errorf("failed to accept connection: %s", err)
+			d.logger.Errorf("failed to accept connection: %s", err)
 			continue
 		}
 
-		logger.Infof("Accepting new tcp connection")
+		d.logger.Infof("Accepting new tcp connection")
 
 		// create our new datachannel in its own go routine so that we can accept other tcp connections
 		go func() {
 			// every datachannel gets a uuid to distinguish it so a single websockets can map to multiple datachannels
 			dcId := uuid.New().String()
-			subLogger := logger.GetDatachannelLogger(dcId)
+			subLogger := d.logger.GetDatachannelLogger(dcId)
 			pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
 			plugin := db.New(pluginLogger)
 			if err := plugin.StartAction(bzdb.Dial, conn); err != nil {
-				logger.Errorf("error starting action: %s", err)
-			} else if err := server.newDataChannel(dcId, string(bzdb.Dial), server.websocket, plugin); err != nil {
-				logger.Errorf("error starting datachannel: %s", err)
+				d.logger.Errorf("error starting action: %s", err)
+			} else if err := d.newDataChannel(dcId, string(bzdb.Dial), d.websocket, plugin); err != nil {
+				d.logger.Errorf("error starting datachannel: %s", err)
 			}
 		}()
-	}
-}
-
-// for creating new websockets
-func (d *DbServer) newWebsocket(wsId string) error {
-	subLogger := d.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, d.serviceUrl, d.params, d.headers, autoReconnect, getChallenge, websocket.Db); err != nil {
-		return err
-	} else {
-		d.websocket = wsClient
-		return nil
 	}
 }
 
@@ -154,31 +172,9 @@ func (d *DbServer) newDataChannel(dcId string, action string, websocket *websock
 
 	action = "db/" + action
 	attach := false
-	dc, dcTmb, err := datachannel.New(subLogger, dcId, &d.tmb, websocket, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, action, synPayload, attach, true)
 	if err != nil {
 		return err
 	}
-
-	// create a function to listen to the datachannel dying and then laugh
-	go func() {
-		for {
-			select {
-			// TODO: this is redundant and/or not used -- we should take a dedicated look at daemon shutdown procedure
-			case <-d.tmb.Dying():
-				dc.Close(errors.New("db server closing"))
-				return
-			case <-dcTmb.Dead():
-				// notify agent to close the datachannel
-				d.logger.Info("Sending DataChannel Close")
-				cdMessage := am.AgentMessage{
-					ChannelId:   dcId,
-					MessageType: string(am.CloseDataChannel),
-				}
-				d.websocket.Send(cdMessage)
-
-				return
-			}
-		}
-	}()
 	return nil
 }

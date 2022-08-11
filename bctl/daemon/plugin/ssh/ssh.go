@@ -17,6 +17,8 @@ import (
 type ISshAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	Start() error
+	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 
@@ -82,6 +84,10 @@ func (s *SshDaemonPlugin) Kill() {
 
 func (s *SshDaemonPlugin) Done() <-chan struct{} {
 	return s.doneChan
+}
+
+func (s *SshDaemonPlugin) Err() error {
+	return s.action.Err()
 }
 
 func (s *SshDaemonPlugin) Outbox() <-chan bzplugin.ActionWrapper {

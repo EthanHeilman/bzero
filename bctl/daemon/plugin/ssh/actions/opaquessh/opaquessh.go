@@ -26,6 +26,7 @@ type OpaqueSsh struct {
 
 	outboxQueue chan plugin.ActionWrapper
 	doneChan    chan struct{}
+	err         error
 
 	// channel where we push from StdIn
 	stdInChan chan []byte
@@ -60,6 +61,10 @@ func (s *OpaqueSsh) Done() <-chan struct{} {
 	return s.doneChan
 }
 
+func (s *OpaqueSsh) Err() error {
+	return s.err
+}
+
 func (s *OpaqueSsh) Kill() {
 	s.tmb.Kill(nil)
 }
@@ -83,7 +88,10 @@ func (s *OpaqueSsh) Start() error {
 	s.sendOutputMessage(bzssh.SshOpen, sshOpenMessage)
 
 	go func() {
-		defer close(s.doneChan)
+		defer func() {
+			close(s.doneChan)
+			s.err = s.tmb.Err()
+		}()
 		<-s.tmb.Dying()
 	}()
 

@@ -29,6 +29,7 @@ type TransparentSsh struct {
 
 	outboxQueue chan plugin.ActionWrapper
 	doneChan    chan struct{}
+	err         error
 
 	// used to communicate directly with the ZLI via stdio
 	zliIo bzio.BzIo
@@ -63,6 +64,10 @@ func New(
 
 func (t *TransparentSsh) Done() <-chan struct{} {
 	return t.doneChan
+}
+
+func (t *TransparentSsh) Err() error {
+	return t.err
 }
 
 // internal pre-kill function on success

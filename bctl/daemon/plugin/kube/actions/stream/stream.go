@@ -22,6 +22,7 @@ type StreamAction struct {
 	logId           string
 	commandBeingRun string
 	doneChan        chan struct{}
+	err             error
 
 	// input and output channels relative to this plugin
 	outputChan      chan plugin.ActionWrapper
@@ -57,6 +58,14 @@ func New(
 
 func (s *StreamAction) Kill() {
 	close(s.doneChan)
+}
+
+func (s *StreamAction) Done() <-chan struct{} {
+	return s.doneChan
+}
+
+func (s *StreamAction) Err() error {
+	return s.err
 }
 
 func (s *StreamAction) ReceiveKeysplitting(actionPayload []byte) {}
