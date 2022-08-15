@@ -141,10 +141,9 @@ func (d *DefaultShell) Replay(replayData []byte) error {
 
 func (d *DefaultShell) ReceiveStream(smessage smsg.StreamMessage) {
 	d.logger.Debugf("Default shell received %v stream", smessage.Type)
+	d.isConnected = true
 
 	switch smsg.StreamType(smessage.Type) {
-	case smsg.Ready:
-		d.isConnected = true
 	case smsg.StdOut:
 		if contentBytes, err := base64.StdEncoding.DecodeString(smessage.Content); err != nil {
 			d.logger.Errorf("Error decoding ShellStdOut stream content: %s", err)
