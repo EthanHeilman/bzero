@@ -12,21 +12,22 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
 )
 
 const (
-	// websocket connection parameters for all datachannels created by tcp server
+	// connection parameters for all datachannels created by tcp server
 	autoReconnect = true
 )
 
 type DbServer struct {
 	logger *logger.Logger
 
-	conn *websocket.Websocket
+	conn connection.Connection
 
 	errChan     chan error
 	tcpListener *net.TCPListener
@@ -66,15 +67,15 @@ func New(logger *logger.Logger,
 		agentPubKey: agentPubKey,
 	}
 
-	// Create our one connection in the form of a websocket
-	subLogger := logger.GetWebsocketLogger(uuid.New().String())
-	if client, err := websocket.New(subLogger, connUrl, params, headers, autoReconnect, websocket.DaemonDataChannel); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	if client, err := universalconnection.New(subLogger, connUrl, params, headers, autoReconnect, universalconnection.DaemonDataChannel); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client
 	}
 
-	go server.listenForWebsocketDone()
+	go server.listenForConnectionDone()
 
 	return server, nil
 }
@@ -113,7 +114,7 @@ func (d *DbServer) Close(err error) {
 	d.errChan <- err
 }
 
-func (d *DbServer) listenForWebsocketDone() {
+func (d *DbServer) listenForConnectionDone() {
 	// blocks until the underlying tomb is dead
 	<-d.conn.Done()
 	d.Close(d.conn.Err())
@@ -132,7 +133,7 @@ func (d *DbServer) handleConnections() {
 
 		// create our new datachannel in its own go routine so that we can accept other tcp connections
 		go func() {
-			// every datachannel gets a uuid to distinguish it so a single websockets can map to multiple datachannels
+			// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 			dcId := uuid.New().String()
 			subLogger := d.logger.GetDatachannelLogger(dcId)
 			pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)

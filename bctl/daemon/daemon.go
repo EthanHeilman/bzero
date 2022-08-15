@@ -19,7 +19,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/sshserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/webserver"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
 
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
@@ -111,7 +111,7 @@ func reportError(logger *bzlogger.Logger, errorReport error) {
 
 func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {
 	plugin := config[PLUGIN].Value
-	logger.Infof("Opening websocket to the Connection Node: %s for %s plugin", config[CONNECTION_SERVICE_URL].Value, plugin)
+	logger.Infof("Opening connection to the Connection Node: %s for %s plugin", config[CONNECTION_SERVICE_URL].Value, plugin)
 
 	// create our MrZAP object
 	zliConfig, err := zliconfig.New(config[CONFIG_PATH].Value, config[REFRESH_TOKEN_COMMAND].Value)
@@ -187,7 +187,7 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
 
-	params["connectionType"] = []string{string(websocket.Ssh)}
+	params["connectionType"] = []string{string(universalconnection.Ssh)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
 	params["target_user"] = []string{config[TARGET_USER].Value}
 	params["remote_host"] = []string{config[REMOTE_HOST].Value}
@@ -216,7 +216,7 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 func newShellServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*shellserver.ShellServer, error) {
 	subLogger := logger.GetComponentLogger("shellserver")
 
-	params["connectionType"] = []string{string(websocket.Shell)}
+	params["connectionType"] = []string{string(universalconnection.Shell)}
 
 	return shellserver.New(
 		subLogger,
@@ -239,7 +239,7 @@ func newWebServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 		return nil, fmt.Errorf("failed to parse remote port: %w", err)
 	}
 
-	params["connectionType"] = []string{string(websocket.Web)}
+	params["connectionType"] = []string{string(universalconnection.Web)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
 
 	return webserver.New(
@@ -265,7 +265,7 @@ func newDbServer(logger *bzlogger.Logger, errChan chan error, headers http.Heade
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
 
-	params["connectionType"] = []string{string(websocket.Db)}
+	params["connectionType"] = []string{string(universalconnection.Db)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
 
 	return dbserver.New(
@@ -292,7 +292,7 @@ func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers http.Hea
 		targetGroups = strings.Split(config[TARGET_GROUPS].Value, ",")
 	}
 
-	params["connectionType"] = []string{string(websocket.Kube)}
+	params["connectionType"] = []string{string(universalconnection.Kube)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
 	params["target_user"] = []string{config[TARGET_USER].Value}
 	params["target_groups"] = []string{config[TARGET_GROUPS].Value}

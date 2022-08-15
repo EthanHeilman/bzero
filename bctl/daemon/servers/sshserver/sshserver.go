@@ -10,7 +10,8 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -18,9 +19,8 @@ import (
 )
 
 const (
-	// websocket connection parameters for all datachannels created by tcp server
+	// connection parameters for all datachannels created by tcp server
 	autoReconnect = false
-	getChallenge  = false
 )
 
 type SshServer struct {
@@ -28,7 +28,7 @@ type SshServer struct {
 	errChan chan error
 	action  string
 
-	conn *websocket.Websocket
+	conn connection.Connection
 	dc   *datachannel.DataChannel
 
 	remoteHost string
@@ -79,10 +79,10 @@ func New(
 		remotePort:     remotePort,
 	}
 
-	// Create our one connection in the form of a websocket
-	subLogger := logger.GetWebsocketLogger(uuid.New().String())
-	if client, err := websocket.New(subLogger, connUrl, params, headers, autoReconnect, websocket.DaemonDataChannel); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	if client, err := universalconnection.New(subLogger, connUrl, params, headers, autoReconnect, universalconnection.DaemonDataChannel); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client
 	}

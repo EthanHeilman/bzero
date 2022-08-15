@@ -5,7 +5,7 @@ type AliveCheckAgentToBastionMessage struct {
 	ClusterUsers []string `json:"clusterUsers"`
 }
 
-// websocket and datachannel management payloads
+// connection and datachannel management payloads
 type OpenWebsocketMessage struct {
 	ConnectionId         string `json:"connectionId"`
 	ConnectionNodeId     string `json:"connectionNodeId"`

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
+	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"

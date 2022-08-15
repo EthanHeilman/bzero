@@ -19,7 +19,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
@@ -188,10 +188,10 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 		"target_id":  {config.Data.TargetId},
 	}
 
-	// create a websocket
+	// create a connection
 	wsId := uuid.New().String()
-	wsLogger := logger.GetWebsocketLogger(wsId)
-	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, websocket.AgentControlChannel)
+	wsLogger := logger.GetConnectionLogger(wsId)
+	conn, err := universalconnection.New(wsLogger, serviceUrl, params, headers, true, universalconnection.AgentControlChannel)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 	ccId := uuid.New().String()
 	ccLogger := logger.GetControlChannelLogger(ccId)
 
-	return controlchannel.Start(ccLogger, ccId, websocket, serviceUrl, agentType, config)
+	return controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, config)
 }
 
 func parseFlags() error {
