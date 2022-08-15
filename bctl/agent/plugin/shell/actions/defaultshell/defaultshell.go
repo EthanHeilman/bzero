@@ -173,8 +173,6 @@ func (d *DefaultShell) open() error {
 		d.terminal = terminal
 	}
 
-	d.sendStreamMessage(smsg.Ready, []byte{})
-
 	go d.writePump()
 
 	return nil

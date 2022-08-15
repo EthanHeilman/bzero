@@ -46,11 +46,6 @@ var _ = Describe("Default Shell", Ordered, func() {
 			Expect(err).To(BeNil())
 			Expect(retActionPayload).To(Equal([]byte{}))
 
-			msg := <-streamMessageChan
-			_, err = base64.StdEncoding.DecodeString(string(msg.Content))
-			Expect(err).To(BeNil())
-			Expect(msg.Type).To(Equal(smsg.Ready))
-
 			By("passing Daemon input to pseudo terminal")
 			action = string(bzshell.ShellInput)
 			inputMessage := bzshell.ShellInputMessage{
@@ -64,7 +59,7 @@ var _ = Describe("Default Shell", Ordered, func() {
 
 			By("relaying previous output to the daemon")
 			// check to see if our output is the same as our input
-			msg = <-streamMessageChan
+			msg := <-streamMessageChan
 			content, err := base64.StdEncoding.DecodeString(string(msg.Content))
 			Expect(err).To(BeNil())
 			Expect(string(content)).To(Equal(testContent))
