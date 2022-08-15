@@ -220,7 +220,7 @@ func (s *SignalR) unwrap(raw []byte) error {
 			s.logger.Infof("received SignalR message to close the connection")
 			s.Close(fmt.Errorf("close connection"))
 
-		// These messages let us know if a previous message was recieved correctly
+		// These messages let us know if a previous message was received correctly
 		// and provides us with the resulting error if not
 		case Completion:
 			if err := s.processCompletionMessage(rawMessage); err != nil {

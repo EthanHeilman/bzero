@@ -172,7 +172,7 @@ func (d *DataChannel) handshakeOrTimeout() error {
 				return nil
 			}
 		default:
-			return fmt.Errorf("datachannel must start with a mrzap or error message, recieved: %s", agentMessage.MessageType)
+			return fmt.Errorf("datachannel must start with a mrzap or error message, received: %s", agentMessage.MessageType)
 		}
 	case <-time.After(handshakeTimeout):
 		return fmt.Errorf("handshake timed out")
