@@ -112,8 +112,6 @@ func New(
 				ChannelId:   dc.id,
 				MessageType: string(am.CloseDataChannel),
 			})
-
-			websocket.Unsubscribe(id) // causes decoupling from websocket
 			dc.logger.Info("Datachannel done")
 		}()
 
@@ -127,7 +125,7 @@ func New(
 		for {
 			select {
 			case <-dc.tmb.Dying():
-				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err().Error())
+				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err())
 				dc.plugin.Kill()
 				return nil
 			case <-dc.plugin.Done():
@@ -193,6 +191,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 				d.logger.Error(err)
 			}
 		case <-time.After(checkOutboxInterval):
+			d.logger.Infof("checking outbox interval: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.keysplitter.IsPipelineEmpty())
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.keysplitter.IsPipelineEmpty() {
 				return

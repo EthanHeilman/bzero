@@ -12,10 +12,10 @@ import (
 
 // Daemon Exit Codes
 const (
-	SUCCESS               = 0
-	UNSPECIFIED_ERROR     = 1
-	BZCERT_ID_TOKEN_ERROR = 2
-	CANCELLED_BY_USER     = 3
+	Success            = 0
+	UnspecifiedError   = 1
+	BZCertIdTokenError = 2
+	CancelledByUser    = 3
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -25,7 +25,7 @@ const (
 // daemon process with a specific exit code
 func HandleDaemonExit(err error, logger *logger.Logger) {
 	if err == nil {
-		os.Exit(SUCCESS)
+		os.Exit(Success)
 	}
 	// https://go.dev/blog/go1.13-errors target
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
@@ -40,15 +40,15 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	if errors.As(err, &initialIdTokenError) || errors.As(err, &currentIdTokenError) {
 		logger.Errorf("Error constructing BastionZero certificate: %s", err)
 		logger.Errorf("IdP tokens are invalid/expired. Please try to re-login with the zli.")
-		os.Exit(BZCERT_ID_TOKEN_ERROR)
+		os.Exit(BZCertIdTokenError)
 	} else if errors.As(err, &shellQuitError) || errors.As(err, &osInterruptError) {
 		logger.Errorf(err.Error())
-		os.Exit(SUCCESS)
+		os.Exit(Success)
 	} else if errors.As(err, &shellCancelledError) {
 		logger.Errorf(err.Error())
-		os.Exit(CANCELLED_BY_USER)
+		os.Exit(CancelledByUser)
 	}
 
 	logger.Errorf("exiting with error: %s", err)
-	os.Exit(UNSPECIFIED_ERROR)
+	os.Exit(UnspecifiedError)
 }

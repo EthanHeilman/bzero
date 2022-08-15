@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"regexp"
 	"sync"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"gopkg.in/tomb.v2"
@@ -28,7 +31,7 @@ const (
 
 type wsMeta struct {
 	Client       websocket.IWebsocket
-	DataChannels map[string]websocket.IChannel
+	DataChannels map[string]broker.IChannel
 }
 
 type ControlChannel struct {
@@ -81,7 +84,6 @@ func Start(logger *logger.Logger,
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {
-		defer websocket.Unsubscribe(id)
 
 		// send healthcheck messages at every "heartbeat"
 		control.tmb.Go(func() error {
@@ -167,24 +169,23 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	subLogger := c.logger.GetWebsocketLogger(message.ConnectionId)
 
 	// Create our headers and params, headers are empty
-	headers := make(map[string]string)
+	headers := http.Header{}
 
 	// Add our token to our params
-	params := make(map[string]string)
-	params["connection_id"] = message.ConnectionId
-	params["connection_node_id"] = message.ConnectionNodeId
-	params["token"] = message.Token
-	params["connectionType"] = message.Type
-	params["connection_service_url"] = message.ConnectionServiceUrl
+	params := url.Values{
+		"connection_id":  {message.ConnectionId},
+		"token":          {message.Token},
+		"connectionType": {message.Type},
+	}
 
-	if ws, err := websocket.New(subLogger, c.serviceUrl, params, headers, false, false, websocket.AgentWebsocket); err != nil {
+	if ws, err := websocket.New(subLogger, message.ConnectionServiceUrl, params, headers, false, websocket.AgentDataChannel); err != nil {
 		return fmt.Errorf("could not create new websocket: %s", err)
 	} else {
 		// add the websocket to our connections dictionary
-		c.logger.Infof("created websocket with id: %s", message.ConnectionId)
+		c.logger.Infof("Created websocket with id: %s", message.ConnectionId)
 		meta := wsMeta{
 			Client:       ws,
-			DataChannels: make(map[string]websocket.IChannel),
+			DataChannels: make(map[string]broker.IChannel),
 		}
 		c.updateConnectionsMap(message.ConnectionId, meta)
 	}

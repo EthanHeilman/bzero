@@ -4,6 +4,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -135,7 +137,7 @@ func setupLogger() (*logger.Logger, error) {
 	}
 
 	log, err := logger.New(&config)
-	if err != nil {
+	if err == nil {
 		log.AddAgentVersion(getAgentVersion())
 	}
 
@@ -176,24 +178,20 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 	// Load in our saved config
 	config, err := vault.LoadVault()
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve vault: %s", err)
+		return nil, fmt.Errorf("failed to retrieve vault: %w", err)
 	}
 
-	// Create our headers and params, headers are empty
-	headers := make(map[string]string)
-
-	// Make and add our params
-	params := map[string]string{
-		"public_key": config.Data.PublicKey,
-		"version":    agentVersion,
-		"target_id":  config.Data.TargetId,
-		"agent_type": agentType,
+	headers := http.Header{}
+	params := url.Values{
+		"public_key": {config.Data.PublicKey},
+		"version":    {agentVersion},
+		"target_id":  {config.Data.TargetId},
 	}
 
 	// create a websocket
 	wsId := uuid.New().String()
-	wsLogger := logger.GetWebsocketLogger(wsId) // TODO: replace with actual connectionId
-	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, true, websocket.AgentControl)
+	wsLogger := logger.GetWebsocketLogger(wsId)
+	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, websocket.AgentControlChannel)
 	if err != nil {
 		return nil, err
 	}

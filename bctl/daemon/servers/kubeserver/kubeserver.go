@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/google/uuid"
+	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
@@ -26,9 +28,8 @@ const (
 	// So we use this securityTokenDelimiter to split up our token and extract what might be there
 	securityTokenDelimiter = "++++"
 
-	// websocket connection parameters for all datachannels created by http server
+	// websocket connection parameters
 	autoReconnect = true
-	getChallenge  = false
 )
 
 type StatusMessage struct {
@@ -36,17 +37,19 @@ type StatusMessage struct {
 }
 
 type KubeServer struct {
-	logger  *logger.Logger
-	errChan chan error
+	logger *logger.Logger
+	tmb    tomb.Tomb
 
-	websocket   *websocket.Websocket
+	conn *websocket.Websocket
+
+	errChan     chan error
 	exitMessage string
 
 	// fields for processing incoming kubectl commands
 	localhostToken string
 
 	// fields for new websockets
-	cert     *bzcert.DaemonBZCert
+	cert     bzcert.IDaemonBZCert
 	certPath string
 	keyPath  string
 
@@ -65,13 +68,13 @@ func New(
 	localHost string,
 	certPath string,
 	keyPath string,
-	cert *bzcert.DaemonBZCert,
+	cert bzcert.IDaemonBZCert,
 	targetUser string,
 	targetGroups []string,
 	localhostToken string,
-	serviceUrl string,
-	params map[string]string,
-	headers map[string]string,
+	connUrl string,
+	params url.Values,
+	headers http.Header,
 	agentPubKey string,
 ) (*KubeServer, error) {
 
@@ -90,9 +93,12 @@ func New(
 		localHost:      localHost,
 	}
 
-	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
+	// Create our one connection in the form of a websocket
+	subLogger := logger.GetWebsocketLogger(uuid.New().String())
+	if client, err := websocket.New(subLogger, connUrl, params, headers, autoReconnect, websocket.DaemonDataChannel); err != nil {
 		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	} else {
+		server.conn = client
 	}
 
 	go server.listenForWebsocketDone()
@@ -125,8 +131,8 @@ func (k *KubeServer) Start() error {
 }
 
 func (k *KubeServer) Close(err error) {
-	if k.websocket != nil {
-		k.websocket.Close(err)
+	if k.conn != nil {
+		k.conn.Close(err)
 	}
 	k.errChan <- err
 }
@@ -151,25 +157,14 @@ func (k *KubeServer) statusCallback(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// for creating new websockets
-func (k *KubeServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
-	subLogger := k.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Cluster); err != nil {
-		return err
-	} else {
-		k.websocket = wsClient
-		return nil
-	}
-}
-
 func (k *KubeServer) listenForWebsocketDone() {
 	// blocks until the underlying tomb is dead
-	<-k.websocket.Done()
-	k.Close(k.websocket.Err())
+	<-k.conn.Done()
+	k.Close(k.conn.Err())
 }
 
 // for creating new datachannels
-func (k *KubeServer) newDataChannel(dcId string, action string, websocket *websocket.Websocket, plugin *kube.KubeDaemonPlugin, writer http.ResponseWriter) error {
+func (k *KubeServer) newDataChannel(dcId string, action string, plugin *kube.KubeDaemonPlugin, writer http.ResponseWriter) error {
 	subLogger := k.logger.GetDatachannelLogger(dcId)
 
 	k.logger.Infof("Creating new datachannel id: %s", dcId)
@@ -188,7 +183,7 @@ func (k *KubeServer) newDataChannel(dcId string, action string, websocket *webso
 
 	action = "kube/" + action
 	attach := false
-	_, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, k.conn, keysplitter, plugin, action, synPayload, attach, true)
 
 	if err != nil {
 		return err
@@ -237,7 +232,7 @@ func (k *KubeServer) rootCallback(logger *logger.Logger, w http.ResponseWriter, 
 	pluginLogger = pluginLogger.GetDatachannelLogger(dcId)
 	plugin := kube.New(pluginLogger, k.targetUser, k.targetGroups)
 
-	if err := k.newDataChannel(dcId, string(action), k.websocket, plugin, w); err != nil {
+	if err := k.newDataChannel(dcId, string(action), plugin, w); err != nil {
 		k.logger.Error(err)
 	}
 
