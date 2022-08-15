@@ -97,7 +97,6 @@ func New(
 	// listener for incoming messages
 	datachannel.tmb.Go(func() error {
 		defer logger.Infof("Datachannel is dead")
-		defer websocket.Unsubscribe(id) // causes decoupling from websocket
 
 		datachannel.tmb.Go(func() error {
 			for {
@@ -146,7 +145,11 @@ func (d *DataChannel) flushAllOutputChannelMessages() {
 }
 
 func (d *DataChannel) Close(reason error) {
-	d.logger.Infof("Datachannel closing because: %s", reason)
+	if !d.tmb.Alive() {
+		return
+	}
+
+	d.logger.Infof("Datachannel closed because: %s", reason)
 	d.tmb.Kill(reason) // kills all datachannel, plugin, and action goroutines
 	select {
 	case <-d.tmb.Dead():
