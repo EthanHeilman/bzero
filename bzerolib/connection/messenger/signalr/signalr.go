@@ -17,7 +17,7 @@ import (
 	"net/url"
 	"time"
 
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"gopkg.in/tomb.v2"

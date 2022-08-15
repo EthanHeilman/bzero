@@ -14,9 +14,10 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"gopkg.in/tomb.v2"
@@ -32,21 +33,21 @@ const (
 	ManualRestartMsg = "received manual restart from user"
 )
 
-type wsMeta struct {
-	Client       websocket.IWebsocket
+type connectionMeta struct {
+	Client       connection.Connection
 	DataChannels map[string]broker.IChannel
 }
 
 type ControlChannel struct {
-	websocket websocket.IWebsocket
-	logger    *logger.Logger
-	tmb       tomb.Tomb
-	id        string
+	conn   connection.Connection
+	logger *logger.Logger
+	tmb    tomb.Tomb
+	id     string
 
 	// config values needed for keysplitting
 	ksConfig keysplitting.IKeysplittingConfig
 
-	// variables for opening websockets
+	// variables for opening connections
 	serviceUrl string
 
 	// accepts input from a connection
@@ -60,8 +61,8 @@ type ControlChannel struct {
 
 	targetType string
 
-	// struct for keeping track of all connections key'ed with connectionId (websockets with associated datachannels)
-	connections     map[string]wsMeta
+	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
+	connections     map[string]connectionMeta
 	connectionsLock sync.Mutex
 
 	SocketLock sync.Mutex // Ref: https://github.com/gorilla/websocket/issues/119#issuecomment-198710015
@@ -71,29 +72,31 @@ type ControlChannel struct {
 
 func Start(logger *logger.Logger,
 	id string,
-	websocket websocket.IWebsocket, // control channel websocket
+	conn connection.Connection, // control channel connection
 	serviceUrl string,
 	targetType string,
 	ksConfig keysplitting.IKeysplittingConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
-		websocket:      websocket,
+		conn:           conn,
 		logger:         logger,
 		id:             id,
 		ksConfig:       ksConfig,
 		serviceUrl:     serviceUrl,
 		targetType:     targetType,
 		inputChan:      make(chan am.AgentMessage, 25),
-		connections:    make(map[string]wsMeta),
+		connections:    make(map[string]connectionMeta),
 		agentPongChan:  make(chan bool),
 		runtimeErrChan: make(chan error),
-		isSendingPongs: websocket.Ready(),
+		isSendingPongs: conn.Ready(),
 	}
 
-	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
-	// subscribing to the WS with a unique id. As long as we use the same one when we unsubscribe
-	websocket.Subscribe("", control)
+	// The ChannelId is mostly for distinguishing multiple channels over a single connection but the control channel has
+	// its own dedicated connection.  This also makes it so there can only ever be one control channel associated with a
+	// given connection at any time.
+	// TODO: figure out a way to let control channel know its own id before it subscribes
+	conn.Subscribe("", control)
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {
@@ -108,7 +111,7 @@ func Start(logger *logger.Logger,
 					return nil
 				case <-ticker.C:
 					// don't bother trying to send heartbeats if we're not connected
-					if websocket.Ready() {
+					if conn.Ready() {
 						if msg, err := control.checkHealth(); err != nil {
 							control.logger.Errorf("error creating healthcheck message: %s", err)
 						} else {
@@ -125,17 +128,17 @@ func Start(logger *logger.Logger,
 				// We need to close all open client connections if the control channel has been closed
 				logger.Info("Closing all agent connections since control channel has been closed")
 
-				for _, wsMetadata := range control.connections {
-					// First send a close message over the agent websocket
-					wsMetadata.Client.Send(am.AgentMessage{
+				for _, connMeta := range control.connections {
+					// First send a close message over the agent connection
+					connMeta.Client.Send(am.AgentMessage{
 						MessageType:    string(am.CloseDaemonWebsocket),
 						MessagePayload: []byte{},
 						SchemaVersion:  am.CurrentVersion,
 						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
 					})
 
-					// Then close the websocket
-					wsMetadata.Client.Close(control.tmb.Err())
+					// Then close the connection
+					connMeta.Client.Close(fmt.Errorf("control channel has been closed"))
 				}
 				return nil
 			case agentMessage := <-control.inputChan:
@@ -147,8 +150,8 @@ func Start(logger *logger.Logger,
 						control.runtimeErrChan <- err
 					}
 				}()
-			case <-websocket.Done():
-				control.Close(fmt.Errorf("websocket closed with err: %s", websocket.Err()))
+			case <-conn.Done():
+				control.Close(fmt.Errorf("connection closed with err: %s", conn.Err()))
 			}
 		}
 	})
@@ -196,7 +199,7 @@ func (c *ControlChannel) Pong() <-chan bool {
 // Without this mechanism, the agent might restart in the time between the websocket reconnecting and us receiving
 // a healthcheck pong from bastion
 func (c *ControlChannel) ShouldBeSendingPongs() bool {
-	readyToSendPongs := c.websocket.Ready()
+	readyToSendPongs := c.conn.Ready()
 
 	// no matter what, update our state based on the websocket's status
 	defer func() { c.isSendingPongs = readyToSendPongs }()
@@ -226,13 +229,13 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 		}
 
 		// Push message to websocket channel output
-		c.websocket.Send(agentMessage)
+		c.conn.Send(agentMessage)
 		return nil
 	}
 }
 
 func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
-	subLogger := c.logger.GetWebsocketLogger(message.ConnectionId)
+	subLogger := c.logger.GetConnectionLogger(message.ConnectionId)
 
 	// Create our headers and params, headers are empty
 	headers := http.Header{}
@@ -244,13 +247,13 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 		"connectionType": {message.Type},
 	}
 
-	if ws, err := websocket.New(subLogger, message.ConnectionServiceUrl, params, headers, false, websocket.AgentDataChannel); err != nil {
-		return fmt.Errorf("could not create new websocket: %s", err)
+	if conn, err := universalconnection.New(subLogger, message.ConnectionServiceUrl, params, headers, false, universalconnection.AgentDataChannel); err != nil {
+		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
-		// add the websocket to our connections dictionary
-		c.logger.Infof("Created websocket with id: %s", message.ConnectionId)
-		meta := wsMeta{
-			Client:       ws,
+		// add the connection to our connections dictionary
+		c.logger.Infof("Created connection with id: %s", message.ConnectionId)
+		meta := connectionMeta{
+			Client:       conn,
 			DataChannels: make(map[string]broker.IChannel),
 		}
 		c.updateConnectionsMap(message.ConnectionId, meta)
@@ -264,21 +267,21 @@ func (c *ControlChannel) openDataChannel(message OpenDataChannelMessage) error {
 	subLogger := c.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := c.logger.GetComponentLogger("mrzap")
 
-	// grab the websocket
-	if websocketMeta, ok := c.getConnectionMap(connectionId); !ok {
-		return fmt.Errorf("agent does not have a websocket associated with id %s", connectionId)
+	// grab the connection
+	if connMeta, ok := c.getConnectionMap(connectionId); !ok {
+		return fmt.Errorf("agent does not have a connection associated with id %s", connectionId)
 	} else if keysplitter, err := keysplitting.New(ksSubLogger, c.ksConfig); err != nil {
 		return err
-	} else if datachannel, err := datachannel.New(&c.tmb, subLogger, websocketMeta.Client, keysplitter, dcId, message.Syn); err != nil {
+	} else if datachannel, err := datachannel.New(&c.tmb, subLogger, connMeta.Client, keysplitter, dcId, message.Syn); err != nil {
 		return err
 	} else {
 		// add our new datachannel to our connections dictionary
-		websocketMeta.DataChannels[dcId] = datachannel
+		connMeta.DataChannels[dcId] = datachannel
 		return nil
 	}
 }
 
-// This is our main process function where incoming messages from the websocket will be processed
+// This is our main process function where incoming messages from the connection will be processed
 func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 	c.logger.Debugf("control channel received %v message", am.MessageType(agentMessage.MessageType))
 
@@ -305,11 +308,12 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 		if err := json.Unmarshal(agentMessage.MessagePayload, &cwRequest); err != nil {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
-			if websocket, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
-				websocket.Client.Close(errors.New("websocket closed on daemon"))
+			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
+				// this can take a little time, but we don't want it blocking other things
+				conn.Client.Close(errors.New("connection closed on daemon"))
 				c.deleteConnectionsMap(cwRequest.ConnectionId)
 			} else {
-				return fmt.Errorf("could not close non existent websocket with id: %s", cwRequest.ConnectionId)
+				return fmt.Errorf("could not close non existent connection with id: %s", cwRequest.ConnectionId)
 			}
 		}
 	case am.OpenDataChannel:
@@ -324,10 +328,10 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 		if err := json.Unmarshal(agentMessage.MessagePayload, &cdRequest); err != nil {
 			return fmt.Errorf("malformed close datachannel request: %s", err)
 		} else {
-			if websocket, ok := c.getConnectionMap(cdRequest.ConnectionId); ok {
-				if datachannel, ok := websocket.DataChannels[cdRequest.DataChannelId]; ok {
+			if conn, ok := c.getConnectionMap(cdRequest.ConnectionId); ok {
+				if datachannel, ok := conn.DataChannels[cdRequest.DataChannelId]; ok {
 					datachannel.Close(errors.New("formal datachannel request received"))
-					delete(websocket.DataChannels, cdRequest.DataChannelId)
+					delete(conn.DataChannels, cdRequest.DataChannelId)
 				} else {
 					return fmt.Errorf("agent does not have a datachannel with id: %s", cdRequest.DataChannelId)
 				}
@@ -418,9 +422,9 @@ func checkInClusterHealth() (AliveCheckAgentToBastionMessage, error) {
 }
 
 // Helper function so we avoid writing to this map at the same time
-func (c *ControlChannel) updateConnectionsMap(id string, newWS wsMeta) {
+func (c *ControlChannel) updateConnectionsMap(id string, newConn connectionMeta) {
 	c.connectionsLock.Lock()
-	c.connections[id] = newWS
+	c.connections[id] = newConn
 	c.connectionsLock.Unlock()
 }
 
@@ -430,7 +434,7 @@ func (c *ControlChannel) deleteConnectionsMap(id string) {
 	c.connectionsLock.Unlock()
 }
 
-func (c *ControlChannel) getConnectionMap(id string) (wsMeta, bool) {
+func (c *ControlChannel) getConnectionMap(id string) (connectionMeta, bool) {
 	c.connectionsLock.Lock()
 	defer c.connectionsLock.Unlock()
 	meta, ok := c.connections[id]

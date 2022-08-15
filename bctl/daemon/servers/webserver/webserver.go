@@ -12,16 +12,16 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/web"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzweb "bastionzero.com/bctl/v1/bzerolib/plugin/web"
 )
 
 const (
-	// websocket connection parameters for all datachannels created by tcp server
+	// connection parameters for all datachannels created by tcp server
 	autoReconnect = true
-	getChallenge  = false
 
 	// TODO: make these easily configurable values
 	maxRequestSize = 10 * 1024 * 1024  // 10MB
@@ -32,7 +32,7 @@ type WebServer struct {
 	logger  *logger.Logger
 	errChan chan error
 
-	conn *websocket.Websocket
+	conn connection.Connection
 
 	// Web specific vars
 	// Either user the full dns (i.e. targetHostName) or the host:port
@@ -71,15 +71,15 @@ func New(
 		agentPubKey: agentPubKey,
 	}
 
-	// Create our one connection in the form of a websocket
-	subLogger := logger.GetWebsocketLogger(uuid.New().String())
-	if client, err := websocket.New(subLogger, connUrl, params, headers, autoReconnect, websocket.DaemonDataChannel); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	if client, err := universalconnection.New(subLogger, connUrl, params, headers, autoReconnect, universalconnection.DaemonDataChannel); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client
 	}
 
-	go server.listenForWebsocketDone()
+	go server.listenForConnectionDone()
 
 	return server, nil
 }
@@ -105,7 +105,7 @@ func (w *WebServer) Close(err error) {
 	w.errChan <- err
 }
 
-func (w *WebServer) listenForWebsocketDone() {
+func (w *WebServer) listenForConnectionDone() {
 	// blocks until the underlying tomb is dead
 	<-w.conn.Done()
 	w.Close(w.conn.Err())
@@ -141,7 +141,7 @@ func (w *WebServer) capRequestSize(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request) {
-	// every datachannel gets a uuid to distinguish it so a single websockets can map to multiple datachannels
+	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 	dcId := uuid.New().String()
 
 	// create our new plugin and datachannel

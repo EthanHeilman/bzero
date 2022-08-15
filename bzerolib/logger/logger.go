@@ -137,10 +137,10 @@ func (l *Logger) GetDatachannelLogger(id string) *Logger {
 	}
 }
 
-func (l *Logger) GetWebsocketLogger(id string) *Logger {
+func (l *Logger) GetConnectionLogger(id string) *Logger {
 	return &Logger{
 		logger: l.logger.With().
-			Str("websocket", id).
+			Str("connection", id).
 			Logger(),
 	}
 }

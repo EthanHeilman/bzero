@@ -20,7 +20,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 )
@@ -131,7 +131,7 @@ type Agent struct {
 	config         *vault.Vault
 	logger         *logger.Logger
 	fileIo         bzio.BzFileIo
-	websocket      *websocket.Websocket
+	conn           *universalconnection.UniversalConnection
 	controlChannel *controlchannel.ControlChannel
 
 	agentShutdownChan chan error
@@ -282,10 +282,10 @@ func (a *Agent) startControlChannel() error {
 		"agent_type": {agentType},
 	}
 
-	// create a websocket
+	// create a connection
 	wsId := uuid.New().String()
-	wsLogger := logger.GetWebsocketLogger(wsId)
-	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, websocket.AgentControlChannel)
+	wsLogger := logger.GetConnectionLogger(wsId)
+	conn, err := universalconnection.New(wsLogger, serviceUrl, params, headers, true, universalconnection.AgentControlChannel)
 	if err != nil {
 		return err
 	}
@@ -294,13 +294,13 @@ func (a *Agent) startControlChannel() error {
 	ccId := uuid.New().String()
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
 
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, websocket, serviceUrl, agentType, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, a.config)
 
 	return err
 }
 
 func (a *Agent) monitorControlChannel() {
-	maximumMissedPongSets := int(websocket.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	maximumMissedPongSets := int(universalconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
 	missedPongSets := 0
 
 	for {
@@ -337,8 +337,8 @@ func (a *Agent) Close(reason error) {
 		a.controlChannel.Close(reason)
 	}
 
-	if a.websocket != nil {
-		a.websocket.Close(reason)
+	if a.conn != nil {
+		a.conn.Close(reason)
 	}
 
 	a.config.Data.ShutdownState = fmt.Sprintf("%+v", getState())

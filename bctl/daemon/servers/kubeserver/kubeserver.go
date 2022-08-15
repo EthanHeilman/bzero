@@ -9,13 +9,13 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzkube "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
@@ -28,7 +28,7 @@ const (
 	// So we use this securityTokenDelimiter to split up our token and extract what might be there
 	securityTokenDelimiter = "++++"
 
-	// websocket connection parameters
+	// connection parameters
 	autoReconnect = true
 )
 
@@ -38,9 +38,8 @@ type StatusMessage struct {
 
 type KubeServer struct {
 	logger *logger.Logger
-	tmb    tomb.Tomb
 
-	conn *websocket.Websocket
+	conn connection.Connection
 
 	errChan     chan error
 	exitMessage string
@@ -48,7 +47,7 @@ type KubeServer struct {
 	// fields for processing incoming kubectl commands
 	localhostToken string
 
-	// fields for new websockets
+	// fields for new connections
 	cert     bzcert.IDaemonBZCert
 	certPath string
 	keyPath  string
@@ -93,15 +92,15 @@ func New(
 		localHost:      localHost,
 	}
 
-	// Create our one connection in the form of a websocket
-	subLogger := logger.GetWebsocketLogger(uuid.New().String())
-	if client, err := websocket.New(subLogger, connUrl, params, headers, autoReconnect, websocket.DaemonDataChannel); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection in the form of a connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	if client, err := universalconnection.New(subLogger, connUrl, params, headers, autoReconnect, universalconnection.DaemonDataChannel); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client
 	}
 
-	go server.listenForWebsocketDone()
+	go server.listenForConnectionDone()
 
 	return server, nil
 }
@@ -157,7 +156,7 @@ func (k *KubeServer) statusCallback(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (k *KubeServer) listenForWebsocketDone() {
+func (k *KubeServer) listenForConnectionDone() {
 	// blocks until the underlying tomb is dead
 	<-k.conn.Done()
 	k.Close(k.conn.Err())
@@ -225,7 +224,7 @@ func (k *KubeServer) rootCallback(logger *logger.Logger, w http.ResponseWriter, 
 	action := getAction(r)
 
 	// start up our plugin
-	// every datachannel gets a uuid to distinguish it so a single websockets can map to multiple datachannels
+	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 	dcId := uuid.New().String()
 
 	pluginLogger := logger.GetPluginLogger(bzplugin.Kube)

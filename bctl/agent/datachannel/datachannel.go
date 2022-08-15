@@ -16,8 +16,9 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/web"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	bzerror "bastionzero.com/bctl/v1/bzerolib/error"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -46,7 +47,7 @@ type DataChannel struct {
 
 	id string
 
-	websocket    websocket.IWebsocket
+	conn         connection.Connection
 	keysplitting IKeysplitting
 	plugin       IPlugin
 
@@ -61,7 +62,7 @@ type DataChannel struct {
 func New(
 	parentTmb *tomb.Tomb,
 	logger *logger.Logger,
-	websocket websocket.IWebsocket,
+	conn connection.Connection,
 	keysplitter IKeysplitting,
 	id string,
 	syn []byte,
@@ -70,14 +71,14 @@ func New(
 	datachannel := &DataChannel{
 		logger:       logger,
 		id:           id,
-		websocket:    websocket,
+		conn:         conn,
 		keysplitting: keysplitter,
 		inputChan:    make(chan am.AgentMessage, 50),
 		outputChan:   make(chan am.AgentMessage, 10),
 	}
 
-	// register with websocket so datachannel can send a receive messages
-	websocket.Subscribe(id, datachannel)
+	// register with connection so datachannel can send a receive messages
+	conn.Subscribe(id, datachannel)
 
 	// validate the Syn message
 	var synPayload ksmsg.KeysplittingMessage
@@ -123,8 +124,8 @@ func New(
 				datachannel.flushAllOutputChannelMessages()
 				return nil
 			case agentMessage := <-datachannel.outputChan:
-				// Push message to websocket channel output
-				datachannel.websocket.Send(agentMessage)
+				// Push message to connection channel output
+				datachannel.conn.Send(agentMessage)
 			}
 		}
 	})
@@ -136,8 +137,8 @@ func (d *DataChannel) flushAllOutputChannelMessages() {
 	for {
 		select {
 		case agentMessage := <-d.outputChan:
-			// Push message to websocket channel output
-			d.websocket.Send(agentMessage)
+			// Push message to connection channel output
+			d.conn.Send(agentMessage)
 		case <-time.After(1 * time.Second):
 			return
 		}

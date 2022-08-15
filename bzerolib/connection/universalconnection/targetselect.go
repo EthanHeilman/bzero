@@ -1,9 +1,9 @@
-package websocket
+package universalconnection
 
 import (
 	"fmt"
 
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 )
 
 // daemon's data channel function to select signalR hub method based on agent message type
