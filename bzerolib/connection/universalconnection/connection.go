@@ -17,6 +17,7 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/challenge"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -59,20 +60,12 @@ const (
 	agentConnectedTimeout = 30 * time.Second
 )
 
-type Messenger interface {
-	Close(reason error)
-	Done() <-chan struct{}
-	Inbound() <-chan *signalr.SignalRMessage
-	Connect(ctx context.Context, targetUrl string, headers http.Header, params url.Values, targetSelectHandler func(msg am.AgentMessage) (string, error)) error
-	Send(message am.AgentMessage) error
-}
-
 type UniversalConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 
 	// This is our underlying connection where we send and receive messages
-	client Messenger
+	client messenger.Messenger
 
 	// A connection broker, allows us to narrowcast to one subscribed datachannel
 	broker *broker.Broker

@@ -94,6 +94,7 @@ func New(
 	// listener for incoming messages
 	datachannel.tmb.Go(func() error {
 		defer logger.Infof("Datachannel is dead")
+		defer datachannel.flushAllOutputChannelMessages()
 
 		datachannel.tmb.Go(func() error {
 			for {
@@ -117,7 +118,6 @@ func New(
 				return nil
 			case <-datachannel.plugin.Done():
 				logger.Infof("datachannel's sole plugin is closed")
-				datachannel.flushAllOutputChannelMessages()
 				return nil
 			case agentMessage := <-datachannel.outputChan:
 				// Push message to connection channel output
@@ -135,7 +135,7 @@ func (d *DataChannel) flushAllOutputChannelMessages() {
 		case agentMessage := <-d.outputChan:
 			// Push message to connection channel output
 			d.conn.Send(agentMessage)
-		case <-time.After(1 * time.Second):
+		case <-time.After(500 * time.Millisecond):
 			return
 		}
 	}
