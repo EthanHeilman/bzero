@@ -1,4 +1,4 @@
-package agentcontrolchannelconnection
+package controlchannelconnection
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agentcontrolchannelconnection/challenge"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection/challenge"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
@@ -27,7 +27,7 @@ const (
 	controlHubEndpoint = "/api/v1/hub/control"
 )
 
-type AgentControlChannelConnection struct {
+type ControlChannelConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	ready  bool
@@ -49,11 +49,10 @@ func New(
 	headers http.Header,
 	transporter transporter.Transporter,
 ) (connection.Connection, error) {
-	logger.Infof("CREATING A NEW CONTROL CHANNEL CONNECTION")
 	srLogger := logger.GetComponentLogger("SignalR")
 	client := signalr.New(srLogger, transporter)
 
-	conn := AgentControlChannelConnection{
+	conn := ControlChannelConnection{
 		logger:    logger,
 		client:    client,
 		broker:    broker.New(),
@@ -101,7 +100,7 @@ func New(
 	return &conn, nil
 }
 
-func (a *AgentControlChannelConnection) receive() {
+func (a *ControlChannelConnection) receive() {
 	for {
 		select {
 		case <-a.tmb.Dead():
@@ -125,35 +124,35 @@ func (a *AgentControlChannelConnection) receive() {
 	}
 }
 
-func (a *AgentControlChannelConnection) Send(agentMessage am.AgentMessage) {
+func (a *ControlChannelConnection) Send(agentMessage am.AgentMessage) {
 	a.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (a *AgentControlChannelConnection) Subscribe(id string, channel broker.IChannel) {
+func (a *ControlChannelConnection) Subscribe(id string, channel broker.IChannel) {
 	a.broker.Subscribe(id, channel)
 }
 
-func (a *AgentControlChannelConnection) Ready() bool {
+func (a *ControlChannelConnection) Ready() bool {
 	return a.ready
 }
 
-func (a *AgentControlChannelConnection) Done() <-chan struct{} {
+func (a *ControlChannelConnection) Done() <-chan struct{} {
 	return a.tmb.Dead()
 }
 
-func (a *AgentControlChannelConnection) Err() error {
+func (a *ControlChannelConnection) Err() error {
 	return a.tmb.Err()
 }
 
-func (a *AgentControlChannelConnection) Close(reason error) {
+func (a *ControlChannelConnection) Close(reason error) {
 	if a.tmb.Alive() {
 		a.tmb.Kill(reason)
 		a.tmb.Wait()
 	}
 }
 
-func (a *AgentControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
+func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.Parse(connUrl)
 	if err != nil {

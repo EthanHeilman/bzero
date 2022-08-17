@@ -1,4 +1,4 @@
-package agentdatachannelconnection
+package datachannelconnection
 
 import (
 	"context"
@@ -24,7 +24,7 @@ const (
 	agentHubEndpoint = "hub/agent"
 )
 
-type AgentDataChannelConnection struct {
+type DataChannelConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	ready  bool
@@ -56,7 +56,7 @@ func New(
 	}
 	connectionUrl.Path = path.Join(connectionUrl.Path, agentHubEndpoint)
 
-	conn := AgentDataChannelConnection{
+	conn := DataChannelConnection{
 		logger:    logger,
 		client:    client,
 		broker:    broker.New(),
@@ -100,7 +100,7 @@ func New(
 	return &conn, nil
 }
 
-func (a *AgentDataChannelConnection) receive() {
+func (a *DataChannelConnection) receive() {
 	for {
 		select {
 		case <-a.tmb.Dead():
@@ -124,35 +124,35 @@ func (a *AgentDataChannelConnection) receive() {
 	}
 }
 
-func (a *AgentDataChannelConnection) Send(agentMessage am.AgentMessage) {
+func (a *DataChannelConnection) Send(agentMessage am.AgentMessage) {
 	a.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (a *AgentDataChannelConnection) Subscribe(id string, channel broker.IChannel) {
+func (a *DataChannelConnection) Subscribe(id string, channel broker.IChannel) {
 	a.broker.Subscribe(id, channel)
 }
 
-func (a *AgentDataChannelConnection) Ready() bool {
+func (a *DataChannelConnection) Ready() bool {
 	return a.ready
 }
 
-func (a *AgentDataChannelConnection) Done() <-chan struct{} {
+func (a *DataChannelConnection) Done() <-chan struct{} {
 	return a.tmb.Dead()
 }
 
-func (a *AgentDataChannelConnection) Err() error {
+func (a *DataChannelConnection) Err() error {
 	return a.tmb.Err()
 }
 
-func (a *AgentDataChannelConnection) Close(reason error) {
+func (a *DataChannelConnection) Close(reason error) {
 	if a.tmb.Alive() {
 		a.tmb.Kill(reason)
 		a.tmb.Wait()
 	}
 }
 
-func (a *AgentDataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+func (a *DataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
 	// Make a context and tie it in with our tomb and then send it everywhere
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

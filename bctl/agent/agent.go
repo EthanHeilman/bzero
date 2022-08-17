@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agentcontrolchannelconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
@@ -195,7 +195,7 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 	wsLogger := connLogger.GetComponentLogger("Websocket")
 
 	// Make our connection
-	conn, err := agentcontrolchannelconnection.New(connLogger, serviceUrl, params, headers, websocket.New(wsLogger))
+	conn, err := controlchannelconnection.New(connLogger, serviceUrl, params, headers, websocket.New(wsLogger))
 	if err != nil {
 		return nil, err
 	}

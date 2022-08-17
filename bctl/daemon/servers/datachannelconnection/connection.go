@@ -1,4 +1,4 @@
-package daemondatachannelconnection
+package datachannelconnection
 
 import (
 	"context"
@@ -45,7 +45,7 @@ const (
 	agentConnectedTimeout = 30 * time.Second
 )
 
-type DaemonDataChannelConnection struct {
+type DataChannelConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	ready  bool
@@ -83,7 +83,7 @@ func New(
 	}
 	connectionUrl.Path = path.Join(connectionUrl.Path, daemonHubEndpoint)
 
-	conn := DaemonDataChannelConnection{
+	conn := DataChannelConnection{
 		logger:         logger,
 		client:         client,
 		broker:         broker.New(),
@@ -144,7 +144,7 @@ func New(
 	return &conn, nil
 }
 
-func (d *DaemonDataChannelConnection) receive() {
+func (d *DataChannelConnection) receive() {
 	for {
 		select {
 		case <-d.tmb.Dead():
@@ -158,7 +158,7 @@ func (d *DaemonDataChannelConnection) receive() {
 }
 
 // Returns error on connection closed
-func (u *DaemonDataChannelConnection) processInbound(message signalr.SignalRMessage) error {
+func (u *DataChannelConnection) processInbound(message signalr.SignalRMessage) error {
 	switch message.Target {
 	case agentDisconnected:
 		rerr := fmt.Errorf("the bzero agent terminated the connection")
@@ -193,35 +193,35 @@ func (u *DaemonDataChannelConnection) processInbound(message signalr.SignalRMess
 	return nil
 }
 
-func (d *DaemonDataChannelConnection) Send(agentMessage am.AgentMessage) {
+func (d *DataChannelConnection) Send(agentMessage am.AgentMessage) {
 	d.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (d *DaemonDataChannelConnection) Subscribe(id string, channel broker.IChannel) {
+func (d *DataChannelConnection) Subscribe(id string, channel broker.IChannel) {
 	d.broker.Subscribe(id, channel)
 }
 
-func (d *DaemonDataChannelConnection) Ready() bool {
+func (d *DataChannelConnection) Ready() bool {
 	return d.ready
 }
 
-func (d *DaemonDataChannelConnection) Done() <-chan struct{} {
+func (d *DataChannelConnection) Done() <-chan struct{} {
 	return d.tmb.Dead()
 }
 
-func (d *DaemonDataChannelConnection) Err() error {
+func (d *DataChannelConnection) Err() error {
 	return d.tmb.Err()
 }
 
-func (d *DaemonDataChannelConnection) Close(reason error) {
+func (d *DataChannelConnection) Close(reason error) {
 	if d.tmb.Alive() {
 		d.tmb.Kill(reason)
 		d.tmb.Wait()
 	}
 }
 
-func (d *DaemonDataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+func (d *DataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
 	// Make a context and tie it in with our tomb and then send it everywhere
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -260,7 +260,7 @@ func (d *DaemonDataChannelConnection) connect(connUrl *url.URL, headers http.Hea
 	}
 }
 
-func (d *DaemonDataChannelConnection) waitForAgentReady() {
+func (d *DataChannelConnection) waitForAgentReady() {
 	select {
 	case <-d.tmb.Dying():
 		return

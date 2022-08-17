@@ -9,7 +9,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
-	"bastionzero.com/bctl/v1/bctl/daemon/servers/daemondatachannelconnection"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/datachannelconnection"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
@@ -83,7 +83,7 @@ func New(
 	// Create our one connection
 	subLogger := logger.GetConnectionLogger(uuid.New().String())
 	wsLogger := logger.GetComponentLogger("Websocket")
-	if client, err := daemondatachannelconnection.New(subLogger, connUrl, params, headers, autoReconnect, websocket.New(wsLogger)); err != nil {
+	if client, err := datachannelconnection.New(subLogger, connUrl, params, headers, autoReconnect, websocket.New(wsLogger)); err != nil {
 		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client
