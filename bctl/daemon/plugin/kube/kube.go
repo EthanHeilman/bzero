@@ -19,6 +19,8 @@ type IKubeDaemonAction interface {
 	ReceiveKeysplitting(actionPayload []byte)
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(writer http.ResponseWriter, request *http.Request) error
+	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 type KubeDaemonPlugin struct {
@@ -56,6 +58,10 @@ func (k *KubeDaemonPlugin) Kill() {
 
 func (k *KubeDaemonPlugin) Done() <-chan struct{} {
 	return k.doneChan
+}
+
+func (k *KubeDaemonPlugin) Err() error {
+	return k.action.Err()
 }
 
 func (k *KubeDaemonPlugin) Outbox() <-chan plugin.ActionWrapper {

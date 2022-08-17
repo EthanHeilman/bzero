@@ -25,7 +25,6 @@ type DialAction struct {
 	logger    *logger.Logger
 	tmb       tomb.Tomb
 	requestId string
-	started   bool
 
 	// input and output channels relative to this plugin
 	outputChan      chan plugin.ActionWrapper
@@ -33,6 +32,7 @@ type DialAction struct {
 
 	// done channel for letting the plugin know we're done
 	doneChan chan struct{}
+	err      error
 }
 
 func New(
@@ -46,8 +46,9 @@ func New(
 		logger:    logger,
 		requestId: requestId,
 
-		outputChan:      outboxQueue,
-		streamInputChan: make(chan smsg.StreamMessage, 10),
+		outputChan: outboxQueue,
+		// TODO: CWC-2015: reduce this buffer size when we have improved the websocket queue model
+		streamInputChan: make(chan smsg.StreamMessage, 256),
 		doneChan:        doneChan,
 	}
 
@@ -55,6 +56,13 @@ func New(
 }
 
 func (d *DialAction) Start(lconn *net.TCPConn) error {
+	// Build and send the action payload to start the tcp connection on the agent
+	payload := dial.DialActionPayload{
+		RequestId:            d.requestId,
+		StreamMessageVersion: smsg.CurrentSchema,
+	}
+	d.sendOutputMessage(dial.DialStart, payload)
+
 	// Listen to stream messages coming from the agent, and forward to our local connection
 	d.tmb.Go(func() error {
 		defer lconn.Close()
@@ -85,16 +93,6 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 
 					return nil
 				} else {
-					if !d.started {
-						// Build and send the action payload to start the tcp connection on the agent
-						payload := dial.DialActionPayload{
-							RequestId:            d.requestId,
-							StreamMessageVersion: smsg.CurrentSchema,
-						}
-						d.sendOutputMessage(dial.DialStart, payload)
-						d.started = true
-					}
-
 					// Build and send whatever we get from the local tcp connection to the agent
 					dataToSend := base64.StdEncoding.EncodeToString(buf[:n])
 					payload := dial.DialInputActionPayload{
@@ -172,6 +170,10 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 
 func (d *DialAction) Done() <-chan struct{} {
 	return d.doneChan
+}
+
+func (d *DialAction) Err() error {
+	return d.err
 }
 
 func (d *DialAction) Kill() {

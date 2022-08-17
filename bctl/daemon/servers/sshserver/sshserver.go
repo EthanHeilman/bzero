@@ -1,23 +1,18 @@
 package sshserver
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
 	"github.com/google/uuid"
-	"gopkg.in/tomb.v2"
 )
 
 const (
@@ -27,12 +22,12 @@ const (
 )
 
 type SshServer struct {
-	logger    *logger.Logger
-	websocket *websocket.Websocket
-	tmb       tomb.Tomb
+	logger  *logger.Logger
+	errChan chan error
+	action  string
 
-	// Handler to select message types
-	targetSelectHandler func(msg am.AgentMessage) (string, error)
+	websocket *websocket.Websocket
+	dc        *datachannel.DataChannel
 
 	remoteHost string
 	remotePort int
@@ -44,23 +39,20 @@ type SshServer struct {
 	hostNames      []string
 
 	// fields for new datachannels
-	params      map[string]string
-	headers     map[string]string
-	serviceUrl  string
 	agentPubKey string
-	cert        *bzcert.BZCert
+	cert        *bzcert.DaemonBZCert
 }
 
-func StartSshServer(
+func New(
 	logger *logger.Logger,
+	errChan chan error,
 	targetUser string,
 	dataChannelId string,
-	cert *bzcert.BZCert,
+	cert *bzcert.DaemonBZCert,
 	serviceUrl string,
 	params map[string]string,
 	headers map[string]string,
 	agentPubKey string,
-	targetSelectHandler func(msg am.AgentMessage) (string, error),
 	identityFile string,
 	knownHostsFile string,
 	hostNames []string,
@@ -68,48 +60,65 @@ func StartSshServer(
 	remotePort int,
 	localPort string,
 	action string,
-) error {
+) (*SshServer, error) {
 
 	server := &SshServer{
-		logger:              logger,
-		serviceUrl:          serviceUrl,
-		targetUser:          targetUser,
-		params:              params,
-		headers:             headers,
-		targetSelectHandler: targetSelectHandler,
-		cert:                cert,
-		agentPubKey:         agentPubKey,
-		identityFile:        identityFile,
-		knownHostsFile:      knownHostsFile,
-		hostNames:           hostNames,
-		remoteHost:          remoteHost,
-		remotePort:          remotePort,
-		localPort:           localPort,
+		logger:         logger,
+		errChan:        errChan,
+		action:         action,
+		targetUser:     targetUser,
+		cert:           cert,
+		agentPubKey:    agentPubKey,
+		identityFile:   identityFile,
+		knownHostsFile: knownHostsFile,
+		hostNames:      hostNames,
+		remoteHost:     remoteHost,
+		remotePort:     remotePort,
+		localPort:      localPort,
 	}
 
-	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String()); err != nil {
-		server.logger.Error(err)
-		return err
+	// Create a new websocket and datachannel
+	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
+		return nil, fmt.Errorf("failed to create websocket: %s", err)
 	}
 
-	// create our new datachannel
-	if err := server.newDataChannel(action, server.websocket); err != nil {
-		logger.Errorf("error starting datachannel: %s", err)
-		return err
-	}
+	return server, nil
+}
 
+func (s *SshServer) Start() error {
+	if err := s.newDataChannel(s.action, s.websocket); err != nil {
+		s.websocket.Close(err)
+		return fmt.Errorf("failed to create datachannel: %s", err)
+	}
 	return nil
 }
 
+func (s *SshServer) Close(err error) {
+	if s.websocket != nil {
+		s.websocket.Close(err)
+	}
+	s.errChan <- err
+}
+
 // for creating new websockets
-func (s *SshServer) newWebsocket(wsId string) error {
+func (s *SshServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
 	subLogger := s.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, s.serviceUrl, s.params, s.headers, s.targetSelectHandler, autoReconnect, getChallenge, websocket.Ssh); err != nil {
+	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Ssh); err != nil {
 		return err
 	} else {
 		s.websocket = wsClient
 		return nil
+	}
+}
+
+func (s *SshServer) listenForChildrenDone() {
+	// blocks until an underlying tomb is dead
+	// we do it this way to prevent s.Close() from being called twice in the event that dc dies first
+	select {
+	case <-s.websocket.Done():
+		s.Close(s.websocket.Err())
+	case <-s.dc.Done():
+		s.Close(s.dc.Err())
 	}
 }
 
@@ -121,13 +130,12 @@ func (s *SshServer) newDataChannel(action string, websocket *websocket.Websocket
 
 	s.logger.Infof("Creating new datachannel id: %s", dcId)
 
-	pluginLogger := subLogger.GetPluginLogger(bzplugin.Ssh)
-
 	fileIo := bzio.OsFileIo{}
 
 	idFile := bzssh.NewIdentityFile(s.identityFile, fileIo)
 	khFile := bzssh.NewKnownHosts(s.knownHostsFile, s.hostNames, fileIo)
 
+	pluginLogger := subLogger.GetPluginLogger(bzplugin.Ssh)
 	plugin := ssh.New(pluginLogger, s.localPort, idFile, khFile, bzio.StdIo{})
 	if err := plugin.StartAction(action); err != nil {
 		return fmt.Errorf("failed to start action: %s", err)
@@ -146,30 +154,12 @@ func (s *SshServer) newDataChannel(action string, websocket *websocket.Websocket
 	}
 
 	action = "ssh/" + action
-	dc, dcTmb, err := datachannel.New(subLogger, dcId, &s.tmb, websocket, keysplitter, plugin, action, synPayload, attach, true)
+	s.dc, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}
 
-	// create a function to listen to the datachannel dying and then laugh
-	go func() {
-		for {
-			select {
-			case <-s.tmb.Dying():
-				dc.Close(errors.New("ssh server closing"))
-				return
-			case <-dcTmb.Dead():
-				if dcTmb.Err() != nil {
-					// just take our innermost error to give the user
-					errs := strings.Split(dcTmb.Err().Error(), ": ")
-					errorString := fmt.Sprintf("error: %s\n", errs[len(errs)-1])
-					os.Stdout.Write([]byte(errorString))
-					os.Exit(1)
-				} else {
-					os.Exit(0)
-				}
-			}
-		}
-	}()
+	// listen for news that the datachannel has died
+	go s.listenForChildrenDone()
 	return nil
 }

@@ -32,6 +32,7 @@ type WebDialAction struct {
 
 	// plugin done channel for signalling to the datachannel we're done
 	doneChan chan struct{}
+	err      error
 
 	// keep track of our expected streams
 	expectedSequenceNumber int
@@ -53,6 +54,14 @@ func New(logger *logger.Logger, requestId string, outboxQueue chan plugin.Action
 func (w *WebDialAction) Kill() {
 	w.tmb.Killf("we were told to die")
 	w.tmb.Wait()
+}
+
+func (w *WebDialAction) Done() <-chan struct{} {
+	return w.doneChan
+}
+
+func (w *WebDialAction) Err() error {
+	return w.err
 }
 
 func (w *WebDialAction) Start(writer http.ResponseWriter, request *http.Request) error {

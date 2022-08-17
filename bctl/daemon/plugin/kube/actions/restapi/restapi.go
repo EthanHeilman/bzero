@@ -19,6 +19,7 @@ type RestApiAction struct {
 	logId           string
 	commandBeingRun string
 	doneChan        chan struct{}
+	err             error
 
 	// channels for sending and recieving messages
 	outputChan chan plugin.ActionWrapper
@@ -45,6 +46,14 @@ func New(logger *logger.Logger,
 
 func (r *RestApiAction) Kill() {
 	close(r.doneChan)
+}
+
+func (r *RestApiAction) Done() <-chan struct{} {
+	return r.doneChan
+}
+
+func (r *RestApiAction) Err() error {
+	return r.err
 }
 
 func (r *RestApiAction) ReceiveKeysplitting(actionPayload []byte) {

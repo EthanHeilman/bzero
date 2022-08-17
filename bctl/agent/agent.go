@@ -9,9 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"os/signal"
-	"syscall"
-
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
@@ -19,7 +16,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
+	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -120,8 +117,9 @@ func run(logger *logger.Logger) {
 		reportError(logger, err)
 	} else {
 		// wait until we recieve a kill signal and quit
-		signal := blockUntilSignaled()
-		control.Close(fmt.Errorf("got signal: %v value: %v", signal, signal.String()))
+		osShutdownChan := bzos.OsShutdownChan()
+		signal := <-osShutdownChan
+		control.Close(fmt.Errorf("received shutdown signal: %s", signal.String()))
 		os.Exit(1)
 	}
 }
@@ -174,24 +172,6 @@ func reportError(logger *logger.Logger, errorReport error) {
 	errorreport.ReportError(logger, serviceUrl, errReport)
 }
 
-// ref: https://github.com/bastionzero/bzero-ssm-agent/blob/76d133c565bb7e11683f63fbc23d39fa0840df14/core/agent.go#L89
-func blockUntilSignaled() os.Signal {
-	// Below channel will handle all machine initiated shutdown/reboot requests.
-
-	// Set up channel on which to receive signal notifications.
-	// We must use a buffered channel or risk missing the signal
-	// if we're not ready to receive when the signal is sent.
-	c := make(chan os.Signal, 1)
-
-	// Listening for OS signals is a blocking call.
-	// Only listen to signals that require us to exit.
-	// Otherwise we will continue execution and exit the program.
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	s := <-c
-	return s
-}
-
 func startControlChannel(logger *logger.Logger, agentVersion string) (*controlchannel.ControlChannel, error) {
 	// Load in our saved config
 	config, err := vault.LoadVault()
@@ -213,7 +193,7 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 	// create a websocket
 	wsId := uuid.New().String()
 	wsLogger := logger.GetWebsocketLogger(wsId) // TODO: replace with actual connectionId
-	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, ccTargetSelectHandler, true, true, websocket.AgentControl)
+	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, true, websocket.AgentControl)
 	if err != nil {
 		return nil, err
 	}
@@ -222,33 +202,7 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 	ccId := uuid.New().String()
 	ccLogger := logger.GetControlChannelLogger(ccId)
 
-	return controlchannel.Start(ccLogger, ccId, websocket, serviceUrl, agentType, dcTargetSelectHandler, config)
-}
-
-// control channel function to select correct SignalR hubs on message egress
-func ccTargetSelectHandler(agentMessage am.AgentMessage) (string, error) {
-	switch am.MessageType(agentMessage.MessageType) {
-	case am.HealthCheck:
-		return "AliveCheckAgentToBastion", nil
-	default:
-		return "", fmt.Errorf("unsupported message type")
-	}
-}
-
-// datachannel's function to select SignalR hubs base on agent message message type
-func dcTargetSelectHandler(agentMessage am.AgentMessage) (string, error) {
-	switch am.MessageType(agentMessage.MessageType) {
-	case am.CloseDaemonWebsocket:
-		return "CloseDaemonWebsocketV1", nil
-	case am.Keysplitting:
-		return "ResponseAgentToBastionV1", nil
-	case am.Stream:
-		return "ResponseAgentToBastionV1", nil
-	case am.Error:
-		return "ResponseAgentToBastionV1", nil
-	default:
-		return "", fmt.Errorf("unable to determine SignalR endpoint for message type: %s", agentMessage.MessageType)
-	}
+	return controlchannel.Start(ccLogger, ccId, websocket, serviceUrl, agentType, config)
 }
 
 func parseFlags() error {

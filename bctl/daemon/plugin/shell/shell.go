@@ -14,6 +14,8 @@ type IShellAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(attach bool) error
 	Replay(replayData []byte) error
+	Done() <-chan struct{}
+	Err() error
 	Kill()
 }
 
@@ -60,6 +62,10 @@ func (s *ShellDaemonPlugin) Kill() {
 
 func (s *ShellDaemonPlugin) Done() <-chan struct{} {
 	return s.doneChan
+}
+
+func (s *ShellDaemonPlugin) Err() error {
+	return s.action.Err()
 }
 
 func (s *ShellDaemonPlugin) Outbox() <-chan bzplugin.ActionWrapper {

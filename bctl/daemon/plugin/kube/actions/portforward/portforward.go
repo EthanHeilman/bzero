@@ -48,6 +48,7 @@ type PortForwardAction struct {
 
 	cancelChan      chan struct{} // internal channel for shutting everything down
 	doneChan        chan struct{}
+	err             error
 	outputChan      chan plugin.ActionWrapper
 	streamInputChan chan smsg.StreamMessage
 
@@ -95,6 +96,14 @@ func New(
 
 func (p *PortForwardAction) Kill() {
 	close(p.cancelChan)
+}
+
+func (p *PortForwardAction) Done() <-chan struct{} {
+	return p.doneChan
+}
+
+func (p *PortForwardAction) Err() error {
+	return p.err
 }
 
 func (p *PortForwardAction) ReceiveKeysplitting(actionPayload []byte) {}

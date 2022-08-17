@@ -1,20 +1,15 @@
 package shellserver
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"strings"
 
 	"github.com/google/uuid"
-	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/shell"
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
@@ -27,72 +22,84 @@ const (
 )
 
 type ShellServer struct {
-	logger    *logger.Logger
-	websocket *websocket.Websocket
-	tmb       tomb.Tomb
+	logger  *logger.Logger
+	errChan chan error
 
-	// Handler to select message types
-	targetSelectHandler func(msg am.AgentMessage) (string, error)
+	websocket *websocket.Websocket
+	dc        *datachannel.DataChannel
 
 	// Shell specific vars
 	targetUser    string
 	dataChannelId string
 
 	// fields for new datachannels
-	params              map[string]string
-	headers             map[string]string
-	serviceUrl          string
-	refreshTokenCommand string
-	configPath          string
-	agentPubKey         string
-	cert                *bzcert.BZCert
+	agentPubKey string
+	cert        *bzcert.DaemonBZCert
 }
 
-func StartShellServer(
+func New(
 	logger *logger.Logger,
+	errChan chan error,
 	targetUser string,
 	dataChannelId string,
-	cert *bzcert.BZCert,
+	cert *bzcert.DaemonBZCert,
 	serviceUrl string,
 	params map[string]string,
 	headers map[string]string,
 	agentPubKey string,
-	targetSelectHandler func(msg am.AgentMessage) (string, error)) error {
+) (*ShellServer, error) {
 
 	server := &ShellServer{
-		logger:              logger,
-		serviceUrl:          serviceUrl,
-		params:              params,
-		headers:             headers,
-		targetSelectHandler: targetSelectHandler,
-		cert:                cert,
-		targetUser:          targetUser,
-		dataChannelId:       dataChannelId,
-		agentPubKey:         agentPubKey,
+		logger:        logger,
+		errChan:       errChan,
+		cert:          cert,
+		targetUser:    targetUser,
+		dataChannelId: dataChannelId,
+		agentPubKey:   agentPubKey,
 	}
 
-	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String()); err != nil {
-		server.logger.Error(err)
-		return err
+	// Create a new websocket and datachannel
+	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
+		return nil, fmt.Errorf("failed to create websocket: %s", err)
 	}
 
-	// create our new datachannel
-	if err := server.newDataChannel(string(bzshell.DefaultShell), server.websocket); err != nil {
-		logger.Errorf("error starting datachannel: %s", err)
-	}
+	return server, nil
+}
 
+func (ss *ShellServer) Start() error {
+	if err := ss.newDataChannel(string(bzshell.DefaultShell), ss.websocket); err != nil {
+		ss.websocket.Close(err)
+		return fmt.Errorf("failed to create datachannel: %s", err)
+	}
 	return nil
 }
 
+func (ss *ShellServer) Close(err error) {
+	if ss.websocket != nil {
+		ss.websocket.Close(err)
+	}
+	ss.errChan <- err
+}
+
 // for creating new websockets
-func (ss *ShellServer) newWebsocket(wsId string) error {
+func (ss *ShellServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
 	subLogger := ss.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, ss.serviceUrl, ss.params, ss.headers, ss.targetSelectHandler, autoReconnect, getChallenge, websocket.Shell); err != nil {
+	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Shell); err != nil {
 		return err
 	} else {
 		ss.websocket = wsClient
 		return nil
+	}
+}
+
+func (ss *ShellServer) listenForChildrenDone() {
+	// blocks until an underlying tomb is dead
+	// we do it this way to prevent ss.Close() from being called twice in the event that dc dies first
+	select {
+	case <-ss.websocket.Done():
+		ss.Close(ss.websocket.Err())
+	case <-ss.dc.Done():
+		ss.Close(ss.dc.Err())
 	}
 }
 
@@ -130,30 +137,12 @@ func (ss *ShellServer) newDataChannel(action string, websocket *websocket.Websoc
 	}
 
 	action = "shell/" + action
-	dc, dcTmb, err := datachannel.New(subLogger, ss.dataChannelId, &ss.tmb, websocket, keysplitter, plugin, action, synPayload, attach, true)
+	ss.dc, err = datachannel.New(subLogger, ss.dataChannelId, websocket, keysplitter, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}
 
-	// create a function to listen to the datachannel dying and then exit the shell daemon process
-	go func() {
-		for {
-			select {
-			case <-ss.tmb.Dying():
-				dc.Close(errors.New("shell server exiting...closing datachannel"))
-				return
-			case <-dcTmb.Dead():
-				// bubble up our error to the user
-				if dcTmb.Err() != nil {
-					// let's just take our innermost error to give the user
-					errs := strings.Split(dcTmb.Err().Error(), ": ")
-					errorString := fmt.Sprintf("error: %s", errs[len(errs)-1])
-					os.Stdout.Write([]byte(errorString))
-				}
-				errorCode := 1
-				os.Exit(errorCode)
-			}
-		}
-	}()
+	// listen for news that the datachannel has died
+	go ss.listenForChildrenDone()
 	return nil
 }

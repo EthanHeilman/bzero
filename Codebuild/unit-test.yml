@@ -25,10 +25,10 @@ phases:
       - mkdir $HOME
       - touch $HOME/.bash_profile
       - chown -R codebuild-user $HOME
-      # We need to 1.16 and this isnt in yum
-      - wget https://dl.google.com/go/go1.16.4.linux-amd64.tar.gz -q
-      - tar -C /usr/local -xzf go1.16.4.linux-amd64.tar.gz
-      - echo 'export PATH=/usr/local/go/bin:$PATH' >>$HOME/.bash_profile
+      # We need go 1.18 and this isnt in yum
+      - wget https://dl.google.com/go/go1.18.5.linux-amd64.tar.gz -q
+      - tar -C /usr/local -xzf go1.18.5.linux-amd64.tar.gz
+      - echo 'export PATH=/usr/local/go/bin:$PATH' >>~/.bash_profile
       - export PATH=/usr/local/go/bin:$PATH
       # Install gocov-xml to push our coverage reports
       - go install github.com/axw/gocov/gocov@latest
