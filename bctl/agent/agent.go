@@ -13,13 +13,14 @@ import (
 
 	"github.com/google/uuid"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agentcontrolchannelconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
@@ -188,10 +189,13 @@ func startControlChannel(logger *logger.Logger, agentVersion string) (*controlch
 		"target_id":  {config.Data.TargetId},
 	}
 
-	// create a connection
-	wsId := uuid.New().String()
-	wsLogger := logger.GetConnectionLogger(wsId)
-	conn, err := universalconnection.New(wsLogger, serviceUrl, params, headers, true, universalconnection.AgentControlChannel)
+	// Setup our loggers
+	connId := uuid.New().String()
+	connLogger := logger.GetConnectionLogger(connId)
+	wsLogger := connLogger.GetComponentLogger("Websocket")
+
+	// Make our connection
+	conn, err := agentcontrolchannelconnection.New(connLogger, serviceUrl, params, headers, websocket.New(wsLogger))
 	if err != nil {
 		return nil, err
 	}
