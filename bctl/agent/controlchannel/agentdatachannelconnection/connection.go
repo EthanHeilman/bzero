@@ -71,17 +71,22 @@ func New(
 
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
-
-		defer func() {
-			conn.logger.Infof("Connection has stopped")
-			conn.ready = false
-		}()
+		defer conn.logger.Infof("Connection has stopped")
 
 		for {
 			select {
 			case <-conn.tmb.Dying():
-				return fmt.Errorf("connection killed")
+				conn.ready = false
+
+				// Close any listening datachannels
+				conn.broker.Close(fmt.Errorf("connection closed"))
+
+				// Close the underlying connection
+				conn.client.Close(conn.tmb.Err())
+
+				return nil
 			case <-conn.client.Done():
+				conn.ready = false
 				logger.Infof("Connection with BastionZero closed and we're not retrying")
 				return fmt.Errorf("underlying connection closed")
 			case message := <-conn.sendQueue:
@@ -141,20 +146,10 @@ func (a *AgentDataChannelConnection) Err() error {
 }
 
 func (a *AgentDataChannelConnection) Close(reason error) {
-	if !a.tmb.Alive() {
-		return
+	if a.tmb.Alive() {
+		a.tmb.Kill(reason)
+		a.tmb.Wait()
 	}
-
-	// Close any listening datachannels
-	a.broker.Close(fmt.Errorf("connection manager closed"))
-
-	// Close the underlying connection
-	if a.client != nil {
-		a.client.Close(reason)
-	}
-
-	a.tmb.Kill(reason)
-	a.tmb.Wait()
 }
 
 func (a *AgentDataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {

@@ -49,6 +49,7 @@ func New(
 	headers http.Header,
 	transporter transporter.Transporter,
 ) (connection.Connection, error) {
+	logger.Infof("CREATING A NEW CONTROL CHANNEL CONNECTION")
 	srLogger := logger.GetComponentLogger("SignalR")
 	client := signalr.New(srLogger, transporter)
 
@@ -67,23 +68,28 @@ func New(
 
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
-
-		defer func() {
-			conn.logger.Infof("Connection has stopped")
-			conn.ready = false
-		}()
+		defer conn.logger.Infof("Connection has stopped")
 
 		for {
 			select {
 			case <-conn.tmb.Dying():
-				return fmt.Errorf("connection killed")
+				conn.ready = false
+
+				// Close any listening datachannels
+				conn.broker.Close(fmt.Errorf("connection closed"))
+
+				// Close the underlying connection
+				conn.client.Close(conn.tmb.Err())
+
+				return nil
 			case <-conn.client.Done():
+				conn.ready = false
+
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
 				if err := conn.connect(connUrl, headers, params); err != nil {
 					logger.Errorf("failed to connect to BastionZero: %s", err)
 					return err
 				}
-				return fmt.Errorf("underlying connection closed")
 			case message := <-conn.sendQueue:
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
@@ -141,20 +147,10 @@ func (a *AgentControlChannelConnection) Err() error {
 }
 
 func (a *AgentControlChannelConnection) Close(reason error) {
-	if !a.tmb.Alive() {
-		return
+	if a.tmb.Alive() {
+		a.tmb.Kill(reason)
+		a.tmb.Wait()
 	}
-
-	// Close any listening datachannels
-	a.broker.Close(fmt.Errorf("connection manager closed"))
-
-	// Close the underlying connection
-	if a.client != nil {
-		a.client.Close(reason)
-	}
-
-	a.tmb.Kill(reason)
-	a.tmb.Wait()
 }
 
 func (a *AgentControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
@@ -218,10 +214,11 @@ func (a *AgentControlChannelConnection) connect(connUrl string, headers http.Hea
 			if err := a.client.Connect(ctx, connectionUrl.String(), headers, params, targetSelectHandler); err != nil {
 				a.logger.Infof("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
+			} else {
+				a.logger.Infof("Successfully connected!")
+				a.ready = true
+				return nil
 			}
-
-			a.ready = true
-			return nil
 		}
 	}
 }

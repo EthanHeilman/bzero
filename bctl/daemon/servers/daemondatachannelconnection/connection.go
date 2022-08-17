@@ -99,16 +99,20 @@ func New(
 
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
-
-		defer func() {
-			conn.logger.Infof("Connection has stopped")
-			conn.ready = false
-		}()
+		defer conn.logger.Infof("Connection has stopped")
 
 		for {
 			select {
 			case <-conn.tmb.Dying():
-				return fmt.Errorf("connection killed")
+				conn.ready = false
+
+				// Close any listening datachannels
+				conn.broker.Close(fmt.Errorf("connection closed"))
+
+				// Close the underlying connection
+				conn.client.Close(conn.tmb.Err())
+
+				return nil
 			case <-conn.client.Done():
 				conn.ready = false
 
@@ -211,20 +215,10 @@ func (d *DaemonDataChannelConnection) Err() error {
 }
 
 func (d *DaemonDataChannelConnection) Close(reason error) {
-	if !d.tmb.Alive() {
-		return
+	if d.tmb.Alive() {
+		d.tmb.Kill(reason)
+		d.tmb.Wait()
 	}
-
-	// Close any listening datachannels
-	d.broker.Close(fmt.Errorf("connection manager closed"))
-
-	// Close the underlying connection
-	if d.client != nil {
-		d.client.Close(reason)
-	}
-
-	d.tmb.Kill(reason)
-	d.tmb.Wait()
 }
 
 func (d *DaemonDataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {

@@ -48,8 +48,8 @@ func New(logger *logger.Logger) *Websocket {
 }
 
 func (w *Websocket) Close() {
-	w.client.Close()
 	w.isDead = true
+	w.client.Close()
 }
 
 func (w *Websocket) Done() <-chan struct{} {
