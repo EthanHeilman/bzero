@@ -3,15 +3,19 @@ package ssh
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh/actions/opaquessh"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh/actions/transparentssh"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
 )
+
+const lockFileName = ".bzero.lock"
 
 // Perhaps unnecessary but it is nice to make sure that each action is implementing a common function set
 type ISshAction interface {
@@ -52,11 +56,13 @@ func (s *SshDaemonPlugin) StartAction(actionName string) error {
 		return fmt.Errorf("plugin has already been killed, cannot create a new ssh action")
 	}
 
+	fileLock := filelock.NewFileLock(filepath.Join(filepath.Dir(s.identityFile.Path()), lockFileName))
+
 	// Create the action
 	actLogger := s.logger.GetActionLogger(actionName)
 	switch actionName {
 	case string(bzssh.OpaqueSsh):
-		s.action = opaquessh.New(actLogger, s.outboxQueue, s.doneChan, s.stdIo, s.identityFile, s.knownHosts)
+		s.action = opaquessh.New(actLogger, s.outboxQueue, s.doneChan, s.stdIo, fileLock, s.identityFile, s.knownHosts)
 	case string(bzssh.TransparentSsh):
 		// listen for a connection from the ZLI
 		// action is responsible for closing this
@@ -64,7 +70,7 @@ func (s *SshDaemonPlugin) StartAction(actionName string) error {
 		if err != nil {
 			s.logger.Errorf("failed to listen for connection: %s", err)
 		}
-		s.action = transparentssh.New(actLogger, s.outboxQueue, s.doneChan, s.stdIo, listener, s.identityFile, s.knownHosts)
+		s.action = transparentssh.New(actLogger, s.outboxQueue, s.doneChan, s.stdIo, listener, fileLock, s.identityFile, s.knownHosts)
 	}
 
 	// Start the ssh action

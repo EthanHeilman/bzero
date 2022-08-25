@@ -13,6 +13,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -82,8 +83,12 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 	testData := "testData"
 
 	var config *gossh.ClientConfig
+	var fileLock *filelock.FileLock
 
 	BeforeEach(func() {
+
+		fileLock = filelock.NewFileLock(".test.lock")
+
 		privateBytes, _, err := bzssh.GenerateKeys()
 		Expect(err).To(BeNil())
 		signer, _ := gossh.ParsePrivateKey(privateBytes)
@@ -94,6 +99,10 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 				gossh.PublicKeys(signer),
 			},
 		}
+	})
+
+	AfterEach(func() {
+		fileLock.Cleanup()
 	})
 
 	Context("rejects unauthorized requests", func() {
@@ -127,7 +136,7 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 			mockIoService.On("WriteErr", []byte(badScpErrMsg)).Return(len(badScpErrMsg), nil)
 
 			listener := safeListen(port)
-			t := New(logger, outboxQueue, doneChan, mockIoService, listener, idFile, khFile)
+			t := New(logger, outboxQueue, doneChan, mockIoService, listener, fileLock, idFile, khFile)
 			conn, session = startSession(t, port, config)
 
 			By("rejecting the invalid request")
@@ -160,7 +169,7 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 			mockIoService.On("WriteErr", []byte(badSftpErrMsg)).Return(len(badSftpErrMsg), nil)
 
 			listener := safeListen(port)
-			t := New(logger, outboxQueue, doneChan, mockIoService, listener, idFile, khFile)
+			t := New(logger, outboxQueue, doneChan, mockIoService, listener, fileLock, idFile, khFile)
 			conn, session = startSession(t, port, config)
 
 			By("rejecting the invalid request")
@@ -191,7 +200,7 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 			mockIoService.On("WriteErr", []byte(shellReqErrMsg)).Return(len(shellReqErrMsg), nil)
 
 			listener := safeListen(port)
-			t := New(logger, outboxQueue, doneChan, mockIoService, listener, idFile, khFile)
+			t := New(logger, outboxQueue, doneChan, mockIoService, listener, fileLock, idFile, khFile)
 			conn, session = startSession(t, port, config)
 
 			By("rejecting the invalid request")
@@ -235,7 +244,7 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 			mockIoService.On("Write", []byte(readyMsg)).Return(len(readyMsg), nil)
 
 			listener := safeListen(port)
-			t := New(logger, outboxQueue, doneChan, mockIoService, listener, idFile, khFile)
+			t := New(logger, outboxQueue, doneChan, mockIoService, listener, fileLock, idFile, khFile)
 			conn, session = startSession(t, port, config)
 
 			By("sending an open message to the agent")
@@ -327,7 +336,7 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 			mockIoService.On("Write", []byte(readyMsg)).Return(len(readyMsg), nil)
 
 			listener := safeListen(port)
-			t := New(logger, outboxQueue, doneChan, mockIoService, listener, idFile, khFile)
+			t := New(logger, outboxQueue, doneChan, mockIoService, listener, fileLock, idFile, khFile)
 			conn, session = startSession(t, port, config)
 
 			// take the open message for granted since we already tested

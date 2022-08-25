@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -24,10 +25,21 @@ func TestDefaultSsh(t *testing.T) {
 
 var _ = Describe("Daemon OpaqueSsh action", func() {
 	logger := logger.MockLogger()
+
 	identityFilePath := "testIdFile"
 	knownHostsFilePath := "testKhFile"
 	testData := "testData"
 	testOutput := "testOutput"
+
+	var fileLock *filelock.FileLock
+
+	BeforeEach(func() {
+		fileLock = filelock.NewFileLock(".test.lock")
+	})
+
+	AfterEach(func() {
+		fileLock.Cleanup()
+	})
 
 	Context("Happy path I: keys exist, closed by agent", func() {
 
@@ -43,10 +55,9 @@ var _ = Describe("Daemon OpaqueSsh action", func() {
 		mockIoService.On("Read").Return(len(testData), nil)
 		mockIoService.On("Write", []byte(testOutput)).Return(len(testOutput), nil).Times(2)
 
-		s := New(logger, outboxQueue, doneChan, mockIoService, idFile, nil)
-
 		// NOTE: we can't make extensive use of the hierarchy here because we're evaluating messages being passed as state changes
 		It("passes the SSH request to the agent and starts communicating with the local SSH process", func() {
+			s := New(logger, outboxQueue, doneChan, mockIoService, fileLock, idFile, nil)
 
 			By("starting without error")
 			err := s.Start()
@@ -108,10 +119,9 @@ var _ = Describe("Daemon OpaqueSsh action", func() {
 		mockIoService := bzio.MockBzIo{TestData: testData}
 		mockIoService.On("Read").Return(0, io.EOF)
 
-		s := New(logger, outboxQueue, doneChan, mockIoService, idFile, khFile)
-
 		// NOTE: we can't make extensive use of the hierarchy here because we're evaluating messages being passed as state changes
 		It("passes the SSH request to the agent and starts communicating with the local SSH process", func() {
+			s := New(logger, outboxQueue, doneChan, mockIoService, fileLock, idFile, khFile)
 
 			By("starting without error")
 			err := s.Start()

@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"golang.org/x/crypto/ssh"
 )
@@ -102,7 +103,23 @@ func ReadPublicKeyRsa(privatePem []byte) (*rsa.PublicKey, error) {
 
 // tries to return an SSH keypair based on the given identityfile
 // if that fails, create a new keypair and update the identityfile
-func SetUpKeys(identityFile IIdentityFile, logger *logger.Logger) (privateKey []byte, publicKey []byte, err error) {
+func SetUpKeys(identityFile IIdentityFile, fileLock *filelock.FileLock, logger *logger.Logger) (privateKey []byte, publicKey []byte, err error) {
+
+	lock, err := fileLock.NewLock()
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return nil, nil, fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
 	useExistingKeys := false
 	// if any of the following steps fail, we need to generate new keys
 	if privateKey, err = identityFile.GetKey(); err != nil {
