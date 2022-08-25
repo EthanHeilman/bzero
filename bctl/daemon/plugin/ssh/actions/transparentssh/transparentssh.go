@@ -10,6 +10,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -37,6 +38,7 @@ type TransparentSsh struct {
 	sshListener net.Listener
 	sshChannel  gossh.Channel
 
+	fileLock     *filelock.FileLock
 	identityFile bzssh.IIdentityFile
 	knownHosts   bzssh.IKnownHosts
 }
@@ -47,6 +49,7 @@ func New(
 	doneChan chan struct{},
 	zliIo bzio.BzIo,
 	listener net.Listener,
+	fileLock *filelock.FileLock,
 	identityFile bzssh.IIdentityFile,
 	knownHosts bzssh.IKnownHosts,
 ) *TransparentSsh {
@@ -57,6 +60,7 @@ func New(
 		doneChan:     doneChan,
 		zliIo:        zliIo,
 		sshListener:  listener,
+		fileLock:     fileLock,
 		identityFile: identityFile,
 		knownHosts:   knownHosts,
 	}
@@ -89,7 +93,7 @@ func (t *TransparentSsh) Start() error {
 	// although we don't use keys for authentication, the local ssh process will
 	// throw an error if it's told to look for an invalid IdentityFile, and we can
 	// then re-use this private key as our "host key" when we terminate the ssh connection
-	privateKey, _, err := bzssh.SetUpKeys(t.identityFile, t.logger)
+	privateKey, _, err := bzssh.SetUpKeys(t.identityFile, t.fileLock, t.logger)
 	if err != nil {
 		return fmt.Errorf("failed to set up ssh keypair: %s", err)
 	} else {

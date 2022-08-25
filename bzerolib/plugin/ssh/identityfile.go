@@ -7,6 +7,7 @@ import (
 type IIdentityFile interface {
 	SetKey(privateKey []byte) error
 	GetKey() ([]byte, error)
+	Path() string
 }
 
 type IdentityFile struct {
@@ -27,4 +28,8 @@ func (f *IdentityFile) SetKey(privateKey []byte) error {
 
 func (f *IdentityFile) GetKey() ([]byte, error) {
 	return f.fileIo.ReadFile(f.filePath)
+}
+
+func (f *IdentityFile) Path() string {
+	return f.filePath
 }

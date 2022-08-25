@@ -9,6 +9,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"gopkg.in/tomb.v2"
 
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -33,6 +34,7 @@ type OpaqueSsh struct {
 
 	stdIo io.ReadWriter
 
+	fileLock     *filelock.FileLock
 	identityFile bzssh.IIdentityFile
 	knownHosts   bzssh.IKnownHosts
 }
@@ -42,6 +44,7 @@ func New(
 	outboxQueue chan plugin.ActionWrapper,
 	doneChan chan struct{},
 	stdIo io.ReadWriter,
+	fileLock *filelock.FileLock,
 	identityFile bzssh.IIdentityFile,
 	knownHosts bzssh.IKnownHosts,
 ) *OpaqueSsh {
@@ -52,6 +55,7 @@ func New(
 		doneChan:     doneChan,
 		stdInChan:    make(chan []byte, InputBufferSize),
 		stdIo:        stdIo,
+		fileLock:     fileLock,
 		identityFile: identityFile,
 		knownHosts:   knownHosts,
 	}
@@ -70,12 +74,7 @@ func (s *OpaqueSsh) Kill() {
 }
 
 func (s *OpaqueSsh) Start() error {
-
-	// if we already have a private key, use it. Otherwise, create a new one
-	// NOTE: it is technically possible for this to create a one-time race if two SSH processes
-	// are kicked off *and* the user just logged in. However this is unlikely and can be resolved
-	// if/when we upgrade the SSH architecture
-	_, publicKey, err := bzssh.SetUpKeys(s.identityFile, s.logger)
+	_, publicKey, err := bzssh.SetUpKeys(s.identityFile, s.fileLock, s.logger)
 	if err != nil {
 		return fmt.Errorf("failed to set up ssh keypair: %s", err)
 	}
