@@ -48,8 +48,8 @@ func New(logger *logger.Logger) *Websocket {
 }
 
 func (w *Websocket) Close() {
-	w.client.Close()
 	w.isDead = true
+	w.client.Close()
 }
 
 func (w *Websocket) Done() <-chan struct{} {
@@ -90,6 +90,7 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 
 func (w *Websocket) receive() {
 	defer func() {
+		w.logger.Infof("Websocket connection closed")
 		w.isDead = true
 		close(w.doneChan)
 	}()

@@ -14,12 +14,15 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/report"
@@ -44,7 +47,6 @@ const (
 
 	prodServiceUrl = "https://cloud.bastionzero.com/"
 
-	// we replace "bzero-agent" at build with process name
 	bzeroLogFilePath = "/var/log/bzero/bzero-agent.log"
 
 	// based on convention from backend -- there's nothing magical about the number 6 but we need to guarantee
@@ -282,18 +284,22 @@ func (a *Agent) startControlChannel() error {
 		"agent_type": {agentType},
 	}
 
-	// create a connection
-	wsId := uuid.New().String()
-	wsLogger := logger.GetConnectionLogger(wsId)
-	conn, err := universalconnection.New(wsLogger, serviceUrl, params, headers, true, universalconnection.AgentControlChannel)
+	// Setup our loggers
+	ccId := uuid.New().String()
+	ccLogger := logger.GetControlChannelLogger(ccId)
+	connId := uuid.New().String()
+	connLogger := ccLogger.GetConnectionLogger(connId)
+	wsLogger := ccLogger.GetComponentLogger("Websocket")
+	srLogger := ccLogger.GetComponentLogger("SignalR")
+
+	// Make our connection
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	conn, err := controlchannelconnection.New(connLogger, serviceUrl, params, headers, client)
 	if err != nil {
 		return err
 	}
 
 	// create logger for control channel
-	ccId := uuid.New().String()
-	ccLogger := a.logger.GetControlChannelLogger(ccId)
-
 	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, a.config)
 
 	return err

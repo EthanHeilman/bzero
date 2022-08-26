@@ -12,17 +12,16 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/web"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/datachannelconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzweb "bastionzero.com/bctl/v1/bzerolib/plugin/web"
 )
 
 const (
-	// connection parameters for all datachannels created by tcp server
-	autoReconnect = true
-
 	// TODO: make these easily configurable values
 	maxRequestSize = 10 * 1024 * 1024  // 10MB
 	maxFileUpload  = 151 * 1024 * 1024 // 151MB a little extra for request fluff
@@ -73,7 +72,11 @@ func New(
 
 	// Create our one connection
 	subLogger := logger.GetConnectionLogger(uuid.New().String())
-	if client, err := universalconnection.New(subLogger, connUrl, params, headers, autoReconnect, universalconnection.DaemonDataChannel); err != nil {
+	wsLogger := logger.GetComponentLogger("Websocket")
+	srLogger := logger.GetComponentLogger("SignalR")
+
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	if client, err := datachannelconnection.New(subLogger, connUrl, params, headers, client); err != nil {
 		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client

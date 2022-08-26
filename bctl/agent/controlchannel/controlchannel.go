@@ -11,13 +11,15 @@ import (
 	"sync"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/datachannelconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"gopkg.in/tomb.v2"
@@ -237,17 +239,18 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	subLogger := c.logger.GetConnectionLogger(message.ConnectionId)
 
-	// Create our headers and params, headers are empty
 	headers := http.Header{}
-
-	// Add our token to our params
 	params := url.Values{
 		"connection_id":  {message.ConnectionId},
 		"token":          {message.Token},
 		"connectionType": {message.Type},
 	}
 
-	if conn, err := universalconnection.New(subLogger, message.ConnectionServiceUrl, params, headers, false, universalconnection.AgentDataChannel); err != nil {
+	wsLogger := c.logger.GetComponentLogger("Websocket")
+	srLogger := c.logger.GetComponentLogger("SignalR")
+
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	if conn, err := datachannelconnection.New(subLogger, message.ConnectionServiceUrl, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
@@ -310,6 +313,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 		} else {
 			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
 				// this can take a little time, but we don't want it blocking other things
+				c.logger.Infof("Closing connection with id %s", cwRequest.ConnectionId)
 				conn.Client.Close(errors.New("connection closed on daemon"))
 				c.deleteConnectionsMap(cwRequest.ConnectionId)
 			} else {
@@ -348,7 +352,6 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 
 func (c *ControlChannel) checkHealth() (AliveCheckAgentToBastionMessage, error) {
 	// Let bastion know a list of valid cluster roles
-	// Create our api object
 	if vault.InCluster() {
 		return checkInClusterHealth()
 	}

@@ -19,6 +19,7 @@ import (
 
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"gopkg.in/tomb.v2"
 )
@@ -27,22 +28,13 @@ const (
 	negotiateEndpoint = "negotiate"
 )
 
-type Transporter interface {
-	Done() <-chan struct{}
-	Err() error
-	Inbound() <-chan *[]byte
-	Dial(connUrl *url.URL, headers http.Header, ctx context.Context) (err error)
-	Send(message []byte) error
-	Close()
-}
-
 type SignalR struct {
 	tmb      tomb.Tomb
 	logger   *logger.Logger
 	doneChan chan struct{}
 	err      error
 
-	client  Transporter
+	client  transporter.Transporter
 	inbound chan *SignalRMessage
 
 	// Function for choosing target method
@@ -55,7 +47,7 @@ type SignalR struct {
 
 func New(
 	logger *logger.Logger,
-	client Transporter,
+	client transporter.Transporter,
 ) *SignalR {
 	return &SignalR{
 		logger:    logger,
