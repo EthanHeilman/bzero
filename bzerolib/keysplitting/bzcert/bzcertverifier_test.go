@@ -34,7 +34,8 @@ var _ = Describe("NewBZCertVerifier.AttemptJwksVerification", Ordered, func() {
 			sigOnRandMrzap: "HlZxmpGN5mS0RGBnZfJ/1VdeF2MSXQS2F8fTh1fPsgXCEvV1spLBo+lJQQYjt4dbULTIFfFgvcYeIxM/QfxDAQ==",
 		}
 
-		projectId := "projectId"
+		urlprefix := "abcdef"
+		emailplaceholder := "*@example.com" //TODO: document this format in design doc
 		serviceAccountEmail := "aliceserviceaccount@example.com"
 		idpOrgId := "exampleCo"
 		idpProvider := "google"
@@ -45,8 +46,8 @@ var _ = Describe("NewBZCertVerifier.AttemptJwksVerification", Ordered, func() {
 
 		s := newJwksMockServer(keyPair)
 
-		jwksRootUrl := s.URL + "/" + projectId
-		jwksUrl := jwksRootUrl + "/" + serviceAccountEmail
+		jwksRootUrl := s.URL + "/" + urlprefix + "/" + emailplaceholder
+		jwksUrl := s.URL + "/" + urlprefix + "/" + serviceAccountEmail
 
 		When("Supplied with a valid service account MRZAP Zcer", func() {
 			zCer, err := CreateServiceAccountZcer(keyPair, jwksUrl, serviceAccountEmail, idpOrgId, exp, mrzapValues)
@@ -199,7 +200,9 @@ var _ = Describe("NewBZCertVerifier.AttemptJwksVerification", Ordered, func() {
 var _ = Describe("NewBZCertVerifier", Ordered, func() {
 
 	Context("Verify service accounts Zcer", func() {
-		projectId := "projectId"
+		urlprefix := "abcdef"
+		emailplaceholder := "*@example.com" //TODO: document this format in design doc
+
 		serviceAccountEmail := "aliceserviceaccount@example.com"
 		idpOrgId := "exampleCo"
 		idpProvider := "google"
@@ -217,8 +220,8 @@ var _ = Describe("NewBZCertVerifier", Ordered, func() {
 
 		s := newJwksMockServer(keyPair)
 
-		jwksRootUrl := s.URL + "/" + projectId
-		jwksUrl := jwksRootUrl + "/" + serviceAccountEmail
+		jwksRootUrl := s.URL + "/" + urlprefix + "/" + emailplaceholder
+		jwksUrl := s.URL + "/" + urlprefix + "/" + serviceAccountEmail
 
 		When("Supplied with a valid service account MRZAP Zcer", func() {
 			zCer, err := CreateServiceAccountZcer(keyPair, jwksUrl, serviceAccountEmail, idpOrgId, exp, mrzapValues)

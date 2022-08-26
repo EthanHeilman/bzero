@@ -411,6 +411,9 @@ func (kc *Kconfig) GetIdpProvider() string {
 func (kc *Kconfig) GetIdpOrgId() string {
 	return "abcdefg"
 }
+func (kc *Kconfig) GetServiceAccountJwksUrls() []string {
+	return []string{}
+}
 
 func TestServiceAccl(t *testing.T) {
 

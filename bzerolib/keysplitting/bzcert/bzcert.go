@@ -25,8 +25,12 @@ type BZCert struct {
 // their org id (e.g. called 'org' in Google jwts and 'tenantId' for microsoft) which specifies a particular
 // organization/company/group that hosts their SSO as part of a larger SSO.
 // The function returns the hash the bzcert, the expiration time of the bzcert, and an error if there is one
-func (b *BZCert) Verify(idpProvider string, idpOrgId string) (string, time.Time, error) {
+func (b *BZCert) Verify(idpProvider string, idpOrgId string, serviceAccounts []string) (string, time.Time, error) {
 	verifier, err := NewBZCertVerifier(b, idpProvider, idpOrgId)
+
+	for i := range serviceAccounts {
+		verifier.AddServiceAccountJwksRootUrl(serviceAccounts[i])
+	}
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("error initializing bzcert verifier: %s", err)
 	}

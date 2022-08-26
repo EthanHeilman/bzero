@@ -107,13 +107,32 @@ func (u *BZCertVerifier) VerifySericeAccountIdToken(idtoken string) (bool, error
 	jku := jws.Signatures[len(jws.Signatures)-1].Header.ExtraHeaders["jku"]
 	if jkuStr, ok := jku.(string); ok {
 		if len(jkuStr) > 0 {
+			if len(strings.Split(jkuStr, "@")) != 2 {
+				return false, fmt.Errorf("jku value in ID Token does not contain exactly one @. Supplied jku value %s", jkuStr)
+			}
+
 			tokJku := strings.Split(jkuStr, "/")
 			jwksEmail := tokJku[len(tokJku)-1]
-			suppliedJwksRoot := strings.Join(tokJku[0:len(tokJku)-1], "/")
+
+			if len(strings.Split(jwksEmail, "@")) != 2 {
+				return false, fmt.Errorf("jku value in ID Token does not contain exactly one @ in email address. Supplied jku value %s", jkuStr)
+			}
+
+			emailDomain := strings.Split(jwksEmail, "@")[1]
+			suppliedJwksURLPattern := strings.Join(tokJku[0:len(tokJku)-1], "/") + "/" + "*" + "@" + emailDomain
 
 			// 1. Ensure that supplied JWKS URL root exists in the configured allow list of JWKS URL roots
-			if !u.allowedJwksUrlRoots[suppliedJwksRoot] {
-				return false, fmt.Errorf("jku value in ID Token is incorrect: %s", jkuStr) // TODO: change error message
+			if !u.allowedJwksUrlRoots[suppliedJwksURLPattern] {
+				rootsStr := ""
+				for k := range u.allowedJwksUrlRoots {
+					rootsStr += k
+					rootsStr += ", "
+				}
+
+				// for i := range v.Data.ServiceAccountUrls {
+				// 	urlsSet[v.Data.ServiceAccountUrls[i]] = true
+				// }
+				return false, fmt.Errorf("jku value in ID Token is incorrect. Supplied jku value %s, Allowed set %s", jkuStr, rootsStr)
 			}
 
 			// 2. Ensure that the signature on the idToken verifies under the pubkeys at JWKS URL which was supplied in the jku header
@@ -299,12 +318,12 @@ func IsJWKSServiceAccount(idToken string) bool {
 	if err != nil {
 		return false
 	}
-	zrv := jws.Signatures[len(jws.Signatures)-1].Header.ExtraHeaders["zrv"]
-	if zrv == nil {
+	jku := jws.Signatures[len(jws.Signatures)-1].Header.ExtraHeaders["jku"]
+	if jku == nil {
 		return false
 	}
-	if zrvStr, ok := zrv.(string); ok {
-		if len(zrvStr) > 0 {
+	if jku, ok := jku.(string); ok {
+		if len(jku) > 0 {
 			return true
 		}
 	}
