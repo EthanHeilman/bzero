@@ -1,4 +1,4 @@
-package errorreport
+package report
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	// Error endpoint
 	errorEndpoint = "/api/v2/agent/error"
 )
 
@@ -31,7 +30,7 @@ func ReportError(logger *logger.Logger, serviceUrl string, errReport ErrorReport
 
 	endpoint, err := bzhttp.BuildEndpoint(serviceUrl, errorEndpoint)
 	if err != nil {
-		logger.Errorf("failed to report error: %s", errReport)
+		logger.Errorf("failed to build error report endpoint: %+v", err)
 	}
 
 	// Marshall the request

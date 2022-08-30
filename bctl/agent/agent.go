@@ -16,10 +16,11 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
+	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/report"
 )
 
 var (
@@ -43,14 +44,23 @@ const (
 
 	// we replace "bzero-agent" at build with process name
 	bzeroLogFilePath = "/var/log/bzero/bzero-agent.log"
+
+	// based on convention from backend -- there's nothing magical about the number 6 but we need to guarantee
+	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
+	// as of this writing, this means an expected pong every six seconds, with a "disconnect" reported after 2 minutes
+	bastionDisconnectTimeout = 6 * controlchannel.HeartRate
+	stoppedProcessingPongs   = "control channel stopped processing pongs"
 )
 
 func main() {
-	setAgentType()
+	var err error
+	var logger *logger.Logger
+	fileIo := bzio.OsFileIo{}
 
+	setAgentType()
 	parseErr := parseFlags()
 
-	if logger, err := setupLogger(); err != nil {
+	if logger, err = setupLogger(); err != nil {
 		reportError(logger, err)
 	} else if parseErr != nil {
 		// catch our parser errors now that we have a logger to print them
@@ -70,9 +80,11 @@ func main() {
 
 		logger.Infof("BastionZero Agent version %s starting up...", getAgentVersion())
 
+		var agent *Agent
+
 		// Check if the agent is registered or not.  If not, generate signing keys,
 		// check kube permissions and setup, and register with the Bastion.
-		if err := handleRegistration(logger); err != nil {
+		if err = handleRegistration(logger); err != nil {
 
 			// our systemd agent waits for a successful new registration
 			if wait {
@@ -80,14 +92,23 @@ func main() {
 				logger.Infof("New registration detected. Loading registration information!")
 
 				// double check and set our local variables
-				if registered, err := isRegistered(); err != nil {
+				var registered bool
+				if registered, err = isRegistered(); err != nil {
 					logger.Error(err)
 				} else if registered {
-					run(logger)
+					if agent, err = New(logger, fileIo); err != nil {
+						reportError(logger, fmt.Errorf("failed to start agent: %s", err))
+					} else {
+						agent.Run()
+					}
 				}
 			}
 		} else {
-			run(logger)
+			if agent, err = New(logger, fileIo); err != nil {
+				reportError(logger, fmt.Errorf("failed to start agent: %s", err))
+			} else {
+				agent.Run()
+			}
 		}
 	}
 
@@ -96,113 +117,191 @@ func main() {
 
 		// Sleep forever because otherwise kube will endlessly try restarting
 		// Ref: https://stackoverflow.com/questions/36419054/go-projects-main-goroutine-sleep-forever
+		// TODO: as soon as we have a "bastion breakup" message, we can safely get all agents to stop calling us
+		// and so should have all agents exit
 		select {}
 	case Bzero:
 		os.Exit(1)
 	}
 }
 
-func run(logger *logger.Logger) {
+type Agent struct {
+	config         *vault.Vault
+	logger         *logger.Logger
+	fileIo         bzio.BzFileIo
+	websocket      *websocket.Websocket
+	controlChannel *controlchannel.ControlChannel
+
+	agentShutdownChan     chan error
+	isControlChannelAlive bool
+}
+
+func New(logger *logger.Logger, fileIo bzio.BzFileIo) (*Agent, error) {
+	if config, err := vault.LoadVault(); err != nil {
+		return nil, fmt.Errorf("failed to retrieve vault: %s", err)
+	} else {
+		agent := &Agent{
+			config:            config,
+			logger:            logger,
+			fileIo:            fileIo,
+			agentShutdownChan: make(chan error),
+		}
+
+		return agent, nil
+	}
+}
+
+// check whether we're restarting after a poison pill event, and thus need to tell Bastion about it
+func (a *Agent) checkShutdownReason() {
+	switch a.config.Data.ShutdownReason {
+	case stoppedProcessingPongs:
+		a.logger.Infof("Notifying Bastion that we restarted because we stopped processing pongs")
+		report.ReportRestart(
+			a.logger,
+			serviceUrl,
+			report.RestartReport{
+				TargetId:       targetId,
+				AgentPublicKey: a.config.Data.PublicKey,
+				Timestamp:      fmt.Sprint(time.Now().Unix()),
+				Message:        a.config.Data.ShutdownReason,
+				State:          a.config.Data.ShutdownState,
+			})
+	}
+}
+
+func (a *Agent) Run() {
+
+	go a.checkShutdownReason()
+
+	var err error
 	defer func() {
 		// recover in case the agent panics
 		if msg := recover(); msg != nil {
-			reportError(logger, fmt.Errorf("bzero agent crashed with panic: %+v", msg))
-			os.Exit(1)
+			reportError(a.logger, fmt.Errorf("bzero agent crashed with panic: %+v", msg))
+			err = fmt.Errorf("crashed with panic: %+v", msg)
 		}
+
+		a.Close(err)
 	}()
 
 	// Connect the control channel to BastionZero
-	logger.Info("Creating connection to BastionZero...")
-	if control, err := startControlChannel(logger, getAgentVersion()); err != nil {
-		reportError(logger, err)
+	a.logger.Info("Creating connection to BastionZero...")
+	if err = a.startControlChannel(); err != nil {
+		reportError(a.logger, err)
 	} else {
-		// wait until we recieve a kill signal and quit
-		osShutdownChan := bzos.OsShutdownChan()
-		signal := <-osShutdownChan
-		control.Close(fmt.Errorf("received shutdown signal: %s", signal.String()))
-		os.Exit(1)
+		a.isControlChannelAlive = true
+		go a.monitorControlChannel()
+
+	mainLoop:
+		for {
+			select {
+			// wait until we recieve a kill signal or other runtime shutdown
+			case signal := <-bzos.OsShutdownChan():
+				err = fmt.Errorf("received shutdown signal: %s", signal.String())
+				break mainLoop
+			// we should report significant-but-non-fatal errors to bastion.
+			// this action must be separated from monitorControlChannel so that persistent runtime errors do not
+			// prevent the agent from restarting when it stops detecting pings from bastion
+			case runtimeErr := <-a.controlChannel.RuntimeErr():
+				reportError(a.logger, runtimeErr)
+			case err = <-a.agentShutdownChan:
+				break mainLoop
+			}
+		}
 	}
 }
 
-func setupLogger() (*logger.Logger, error) {
-	config := logger.Config{
-		ConsoleWriters: []io.Writer{os.Stdout},
-	}
-
-	// if this is systemd, output log to file
-	if agentType == Bzero {
-		config.FilePath = bzeroLogFilePath
-	}
-
-	log, err := logger.New(&config)
-	if err != nil {
-		log.AddAgentVersion(getAgentVersion())
-	}
-
-	return log, err
-}
-
-// report early errors to the bastion so we have greater visibility
-func reportError(logger *logger.Logger, errorReport error) {
-	if logger != nil {
-		logger.Error(errorReport)
-	} else {
-		fmt.Println(errorReport.Error())
-	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = ""
-	}
-
-	errReport := errorreport.ErrorReport{
-		Reporter:  "agent-" + getAgentVersion(),
-		Timestamp: fmt.Sprint(time.Now().Unix()),
-		Message:   errorReport.Error(),
-		State: map[string]string{
-			"activationToken":       activationToken,
-			"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
-			"targetName":            targetName,
-			"targetHostName":        hostname,
-			"goos":                  runtime.GOOS,
-			"goarch":                runtime.GOARCH,
-		},
-	}
-
-	errorreport.ReportError(logger, serviceUrl, errReport)
-}
-
-func startControlChannel(logger *logger.Logger, agentVersion string) (*controlchannel.ControlChannel, error) {
-	// Load in our saved config
-	config, err := vault.LoadVault()
-	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve vault: %s", err)
-	}
+func (a *Agent) startControlChannel() error {
+	var err error
 
 	// Create our headers and params, headers are empty
 	headers := make(map[string]string)
 
 	// Make and add our params
 	params := map[string]string{
-		"public_key": config.Data.PublicKey,
-		"version":    agentVersion,
-		"target_id":  config.Data.TargetId,
+		"public_key": a.config.Data.PublicKey,
+		"version":    a.config.Data.Version,
+		"target_id":  a.config.Data.TargetId,
 		"agent_type": agentType,
 	}
 
 	// create a websocket
 	wsId := uuid.New().String()
-	wsLogger := logger.GetWebsocketLogger(wsId) // TODO: replace with actual connectionId
-	websocket, err := websocket.New(wsLogger, serviceUrl, params, headers, true, true, websocket.AgentControl)
+	wsLogger := a.logger.GetWebsocketLogger(wsId) // TODO: replace with actual connectionId
+	a.websocket, err = websocket.New(wsLogger, serviceUrl, params, headers, true, true, websocket.AgentControl)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// create logger for control channel
 	ccId := uuid.New().String()
-	ccLogger := logger.GetControlChannelLogger(ccId)
+	ccLogger := a.logger.GetControlChannelLogger(ccId)
 
-	return controlchannel.Start(ccLogger, ccId, websocket, serviceUrl, agentType, config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, a.websocket, serviceUrl, agentType, a.config)
+
+	return err
+}
+
+func (a *Agent) monitorControlChannel() {
+	maximumMissedPongs := int(websocket.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	missedPongs := 0
+
+	for {
+		select {
+		case <-a.controlChannel.Ping():
+			// the CC is still alive!
+			missedPongs = 0
+			continue
+		case <-time.After(bastionDisconnectTimeout):
+			// if the CC's websocket is disconnected, we stopped sending pings,
+			// and so should stop expecting pongs until it is back online or dead.
+			// But if the websocket's maximum backoff time has elapsed, assume is stuck in a non-ready broken state and restart
+			if !a.websocket.Ready() && missedPongs < maximumMissedPongs {
+				missedPongs++
+				a.logger.Errorf("Waiting for websocket to reconnect. Missed pongs: (%d/%d) before restarting", missedPongs, maximumMissedPongs)
+				continue
+			} else {
+				a.logger.Errorf("%s -- Initializing restart...", stoppedProcessingPongs)
+				a.agentShutdownChan <- fmt.Errorf(stoppedProcessingPongs)
+				return
+			}
+		case <-a.controlChannel.Done():
+			// if the CC is reporting done, its websocket is probably dead, or some other fatal error occurred
+			a.logger.Errorf("control channel closed with error: %s -- Initializing restart...", a.controlChannel.Err())
+			a.isControlChannelAlive = false
+			a.agentShutdownChan <- fmt.Errorf("control channel closed with error: %s", a.controlChannel.Err())
+			return
+		}
+	}
+}
+
+func (a *Agent) Close(reason error) {
+	a.logger.Infof("Agent closing because: %s", reason)
+	// this is guaranteed to return within 10 seconds (see controlchannel.go:closeTimeout)
+	if a.controlChannel != nil && a.isControlChannelAlive {
+		a.controlChannel.Close(reason)
+	}
+
+	if a.websocket != nil {
+		a.websocket.Close(reason)
+	}
+
+	a.config.Data.ShutdownState = fmt.Sprintf("%+v", getState())
+	if reason == nil {
+		a.config.Data.ShutdownReason = ""
+	} else {
+		a.config.Data.ShutdownReason = reason.Error()
+	}
+
+	if err := a.config.Save(); err != nil {
+		a.logger.Errorf("failed to save shutdown reason: %s", err)
+	}
+
+	if reason == nil {
+		os.Exit(0)
+	} else {
+		os.Exit(1)
+	}
 }
 
 func parseFlags() error {
@@ -300,7 +399,6 @@ func handleRegistration(logger *logger.Logger) error {
 func isRegistered() (bool, error) {
 	registered := false
 
-	// load out config
 	if config, err := vault.LoadVault(); err != nil {
 		return registered, fmt.Errorf("could not load vault: %s", err)
 	} else if (config.Data.PublicKey == "" || forceReRegistration) && flag.NFlag() > 0 { // no public key means unregistered
@@ -340,9 +438,61 @@ func isRegistered() (bool, error) {
 
 func getAgentVersion() string {
 	if os.Getenv("DEV") == "true" {
-		return "1.0"
+		return "6.0"
 	} else {
 		return "$AGENT_VERSION"
+	}
+}
+
+func setupLogger() (*logger.Logger, error) {
+	config := logger.Config{
+		ConsoleWriters: []io.Writer{os.Stdout},
+	}
+
+	// if this is systemd, output log to file
+	if agentType == Bzero {
+		config.FilePath = bzeroLogFilePath
+	}
+
+	log, err := logger.New(&config)
+	if err != nil {
+		log.AddAgentVersion(getAgentVersion())
+	}
+
+	return log, err
+}
+
+// report early errors to the bastion so we have greater visibility
+func reportError(logger *logger.Logger, err error) {
+	if logger != nil {
+		logger.Error(err)
+	} else {
+		fmt.Println(err.Error())
+	}
+
+	errReport := report.ErrorReport{
+		Reporter:  "agent-" + getAgentVersion(),
+		Timestamp: fmt.Sprint(time.Now().Unix()),
+		Message:   err.Error(),
+		State:     getState(),
+	}
+
+	report.ReportError(logger, serviceUrl, errReport)
+}
+
+func getState() map[string]string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+
+	return map[string]string{
+		"activationToken":       activationToken,
+		"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
+		"targetName":            targetName,
+		"targetHostName":        hostname,
+		"goos":                  runtime.GOOS,
+		"goarch":                runtime.GOARCH,
 	}
 }
 

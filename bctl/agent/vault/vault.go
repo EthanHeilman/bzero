@@ -53,6 +53,8 @@ type SecretData struct {
 	EnvironmentName string
 	AgentType       string
 	Version         string
+	ShutdownReason  string
+	ShutdownState   string
 }
 
 func LoadVault() (*Vault, error) {

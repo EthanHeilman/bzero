@@ -23,7 +23,8 @@ import (
 )
 
 const (
-	heartRate = 20 * time.Second
+	HeartRate    = 20 * time.Second
+	closeTimeout = 10 * time.Second
 )
 
 type wsMeta struct {
@@ -43,8 +44,14 @@ type ControlChannel struct {
 	// variables for opening websockets
 	serviceUrl string
 
-	// These are all the types of channels we have available
+	// accepts input from a connection
 	inputChan chan am.AgentMessage
+
+	// regularly notifies the agent we are still functioning
+	agentPingChan chan bool
+
+	// notifies the agent of significant-but-non-fatal runtime errors
+	runtimeErrChan chan error
 
 	targetType string
 
@@ -60,32 +67,33 @@ func Start(logger *logger.Logger,
 	websocket websocket.IWebsocket, // control channel websocket
 	serviceUrl string,
 	targetType string,
-	ksConfig keysplitting.IKeysplittingConfig) (*ControlChannel, error) {
+	ksConfig keysplitting.IKeysplittingConfig,
+) (*ControlChannel, error) {
 
 	control := &ControlChannel{
-		websocket:   websocket,
-		logger:      logger,
-		id:          id,
-		ksConfig:    ksConfig,
-		serviceUrl:  serviceUrl,
-		targetType:  targetType,
-		inputChan:   make(chan am.AgentMessage, 25),
-		connections: make(map[string]wsMeta),
+		websocket:      websocket,
+		logger:         logger,
+		id:             id,
+		ksConfig:       ksConfig,
+		serviceUrl:     serviceUrl,
+		targetType:     targetType,
+		inputChan:      make(chan am.AgentMessage, 25),
+		connections:    make(map[string]wsMeta),
+		agentPingChan:  make(chan bool),
+		runtimeErrChan: make(chan error),
 	}
 
-	// The ChannelId is mostly for distinguishing multiple channels over a single websocket but the control channel has
-	// its own dedicated websocket.  This also makes it so there can only ever be one control channel associated with a
-	// given websocket at any time.
-	// TODO: figure out a way to let control channel know its own id before it subscribes
+	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
+	// subscribing to the WS with a unique id. As long as we use the same one when we unsubscribe
 	websocket.Subscribe("", control)
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {
-		defer websocket.Unsubscribe(id)
+		defer websocket.Unsubscribe("")
 
 		// send healthcheck messages at every "heartbeat"
 		control.tmb.Go(func() error {
-			ticker := time.NewTicker(heartRate)
+			ticker := time.NewTicker(HeartRate)
 			defer ticker.Stop()
 			for {
 				select {
@@ -126,11 +134,15 @@ func Start(logger *logger.Logger,
 				return nil
 			case agentMessage := <-control.inputChan:
 				// Process each message in its own thread
+				// TODO: (CWC-2038) it would be safer to put a limit on how many threads can be created this way
 				go func() {
 					if err := control.processInput(agentMessage); err != nil {
 						logger.Error(err)
+						control.runtimeErrChan <- err
 					}
 				}()
+			case <-websocket.Done():
+				control.Close(fmt.Errorf("websocket closed with err: %s", websocket.Err()))
 			}
 		}
 	})
@@ -139,28 +151,56 @@ func Start(logger *logger.Logger,
 }
 
 func (c *ControlChannel) Close(reason error) {
+	c.logger.Infof("Control channel closing because: %s", reason)
 	c.tmb.Kill(reason)
-	c.tmb.Wait()
+	// we need to provide a guarantee that this closes even if websockets / plugins are stuck
+	select {
+	case <-c.tmb.Dead():
+		return
+	case <-time.After(closeTimeout):
+		return
+	}
 }
 
 func (c *ControlChannel) Receive(agentMessage am.AgentMessage) {
 	c.inputChan <- agentMessage
 }
 
+func (c *ControlChannel) Done() <-chan struct{} {
+	return c.tmb.Dead()
+}
+
+func (c *ControlChannel) Err() error {
+	return c.tmb.Err()
+}
+
+// used to alert anyone who's listening that we encountered a significant-but-not-fatal error
+func (c *ControlChannel) RuntimeErr() <-chan error {
+	return c.runtimeErrChan
+}
+
+// used to alert anyone who's listening that we're still alive
+func (c *ControlChannel) Ping() <-chan bool {
+	return c.agentPingChan
+}
+
 // Wraps and sends the payload
 func (c *ControlChannel) send(messageType am.MessageType, messagePayload interface{}) error {
 	c.logger.Debugf("control channel is sending %s message", messageType)
-	messageBytes, _ := json.Marshal(messagePayload)
-	agentMessage := am.AgentMessage{
-		ChannelId:      c.id,
-		MessageType:    string(messageType),
-		SchemaVersion:  am.CurrentVersion,
-		MessagePayload: messageBytes,
-	}
+	if messageBytes, err := json.Marshal(messagePayload); err != nil {
+		return fmt.Errorf("failed to marshal %s message payload: %s", messageType, err)
+	} else {
+		agentMessage := am.AgentMessage{
+			ChannelId:      c.id,
+			MessageType:    string(messageType),
+			SchemaVersion:  am.CurrentVersion,
+			MessagePayload: messageBytes,
+		}
 
-	// Push message to websocket channel output
-	c.websocket.Send(agentMessage)
-	return nil
+		// Push message to websocket channel output
+		c.websocket.Send(agentMessage)
+		return nil
+	}
 }
 
 func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
@@ -217,8 +257,8 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.HealthCheck:
-		c.logger.Debugf("as of version 4.2.0 this agent no longer accepts healthcheck messages; ignoring")
-		return nil
+		// congratulations, we're still functioning and can tell the agent we're alive
+		c.agentPingChan <- true
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {
@@ -232,11 +272,8 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
 			if websocket, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
-				// this can take a little time, but we don't want it blocking other things
-				go func() {
-					websocket.Client.Close(errors.New("websocket closed on daemon"))
-					c.deleteConnectionsMap(cwRequest.ConnectionId)
-				}()
+				websocket.Client.Close(errors.New("websocket closed on daemon"))
+				c.deleteConnectionsMap(cwRequest.ConnectionId)
 			} else {
 				return fmt.Errorf("could not close non existent websocket with id: %s", cwRequest.ConnectionId)
 			}
@@ -246,9 +283,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 		if err := json.Unmarshal(agentMessage.MessagePayload, &odRequest); err != nil {
 			return fmt.Errorf("malformed open datachannel request: %s", err)
 		} else {
-			if err := c.openDataChannel(odRequest); err != nil {
-				return fmt.Errorf("error creating datachannel: %s", err)
-			}
+			return c.openDataChannel(odRequest)
 		}
 	case am.CloseDataChannel:
 		var cdRequest CloseDataChannelMessage
@@ -263,7 +298,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 					return fmt.Errorf("agent does not have a datachannel with id: %s", cdRequest.DataChannelId)
 				}
 			} else {
-				return fmt.Errorf("agent does not have a datachannel with id: %s", cdRequest.DataChannelId)
+				return fmt.Errorf("agent does not have a connection with id: %s", cdRequest.ConnectionId)
 			}
 		}
 	default:
