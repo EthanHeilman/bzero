@@ -1,18 +1,23 @@
-package mocks
+package tests
 
 import (
 	"net/http"
 	"net/http/httptest"
 )
 
-type MockBastion struct {
+type MockServer struct {
 	server *httptest.Server
 
 	Addr      string
 	Recorders map[string]*httptest.ResponseRecorder
 }
 
-func NewMockBastion(handlers ...MockHandler) *MockBastion {
+type MockHandler struct {
+	Endpoint    string
+	HandlerFunc http.HandlerFunc
+}
+
+func NewMockServer(handlers ...MockHandler) *MockServer {
 	mux := http.NewServeMux()
 
 	recorderMap := make(map[string]*httptest.ResponseRecorder)
@@ -28,13 +33,13 @@ func NewMockBastion(handlers ...MockHandler) *MockBastion {
 
 	s := httptest.NewServer(mux)
 
-	return &MockBastion{
+	return &MockServer{
 		server:    s,
 		Addr:      s.URL,
 		Recorders: recorderMap,
 	}
 }
 
-func (m *MockBastion) Close() {
+func (m *MockServer) Close() {
 	m.server.Close()
 }

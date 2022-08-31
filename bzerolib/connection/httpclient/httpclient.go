@@ -18,14 +18,6 @@ const (
 	httpTimeout = time.Second * 30
 )
 
-type RequestMethod string
-
-const (
-	Get   RequestMethod = "GET"
-	Post  RequestMethod = "POST"
-	Patch RequestMethod = "PATCH"
-)
-
 type HTTPOptions struct {
 	Endpoint string
 	Body     []byte
@@ -97,18 +89,18 @@ func NewWithBackoff(
 }
 
 func (h *HttpClient) Post(ctx context.Context) (*http.Response, error) {
-	return h.execute(Post, ctx)
+	return h.execute(http.MethodPost, ctx)
 }
 
 func (h *HttpClient) Patch(ctx context.Context) (*http.Response, error) {
-	return h.execute(Patch, ctx)
+	return h.execute(http.MethodPatch, ctx)
 }
 
 func (h *HttpClient) Get(ctx context.Context) (*http.Response, error) {
-	return h.execute(Get, ctx)
+	return h.execute(http.MethodGet, ctx)
 }
 
-func (h *HttpClient) execute(method RequestMethod, ctx context.Context) (*http.Response, error) {
+func (h *HttpClient) execute(method string, ctx context.Context) (*http.Response, error) {
 	// If there is no backoff, then only execute request once
 	if h.backoffParams == nil {
 		return h.request(method, ctx)
@@ -136,7 +128,7 @@ func (h *HttpClient) execute(method RequestMethod, ctx context.Context) (*http.R
 	}
 }
 
-func (h *HttpClient) request(method RequestMethod, ctx context.Context) (*http.Response, error) {
+func (h *HttpClient) request(method string, ctx context.Context) (*http.Response, error) {
 	// Make our Client
 	client := http.Client{
 		Timeout: httpTimeout,
@@ -154,6 +146,8 @@ func (h *HttpClient) request(method RequestMethod, ctx context.Context) (*http.R
 	if err != nil {
 		return response, fmt.Errorf("%s request failed: %w", string(method), err)
 	}
+
+	h.logger.Infof("STATUS CODE: %d", response.StatusCode)
 
 	// Check if request was successful
 	if response.StatusCode < 200 || response.StatusCode >= 300 {

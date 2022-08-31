@@ -18,6 +18,8 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
+var maxBackoffInterval = time.Minute * 15 // At most 15 minutes in between requests
+
 const (
 	agentHubEndpoint = "hub/agent"
 
@@ -176,7 +178,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
 	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
-	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
+	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
 
@@ -190,7 +192,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 			}
 
 			if err := d.client.Connect(ctx, connUrl.String(), headers, params, targetSelectHandler); err != nil {
-				d.logger.Infof("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
+				d.logger.Errorf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
 			}
 

@@ -16,7 +16,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
-	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -30,7 +29,7 @@ func TestControlChannelConnection(t *testing.T) {
 var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 	var conn connection.Connection
 	var mockClient *messenger.MockMessenger
-	var challengeServer *mocks.MockServer
+	var challengeServer *tests.MockServer
 
 	var doneChan chan struct{}
 	var inboundChan chan *signalr.SignalRMessage
@@ -61,7 +60,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 	}
 
 	setupHappyChallengeServer := func() {
-		challengeServer = mocks.NewMockServer(mocks.MockHandler{
+		challengeServer = tests.NewMockServer(tests.MockHandler{
 			Endpoint: challenge.ChallengeEndpoint,
 			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusOK)

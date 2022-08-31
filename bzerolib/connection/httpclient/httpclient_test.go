@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
+	"bastionzero.com/bctl/v1/bzerolib/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +21,7 @@ func TestHttpClient(t *testing.T) {
 
 var _ = Describe("HttpClient", Ordered, func() {
 	var client *HttpClient
-	var server *mocks.MockServer
+	var server *tests.MockServer
 
 	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
@@ -68,7 +68,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: verifyParams,
 				})
@@ -104,7 +104,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: verifyHeaders,
 				})
@@ -138,7 +138,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			var err error
 
 			handlePost := func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == string(Post) {
+				if r.Method == http.MethodPost {
 					w.WriteHeader(http.StatusOK)
 				} else {
 					w.WriteHeader(http.StatusBadRequest)
@@ -146,7 +146,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: handlePost,
 				})
@@ -170,7 +170,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			var err error
 
 			handlePatch := func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == string(Patch) {
+				if r.Method == http.MethodPatch {
 					w.WriteHeader(http.StatusOK)
 				} else {
 					w.WriteHeader(http.StatusBadRequest)
@@ -178,7 +178,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: handlePatch,
 				})
@@ -202,7 +202,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			var err error
 
 			handleGet := func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == string(Get) {
+				if r.Method == http.MethodGet {
 					w.WriteHeader(http.StatusOK)
 				} else {
 					w.WriteHeader(http.StatusBadRequest)
@@ -210,7 +210,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: handleGet,
 				})
@@ -243,7 +243,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				server = mocks.NewMockServer(mocks.MockHandler{
+				server = tests.NewMockServer(tests.MockHandler{
 					Endpoint:    "/",
 					HandlerFunc: delayed,
 				})

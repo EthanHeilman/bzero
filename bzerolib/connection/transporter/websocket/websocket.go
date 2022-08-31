@@ -22,11 +22,11 @@ import (
 )
 
 const (
-	httpsOnlyWebsocketScheme = "wss"
-	httpWebsocketScheme      = "ws"
+	HttpsOnlyWebsocketScheme = "wss"
+	HttpWebsocketScheme      = "ws"
 )
 
-var websocketUrlScheme = httpsOnlyWebsocketScheme
+var WebsocketUrlScheme = HttpsOnlyWebsocketScheme
 
 type Websocket struct {
 	tmb    tomb.Tomb
@@ -79,7 +79,7 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 	w.tmb = tomb.Tomb{}
 
 	// Make sure url scheme is correct
-	connUrl.Scheme = websocketUrlScheme
+	connUrl.Scheme = WebsocketUrlScheme
 
 	// Try to connect websocket once
 	if w.client, _, err = gorilla.DefaultDialer.DialContext(ctx, connUrl.String(), headers); err != nil {

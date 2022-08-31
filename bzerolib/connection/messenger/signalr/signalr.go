@@ -101,7 +101,7 @@ func (s *SignalR) Connect(
 	// Connect to our endpoint
 	s.logger.Infof("Making websocket connection")
 	if err := s.client.Dial(u, headers, ctx); err != nil {
-		return fmt.Errorf("failed to connect to endpoint %s: %w", u.String(), err)
+		return fmt.Errorf("error connecting to %s: %w", u.String(), err)
 	}
 
 	// Negotiate our SignalR version

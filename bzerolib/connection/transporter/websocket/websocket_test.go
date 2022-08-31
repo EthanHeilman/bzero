@@ -29,7 +29,7 @@ var _ = Describe("Websocket", Ordered, func() {
 	ctx := context.Background()
 
 	testSendData := []byte("whooopie")
-	websocketUrlScheme = httpWebsocketScheme
+	WebsocketUrlScheme = HttpWebsocketScheme
 
 	BeforeEach(func() {
 		websocket = New(logger)
