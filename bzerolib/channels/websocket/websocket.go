@@ -42,7 +42,9 @@ const (
 
 	controlHubEndpoint = "/api/v1/hub/control"
 
+	closeTimeout                   = 10 * time.Second
 	AgentConnectedWebsocketTimeout = 30 * time.Second
+	MaximumReconnectWaitTime       = 1 * time.Hour
 )
 
 // Connection Type enum
@@ -214,17 +216,31 @@ func (w *Websocket) Err() error {
 
 // Close kills all datachannels subscribed to this websocket, kills the
 // websocket tomb, disconnects the websocket connection, and waits for all
-// goroutines tracked by the websocket tomb to finish running.
+// goroutines tracked by the websocket tomb to finish running
+//
+// if the websocket is trying to reconnect, closing will not block. Otherwise,
+// the websocket's tomb has only until `closeTimeout` to finish before Close() returns
 func (w *Websocket) Close(reason error) {
+	defer w.logger.Infof("websocket done")
+
 	if !w.tmb.Alive() {
+		w.logger.Infof("Close was called while in a dying state. Returning immediately")
 		return
 	}
+
 	w.close(reason)
 
-	// It is not safe for tracked goroutines within the websocket struct to call
-	// Wait() otherwise there is a deadlock when calling .Wait()
-	w.tmb.Wait()
-	w.logger.Infof("websocket done")
+	if !w.Ready() {
+		w.logger.Infof("Close was called while in a not-ready state. Returning immediately")
+		return
+	}
+
+	select {
+	case <-w.tmb.Dead():
+		return
+	case <-time.After(closeTimeout):
+		return
+	}
 }
 
 // close kills all datachannels subscribed to this websocket, kills the
@@ -242,6 +258,7 @@ func (w *Websocket) close(reason error) {
 	// mark the tmb as dying so we ignore any errors that occur when closing the
 	// websocket
 	w.tmb.Kill(reason)
+
 	// close the websocket connection. This will cause errors when reading from
 	// websocket in receive
 	if w.client != nil {
@@ -287,6 +304,7 @@ func (w *Websocket) receive() error {
 			msg := fmt.Errorf("error in websocket, will attempt to reconnect: %s", err)
 			w.logger.Error(msg)
 			if err := w.connect(); err != nil {
+				w.close(err)
 				return err
 			}
 		}
@@ -515,8 +533,8 @@ func (w *Websocket) Send(agentMessage am.AgentMessage) {
 func (w *Websocket) connect() error {
 
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = time.Hour * 8 // Wait in total at most 8 hours
-	backoffParams.MaxInterval = time.Minute * 30 // At most 30 minutes in between requests
+	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
+	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
 	ticker := backoff.NewTicker(backoffParams)
 
 	for {

@@ -36,7 +36,7 @@ phases:
       - git submodule init
       - git submodule update --recursive
       # Install Bzero-QA
-      - git clone git@github.com:bastionzero/cwc-infra.git  --branch develop /cwc-infra/
+      - git clone git@github.com:bastionzero/cwc-infra.git --branch $CWC_INFRA_BRANCH /cwc-infra/
       - pip3 install -e /cwc-infra/Bzero-Common/. && pip3 install -e /cwc-infra/Bzero-QA/.
       # Install npm dependencies
       - apt-get update -y && apt-get install build-essential cmake -y

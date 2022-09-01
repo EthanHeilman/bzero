@@ -18,7 +18,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/webserver"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/error/errorreport"
+	"bastionzero.com/bctl/v1/bzerolib/report"
 
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
 	bzlogger "bastionzero.com/bctl/v1/bzerolib/logger"
@@ -62,12 +62,11 @@ func main() {
 			serverErrChan := make(chan error)
 			go startServer(logger, daemonShutdownChan, serverErrChan, headers, params)
 
-			// we should never exit without allowing our server to shutdown gracefully
-			// therefore our response to a SIGINT or SIGTERM is to tell the server to say its goodbyes
-			osShutdownChan := bzos.OsShutdownChan()
 			for {
 				select {
-				case signal := <-osShutdownChan:
+				// we should never exit without allowing our server to shutdown gracefully
+				// therefore our response to a SIGINT or SIGTERM is to tell the server to say its goodbyes
+				case signal := <-bzos.OsShutdownChan():
 					logger.Errorf("received shutdown signal: %s", signal.String())
 					close(daemonShutdownChan)
 					// but we still wait for it to signal that it's ready to die
@@ -97,15 +96,15 @@ func createLogger() (*bzlogger.Logger, error) {
 	return logger, err
 }
 
-func reportError(logger *bzlogger.Logger, errorReport error) {
+func reportError(logger *bzlogger.Logger, err error) {
 	if logger != nil {
-		logger.Error(errorReport)
+		logger.Error(err)
 	}
 
-	errReport := errorreport.ErrorReport{
+	errReport := report.ErrorReport{
 		Reporter:  "daemon-" + daemonVersion,
 		Timestamp: fmt.Sprint(time.Now().Unix()),
-		Message:   errorReport.Error(),
+		Message:   err.Error(),
 		State: map[string]string{
 			"targetHostName": "",
 			"goos":           runtime.GOOS,
@@ -113,7 +112,7 @@ func reportError(logger *bzlogger.Logger, errorReport error) {
 		},
 	}
 
-	errorreport.ReportError(logger, config[SERVICE_URL].Value, errReport)
+	report.ReportError(logger, config[SERVICE_URL].Value, errReport)
 }
 
 func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error, headers map[string]string, params map[string]string) {
