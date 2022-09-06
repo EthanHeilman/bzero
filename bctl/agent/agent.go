@@ -142,6 +142,18 @@ func New(logger *logger.Logger, fileIo bzio.BzFileIo) (*Agent, error) {
 	if config, err := vault.LoadVault(); err != nil {
 		return nil, fmt.Errorf("failed to retrieve vault: %s", err)
 	} else {
+
+		// Check if the agent version has changed since the last time we saved
+		// to the vault and update it if necessary
+		currentVersion := getAgentVersion()
+		if config.Data.Version != currentVersion {
+			config.Data.Version = currentVersion
+
+			if err := config.Save(); err != nil {
+				return nil, fmt.Errorf("error saving updated version to vault: %w", err)
+			}
+		}
+
 		agent := &Agent{
 			config:            config,
 			logger:            logger,
