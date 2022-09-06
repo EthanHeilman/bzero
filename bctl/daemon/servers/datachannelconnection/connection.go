@@ -73,7 +73,7 @@ func New(
 ) (connection.Connection, error) {
 
 	// Check if the connection url is a validly formatted url
-	connectionUrl, err := url.Parse(connUrl)
+	connectionUrl, err := url.ParseRequestURI(connUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func New(
 		client:         client,
 		broker:         broker.New(),
 		sendQueue:      make(chan *am.AgentMessage, 50),
-		agentReadyChan: make(chan bool),
+		agentReadyChan: make(chan bool, 1),
 	}
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
@@ -143,11 +143,11 @@ func (d *DataChannelConnection) receive() {
 }
 
 // Returns error on connection closed
-func (u *DataChannelConnection) processInbound(message signalr.SignalRMessage) error {
+func (d *DataChannelConnection) processInbound(message signalr.SignalRMessage) error {
 	switch message.Target {
 	case agentDisconnected:
 		rerr := fmt.Errorf("the bzero agent terminated the connection")
-		u.Close(rerr)
+		d.Close(rerr)
 		return rerr
 	case agentConnected:
 		// Signal the agentReady channel when we receive a message
@@ -157,9 +157,10 @@ func (u *DataChannelConnection) processInbound(message signalr.SignalRMessage) e
 			return fmt.Errorf("error unmarshalling agent connected message. Error: %s", err)
 		}
 
-		u.logger.Infof("Agent is connected and ready to receive for connection: %s", agentConnectedMessage.ConnectionId)
+		d.logger.Infof("Agent is connected and ready to receive for connection: %s", agentConnectedMessage.ConnectionId)
 
-		u.agentReadyChan <- true
+		d.ready = true
+		d.agentReadyChan <- true
 	default:
 		// Otherwise assume that the invocation contains a single AgentMessage argument
 		if len(message.Arguments) != 1 {
@@ -171,7 +172,7 @@ func (u *DataChannelConnection) processInbound(message signalr.SignalRMessage) e
 			return fmt.Errorf("error unmarshalling %s message: %w", message.Target, err)
 		}
 
-		if err := u.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
+		if err := d.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
 			return fmt.Errorf("failed to forward agent message to datachannel: %w", err)
 		}
 	}

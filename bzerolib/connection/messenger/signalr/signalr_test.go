@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
 	. "github.com/onsi/ginkgo/v2"
@@ -26,7 +26,7 @@ var _ = Describe("SignalR", Ordered, func() {
 	var doneChan chan struct{}
 	var inboundChan chan *[]byte
 	var negotiateServer *mocks.MockServer
-	var mockWebsocket *websocket.MockWebsocket
+	var mockTransport *transporter.MockTransporter
 	var signalR *SignalR
 
 	logger := logger.MockLogger()
@@ -38,25 +38,25 @@ var _ = Describe("SignalR", Ordered, func() {
 		return "TestSignalRMethod", nil
 	}
 
-	setupHappyWebsocket := func() {
+	setupHappyTransport := func() {
 		// Startup a server to handle negotiation
 		negotiateServer = mocks.NewMockServer(mocks.MockHandler{
 			Endpoint:    endpoint,
 			HandlerFunc: handleNegotiate,
 		})
 
-		mockWebsocket = &websocket.MockWebsocket{}
-		mockWebsocket.On("Dial").Return(nil)
-		mockWebsocket.On("Send").Return(nil)
-		mockWebsocket.On("Close").Return()
+		mockTransport = &transporter.MockTransporter{}
+		mockTransport.On("Dial").Return(nil)
+		mockTransport.On("Send").Return(nil)
+		mockTransport.On("Close").Return()
 
 		doneChan = make(chan struct{})
-		mockWebsocket.On("Done").Return(doneChan)
+		mockTransport.On("Done").Return(doneChan)
 
 		inboundChan = make(chan *[]byte, 1)
-		mockWebsocket.On("Inbound").Return(inboundChan)
+		mockTransport.On("Inbound").Return(inboundChan)
 
-		signalR = New(logger, mockWebsocket)
+		signalR = New(logger, mockTransport)
 		signalR.Connect(ctx, negotiateServer.Addr, http.Header{}, url.Values{}, testTargetFunc)
 	}
 
@@ -66,8 +66,8 @@ var _ = Describe("SignalR", Ordered, func() {
 			var err error
 
 			BeforeEach(func() {
-				mockWebsocket = &websocket.MockWebsocket{}
-				signalR = New(logger, mockWebsocket)
+				mockTransport = &transporter.MockTransporter{}
+				signalR = New(logger, mockTransport)
 
 				err = signalR.Connect(ctx, testUrlWithNoListener, http.Header{}, url.Values{}, testTargetFunc)
 			})
@@ -87,10 +87,10 @@ var _ = Describe("SignalR", Ordered, func() {
 					HandlerFunc: handleNegotiate,
 				})
 
-				mockWebsocket = &websocket.MockWebsocket{}
-				mockWebsocket.On("Dial").Return(fmt.Errorf("failure"))
+				mockTransport = &transporter.MockTransporter{}
+				mockTransport.On("Dial").Return(fmt.Errorf("failure"))
 
-				signalR = New(logger, mockWebsocket)
+				signalR = New(logger, mockTransport)
 				err = signalR.Connect(ctx, negotiateServer.Addr, http.Header{}, url.Values{}, testTargetFunc)
 			})
 
@@ -114,7 +114,7 @@ var _ = Describe("SignalR", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				setupHappyWebsocket()
+				setupHappyTransport()
 				err = signalR.Send(testAgentMessage)
 			})
 
@@ -149,7 +149,7 @@ var _ = Describe("SignalR", Ordered, func() {
 		When("It connects to a legitimate connection", func() {
 
 			BeforeEach(func() {
-				setupHappyWebsocket()
+				setupHappyTransport()
 				inboundChan <- &validTestSignalRMessageBytes
 			})
 
@@ -178,7 +178,7 @@ var _ = Describe("SignalR", Ordered, func() {
 		When("It is closed from above", func() {
 
 			BeforeEach(func() {
-				setupHappyWebsocket()
+				setupHappyTransport()
 
 				signalR.Close(fmt.Errorf("testing"))
 			})
@@ -199,7 +199,7 @@ var _ = Describe("SignalR", Ordered, func() {
 		When("It is closed from below", func() {
 
 			BeforeEach(func() {
-				setupHappyWebsocket()
+				setupHappyTransport()
 
 				close(doneChan)
 			})

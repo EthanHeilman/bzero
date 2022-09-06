@@ -309,7 +309,7 @@ func (s *SignalR) Send(message am.AgentMessage) error {
 
 func buildUrl(serviceUrl string, params url.Values) (*url.URL, error) {
 	// Build our websocket url object
-	websocketUrl, err := url.Parse(serviceUrl)
+	websocketUrl, err := url.ParseRequestURI(serviceUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse connection node service url %s: %w", serviceUrl, err)
 	}

@@ -1,46 +1,13 @@
 package websocket
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"github.com/gorilla/websocket"
-	"github.com/stretchr/testify/mock"
 )
-
-// mocked version of the FileService
-type MockWebsocket struct {
-	Websocket
-	mock.Mock
-}
-
-func (m *MockWebsocket) Done() <-chan struct{} {
-	args := m.Called()
-	return args.Get(0).(chan struct{})
-}
-
-func (m *MockWebsocket) Inbound() <-chan *[]byte {
-	args := m.Called()
-	return args.Get(0).(chan *[]byte)
-}
-
-func (m *MockWebsocket) Dial(websocketUrl *url.URL, headers http.Header, ctx context.Context) (err error) {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *MockWebsocket) Send(message []byte) error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *MockWebsocket) Close() {
-	m.Called()
-}
 
 type MockWebsocketServer struct {
 	logger   *logger.Logger

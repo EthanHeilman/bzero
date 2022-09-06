@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	challengeEndpoint = "/api/v2/agent/challenge"
+	ChallengeEndpoint = "/api/v2/agent/challenge"
 )
 
 type ChallengeRequest struct {
@@ -50,7 +50,7 @@ func Get(
 		Headers: http.Header{
 			"Content-Type": {"application/json"},
 		},
-		Endpoint: challengeEndpoint,
+		Endpoint: ChallengeEndpoint,
 		Body:     requestBytes,
 	}
 	client, err := httpclient.New(logger, serviceUrl, options)

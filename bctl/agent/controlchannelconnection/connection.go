@@ -150,7 +150,7 @@ func (a *ControlChannelConnection) Close(reason error) {
 
 func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
 	// Check if the connection url is a validly formatted url
-	connectionUrl, err := url.Parse(connUrl)
+	connectionUrl, err := url.ParseRequestURI(connUrl)
 	if err != nil {
 		return err
 	}

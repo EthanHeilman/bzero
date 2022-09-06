@@ -51,7 +51,7 @@ func New(
 ) (*HttpClient, error) {
 
 	if options.Endpoint != "" {
-		combo, err := url.Parse(serviceUrl)
+		combo, err := url.ParseRequestURI(serviceUrl)
 		if err != nil {
 			return nil, err
 		}
