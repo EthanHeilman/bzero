@@ -25,6 +25,10 @@ import (
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
 )
 
+const (
+	closeTimeout = 10 * time.Second
+)
+
 type IKeysplitting interface {
 	Validate(ksMessage *ksmsg.KeysplittingMessage) error
 	BuildAck(ksMessage *ksmsg.KeysplittingMessage, action string, actionPayload []byte) (ksmsg.KeysplittingMessage, error)
@@ -142,9 +146,14 @@ func (d *DataChannel) flushAllOutputChannelMessages() {
 }
 
 func (d *DataChannel) Close(reason error) {
-	d.logger.Infof("Datachannel closed because: %s", reason)
+	d.logger.Infof("Datachannel closing because: %s", reason)
 	d.tmb.Kill(reason) // kills all datachannel, plugin, and action goroutines
-	d.tmb.Wait()
+	select {
+	case <-d.tmb.Dead():
+		return
+	case <-time.After(closeTimeout):
+		return
+	}
 }
 
 // Wraps and sends the payload

@@ -28,3 +28,8 @@ type CloseDataChannelMessage struct {
 	DataChannelId string `json:"dataChannelId"`
 	ConnectionId  string `json:"connectionId"`
 }
+
+type RestartAgentMessage struct {
+	RestartedBy string `json:"restartedBy"`
+	RestartedAt string `json:"restartedAt"`
+}

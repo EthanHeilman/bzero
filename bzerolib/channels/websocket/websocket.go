@@ -228,9 +228,16 @@ func (w *Websocket) Close(reason error) {
 		return
 	}
 
+	var wasDisconnected bool
+	if !w.Ready() {
+		wasDisconnected = true
+	}
+
 	w.close(reason)
 
-	if !w.Ready() {
+	// close() will set us to not ready so we can't check that directly. However if we weren't ready when
+	// Close() was called, don't bother waiting for the tomb
+	if wasDisconnected {
 		w.logger.Infof("Close was called while in a not-ready state. Returning immediately")
 		return
 	}

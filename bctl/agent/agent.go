@@ -48,8 +48,8 @@ const (
 	// based on convention from backend -- there's nothing magical about the number 6 but we need to guarantee
 	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
 	// as of this writing, this means an expected pong every six seconds, with a "disconnect" reported after 2 minutes
-	bastionDisconnectTimeout = 6 * controlchannel.HeartRate
-	stoppedProcessingPongs   = "control channel stopped processing pongs"
+	bastionDisconnectTimeout  = 6 * controlchannel.HeartRate
+	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
 )
 
 func main() {
@@ -132,7 +132,9 @@ type Agent struct {
 	websocket      *websocket.Websocket
 	controlChannel *controlchannel.ControlChannel
 
-	agentShutdownChan     chan error
+	agentShutdownChan chan error
+
+	// prevents us from trying to close the CC after it has told us it's done
 	isControlChannelAlive bool
 }
 
@@ -146,16 +148,14 @@ func New(logger *logger.Logger, fileIo bzio.BzFileIo) (*Agent, error) {
 			fileIo:            fileIo,
 			agentShutdownChan: make(chan error),
 		}
-
 		return agent, nil
 	}
 }
 
-// check whether we're restarting after a poison pill event, and thus need to tell Bastion about it
+// check whether we're restarting after a qualifying event, and thus need to tell Bastion about it
 func (a *Agent) checkShutdownReason() {
-	switch a.config.Data.ShutdownReason {
-	case stoppedProcessingPongs:
-		a.logger.Infof("Notifying Bastion that we restarted because we stopped processing pongs")
+	if a.config.Data.ShutdownReason == stoppedProcessingPongsMsg || strings.Contains(a.config.Data.ShutdownReason, controlchannel.ManualRestartMsg) {
+		a.logger.Infof("Notifying Bastion that we restarted because: %s", a.config.Data.ShutdownReason)
 		report.ReportRestart(
 			a.logger,
 			serviceUrl,
@@ -243,26 +243,24 @@ func (a *Agent) startControlChannel() error {
 }
 
 func (a *Agent) monitorControlChannel() {
-	maximumMissedPongs := int(websocket.MaximumReconnectWaitTime / bastionDisconnectTimeout)
-	missedPongs := 0
+	maximumMissedPongSets := int(websocket.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	missedPongSets := 0
 
 	for {
 		select {
-		case <-a.controlChannel.Ping():
+		case <-a.controlChannel.Pong():
 			// the CC is still alive!
-			missedPongs = 0
-			continue
+			missedPongSets = 0
 		case <-time.After(bastionDisconnectTimeout):
-			// if the CC's websocket is disconnected, we stopped sending pings,
-			// and so should stop expecting pongs until it is back online or dead.
-			// But if the websocket's maximum backoff time has elapsed, assume is stuck in a non-ready broken state and restart
-			if !a.websocket.Ready() && missedPongs < maximumMissedPongs {
-				missedPongs++
-				a.logger.Errorf("Waiting for websocket to reconnect. Missed pongs: (%d/%d) before restarting", missedPongs, maximumMissedPongs)
-				continue
+			// If the CC knows it's not sending pongs, we should stop expecting them until it is back online or dead.
+			// But if the maximum websocket backoff time has elapsed, assume we're stuck in a broken state and restart
+			if !a.controlChannel.ShouldBeSendingPongs() && missedPongSets < maximumMissedPongSets {
+				missedPongSets++
+				a.logger.Errorf("Waiting for websocket to reconnect. Missed a set of pongs. (%d sets remaining before restarting)", maximumMissedPongSets-missedPongSets)
 			} else {
-				a.logger.Errorf("%s -- Initializing restart...", stoppedProcessingPongs)
-				a.agentShutdownChan <- fmt.Errorf(stoppedProcessingPongs)
+				// if we don't hear from the CC but its websocket is still alive, assume the CC is broken and restart
+				a.logger.Errorf("%s -- Initializing restart...", stoppedProcessingPongsMsg)
+				a.agentShutdownChan <- fmt.Errorf(stoppedProcessingPongsMsg)
 				return
 			}
 		case <-a.controlChannel.Done():
@@ -438,7 +436,7 @@ func isRegistered() (bool, error) {
 
 func getAgentVersion() string {
 	if os.Getenv("DEV") == "true" {
-		return "6.0"
+		return "6.7.0"
 	} else {
 		return "$AGENT_VERSION"
 	}
