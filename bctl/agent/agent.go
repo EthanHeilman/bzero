@@ -23,7 +23,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/connection/universalconnection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 )
@@ -133,7 +132,7 @@ type Agent struct {
 	config         *vault.Vault
 	logger         *logger.Logger
 	fileIo         bzio.BzFileIo
-	conn           *universalconnection.UniversalConnection
+	conn           *controlchannelconnection.ControlChannelConnection
 	controlChannel *controlchannel.ControlChannel
 
 	agentShutdownChan chan error
@@ -286,7 +285,7 @@ func (a *Agent) startControlChannel() error {
 
 	// Setup our loggers
 	ccId := uuid.New().String()
-	ccLogger := logger.GetControlChannelLogger(ccId)
+	ccLogger := a.logger.GetControlChannelLogger(ccId)
 	connId := uuid.New().String()
 	connLogger := ccLogger.GetConnectionLogger(connId)
 	wsLogger := ccLogger.GetComponentLogger("Websocket")
@@ -306,7 +305,7 @@ func (a *Agent) startControlChannel() error {
 }
 
 func (a *Agent) monitorControlChannel() {
-	maximumMissedPongSets := int(universalconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	maximumMissedPongSets := int(controlchannelconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
 	missedPongSets := 0
 
 	for {

@@ -42,6 +42,10 @@ const (
 
 	// How long the daemon waits for the agent to connect
 	agentConnectedTimeout = 30 * time.Second
+
+	waitForCloseTimeout = 10 * time.Second
+
+	MaximumReconnectWaitTime = 1 * time.Hour
 )
 
 type DataChannelConnection struct {
@@ -203,7 +207,12 @@ func (d *DataChannelConnection) Err() error {
 func (d *DataChannelConnection) Close(reason error) {
 	if d.tmb.Alive() {
 		d.tmb.Kill(reason)
-		d.tmb.Wait()
+
+		select {
+		case <-d.tmb.Dead():
+		case <-time.After(waitForCloseTimeout):
+			d.logger.Info("Timed out waiting for connection to close")
+		}
 	}
 }
 
@@ -223,8 +232,8 @@ func (d *DataChannelConnection) connect(connUrl *url.URL, headers http.Header, p
 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = time.Hour * 72 // Wait in total at most 72 hours
-	backoffParams.MaxInterval = time.Minute * 15  // At most 15 minutes in between requests
+	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
+	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
 
 	ticker := backoff.NewTicker(backoffParams)
 

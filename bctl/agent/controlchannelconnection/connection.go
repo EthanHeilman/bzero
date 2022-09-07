@@ -22,7 +22,9 @@ import (
 )
 
 const (
-	controlHubEndpoint = "/api/v1/hub/control"
+	controlHubEndpoint       = "/api/v1/hub/control"
+	waitForCloseTimeout      = 10 * time.Second
+	MaximumReconnectWaitTime = 1 * time.Hour
 )
 
 type ControlChannelConnection struct {
@@ -96,59 +98,64 @@ func New(
 	return &conn, nil
 }
 
-func (a *ControlChannelConnection) receive() {
+func (c *ControlChannelConnection) receive() {
 	for {
 		select {
-		case <-a.tmb.Dead():
+		case <-c.tmb.Dead():
 			return
-		case message := <-a.client.Inbound():
+		case message := <-c.client.Inbound():
 
 			// Otherwise assume that the invocation contains a single AgentMessage argument
 			if len(message.Arguments) != 1 {
-				a.logger.Errorf("expected a single agent message argument but got %d arguments", len(message.Arguments))
+				c.logger.Errorf("expected a single agent message argument but got %d arguments", len(message.Arguments))
 			}
 
 			var agentMessage am.AgentMessage
 			if err := json.Unmarshal(message.Arguments[0], &agentMessage); err != nil {
-				a.logger.Errorf("error unmarshalling %s message: %s", message.Target, err)
+				c.logger.Errorf("error unmarshalling %s message: %s", message.Target, err)
 			}
 
-			if err := a.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
-				a.logger.Errorf("failed to forward agent message to datachannel: %s", err)
+			if err := c.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
+				c.logger.Errorf("failed to forward agent message to datachannel: %s", err)
 			}
 		}
 	}
 }
 
-func (a *ControlChannelConnection) Send(agentMessage am.AgentMessage) {
-	a.sendQueue <- &agentMessage
+func (c *ControlChannelConnection) Send(agentMessage am.AgentMessage) {
+	c.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (a *ControlChannelConnection) Subscribe(id string, channel broker.IChannel) {
-	a.broker.Subscribe(id, channel)
+func (c *ControlChannelConnection) Subscribe(id string, channel broker.IChannel) {
+	c.broker.Subscribe(id, channel)
 }
 
-func (a *ControlChannelConnection) Ready() bool {
-	return a.ready
+func (c *ControlChannelConnection) Ready() bool {
+	return c.ready
 }
 
-func (a *ControlChannelConnection) Done() <-chan struct{} {
-	return a.tmb.Dead()
+func (c *ControlChannelConnection) Done() <-chan struct{} {
+	return c.tmb.Dead()
 }
 
-func (a *ControlChannelConnection) Err() error {
-	return a.tmb.Err()
+func (c *ControlChannelConnection) Err() error {
+	return c.tmb.Err()
 }
 
-func (a *ControlChannelConnection) Close(reason error) {
-	if a.tmb.Alive() {
-		a.tmb.Kill(reason)
-		a.tmb.Wait()
+func (c *ControlChannelConnection) Close(reason error) {
+	if c.tmb.Alive() {
+		c.tmb.Kill(reason)
+
+		select {
+		case <-c.tmb.Dead():
+		case <-time.After(waitForCloseTimeout):
+			c.logger.Info("Timed out waiting for connection to close")
+		}
 	}
 }
 
-func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
+func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.ParseRequestURI(connUrl)
 	if err != nil {
@@ -164,22 +171,21 @@ func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, 
 	go func() {
 		select {
 		case <-ctx.Done():
-			return
-		case <-a.tmb.Dying():
+		case <-c.tmb.Dying():
 			cancel()
 		}
 	}()
 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = time.Hour * 72 // Wait in total at most 72 hours
-	backoffParams.MaxInterval = time.Minute * 15  // At most 15 minutes in between requests
+	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
+	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
 
 	ticker := backoff.NewTicker(backoffParams)
 
 	for {
 		select {
-		case <-a.tmb.Dying():
+		case <-c.tmb.Dying():
 			return nil
 		case _, ok := <-ticker.C:
 			if !ok {
@@ -192,8 +198,8 @@ func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, 
 				return fmt.Errorf("failed to retrieve agent vault: %s", err)
 			}
 
-			if solvedChallenge, err := challenge.Get(a.logger, connUrl, params["target_id"][0], params["version"][0], config.Data.PrivateKey, ctx); err != nil {
-				a.logger.Debugf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
+			if solvedChallenge, err := challenge.Get(c.logger, connUrl, params["target_id"][0], params["version"][0], config.Data.PrivateKey, ctx); err != nil {
+				c.logger.Debugf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
 			} else {
 				params["solved_challenge"] = []string{solvedChallenge}
@@ -206,12 +212,12 @@ func (a *ControlChannelConnection) connect(connUrl string, headers http.Header, 
 				params["signed_agent_version"] = []string{signedAgentVersion}
 			}
 
-			if err := a.client.Connect(ctx, connectionUrl.String(), headers, params, targetSelectHandler); err != nil {
-				a.logger.Infof("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
+			if err := c.client.Connect(ctx, connectionUrl.String(), headers, params, targetSelectHandler); err != nil {
+				c.logger.Infof("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
 			} else {
-				a.logger.Infof("Successfully connected to %s", connUrl)
-				a.ready = true
+				c.logger.Infof("Successfully connected to %s", connUrl)
+				c.ready = true
 				return nil
 			}
 		}
