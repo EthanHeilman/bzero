@@ -15,6 +15,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,6 +35,9 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 	var doneChan chan struct{}
 	var inboundChan chan *signalr.SignalRMessage
 	var err error
+
+	fakeKeyPair, _ := tests.GenerateEd25519Key()
+	fakePrivateKey := fakeKeyPair.Base64EncodedPrivateKey
 
 	logger := logger.MockLogger()
 	params := url.Values{
@@ -71,7 +75,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, err = New(logger, challengeServer.Addr, params, headers, mockClient)
+				conn, err = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -89,7 +93,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, params, headers, mockClient)
+				_, err = New(logger, malformedUrl, fakePrivateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -108,7 +112,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -141,7 +145,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -164,7 +168,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -180,7 +184,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"))
 			})
 

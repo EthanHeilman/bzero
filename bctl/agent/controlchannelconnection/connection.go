@@ -13,7 +13,6 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection/challenge"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -45,6 +44,7 @@ type ControlChannelConnection struct {
 func New(
 	logger *logger.Logger,
 	connUrl string,
+	privateKey string,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
@@ -57,7 +57,7 @@ func New(
 		sendQueue: make(chan *am.AgentMessage, 50),
 	}
 
-	if err := conn.connect(connUrl, headers, params); err != nil {
+	if err := conn.connect(connUrl, headers, params, privateKey); err != nil {
 		return nil, err
 	}
 
@@ -83,8 +83,8 @@ func New(
 				conn.ready = false
 
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(connUrl, headers, params); err != nil {
-					logger.Errorf("failed to connect to BastionZero: %s", err)
+				if err := conn.connect(connUrl, headers, params, privateKey); err != nil {
+					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
 			case message := <-conn.sendQueue:
@@ -155,7 +155,7 @@ func (c *ControlChannelConnection) Close(reason error) {
 	}
 }
 
-func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values) error {
+func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values, privateKey string) error {
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.ParseRequestURI(connUrl)
 	if err != nil {
@@ -192,13 +192,7 @@ func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, 
 				return fmt.Errorf("failed to connect after %s", backoffParams.MaxElapsedTime)
 			}
 
-			// First get the config from the vault
-			config, err := vault.LoadVault()
-			if err != nil {
-				return fmt.Errorf("failed to retrieve agent vault: %s", err)
-			}
-
-			if solvedChallenge, err := challenge.Get(c.logger, connUrl, params["target_id"][0], params["version"][0], config.Data.PrivateKey, ctx); err != nil {
+			if solvedChallenge, err := challenge.Get(c.logger, connUrl, params["target_id"][0], params["version"][0], privateKey, ctx); err != nil {
 				c.logger.Debugf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
 			} else {
@@ -206,7 +200,7 @@ func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, 
 			}
 
 			// And sign our agent version
-			if signedAgentVersion, err := challenge.Solve(params["version"][0], config.Data.PrivateKey); err != nil {
+			if signedAgentVersion, err := challenge.Solve(params["version"][0], privateKey); err != nil {
 				return fmt.Errorf("error signing agent version: %s", err)
 			} else {
 				params["signed_agent_version"] = []string{signedAgentVersion}

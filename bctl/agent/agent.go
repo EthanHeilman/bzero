@@ -293,7 +293,7 @@ func (a *Agent) startControlChannel() error {
 
 	// Make our connection
 	client := signalr.New(srLogger, websocket.New(wsLogger))
-	conn, err := controlchannelconnection.New(connLogger, serviceUrl, params, headers, client)
+	conn, err := controlchannelconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client)
 	if err != nil {
 		return err
 	}
