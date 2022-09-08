@@ -1,4 +1,4 @@
-package controlchannelconnection
+package controlconnection
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection/challenge"
+	"bastionzero.com/bctl/v1/bctl/agent/controlconnection/challenge"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -26,7 +26,7 @@ const (
 	MaximumReconnectWaitTime = 1 * time.Hour
 )
 
-type ControlChannelConnection struct {
+type ControlConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	ready  bool
@@ -50,7 +50,7 @@ func New(
 	client messenger.Messenger,
 ) (connection.Connection, error) {
 
-	conn := ControlChannelConnection{
+	conn := ControlConnection{
 		logger:    logger,
 		client:    client,
 		broker:    broker.New(),
@@ -98,7 +98,7 @@ func New(
 	return &conn, nil
 }
 
-func (c *ControlChannelConnection) receive() {
+func (c *ControlConnection) receive() {
 	for {
 		select {
 		case <-c.tmb.Dead():
@@ -122,28 +122,28 @@ func (c *ControlChannelConnection) receive() {
 	}
 }
 
-func (c *ControlChannelConnection) Send(agentMessage am.AgentMessage) {
+func (c *ControlConnection) Send(agentMessage am.AgentMessage) {
 	c.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (c *ControlChannelConnection) Subscribe(id string, channel broker.IChannel) {
+func (c *ControlConnection) Subscribe(id string, channel broker.IChannel) {
 	c.broker.Subscribe(id, channel)
 }
 
-func (c *ControlChannelConnection) Ready() bool {
+func (c *ControlConnection) Ready() bool {
 	return c.ready
 }
 
-func (c *ControlChannelConnection) Done() <-chan struct{} {
+func (c *ControlConnection) Done() <-chan struct{} {
 	return c.tmb.Dead()
 }
 
-func (c *ControlChannelConnection) Err() error {
+func (c *ControlConnection) Err() error {
 	return c.tmb.Err()
 }
 
-func (c *ControlChannelConnection) Close(reason error, timeout time.Duration) {
+func (c *ControlConnection) Close(reason error, timeout time.Duration) {
 	if c.tmb.Alive() {
 		c.logger.Infof("Connection closing because: %s", reason)
 
@@ -159,7 +159,7 @@ func (c *ControlChannelConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (c *ControlChannelConnection) connect(connUrl string, headers http.Header, params url.Values, privateKey string) error {
+func (c *ControlConnection) connect(connUrl string, headers http.Header, params url.Values, privateKey string) error {
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.ParseRequestURI(connUrl)
 	if err != nil {

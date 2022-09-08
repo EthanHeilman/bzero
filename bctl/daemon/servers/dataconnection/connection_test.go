@@ -1,4 +1,4 @@
-package datachannelconnection
+package dataconnection
 
 import (
 	"encoding/json"

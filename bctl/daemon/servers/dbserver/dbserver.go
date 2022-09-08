@@ -13,7 +13,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
-	"bastionzero.com/bctl/v1/bctl/daemon/servers/datachannelconnection"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
@@ -75,7 +75,7 @@ func New(logger *logger.Logger,
 	srLogger := logger.GetComponentLogger("SignalR")
 
 	client := signalr.New(srLogger, websocket.New(wsLogger))
-	if client, err := datachannelconnection.New(subLogger, connUrl, params, headers, client); err != nil {
+	if client, err := dataconnection.New(subLogger, connUrl, params, headers, client); err != nil {
 		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {
 		server.conn = client

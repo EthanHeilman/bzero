@@ -1,4 +1,4 @@
-package datachannelconnection
+package dataconnection
 
 import (
 	"context"
@@ -24,7 +24,7 @@ const (
 	MaximumReconnectWaitTime = 1 * time.Hour
 )
 
-type DataChannelConnection struct {
+type DataConnection struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	ready  bool
@@ -54,7 +54,7 @@ func New(
 	}
 	connectionUrl.Path = path.Join(connectionUrl.Path, agentHubEndpoint)
 
-	conn := DataChannelConnection{
+	conn := DataConnection{
 		logger:    logger,
 		client:    client,
 		broker:    broker.New(),
@@ -98,7 +98,7 @@ func New(
 	return &conn, nil
 }
 
-func (d *DataChannelConnection) receive() {
+func (d *DataConnection) receive() {
 	for {
 		select {
 		case <-d.tmb.Dead():
@@ -122,28 +122,28 @@ func (d *DataChannelConnection) receive() {
 	}
 }
 
-func (d *DataChannelConnection) Send(agentMessage am.AgentMessage) {
+func (d *DataConnection) Send(agentMessage am.AgentMessage) {
 	d.sendQueue <- &agentMessage
 }
 
 // add channel to channels dictionary for forwarding incoming messages
-func (d *DataChannelConnection) Subscribe(id string, channel broker.IChannel) {
+func (d *DataConnection) Subscribe(id string, channel broker.IChannel) {
 	d.broker.Subscribe(id, channel)
 }
 
-func (d *DataChannelConnection) Ready() bool {
+func (d *DataConnection) Ready() bool {
 	return d.ready
 }
 
-func (d *DataChannelConnection) Done() <-chan struct{} {
+func (d *DataConnection) Done() <-chan struct{} {
 	return d.tmb.Dead()
 }
 
-func (d *DataChannelConnection) Err() error {
+func (d *DataConnection) Err() error {
 	return d.tmb.Err()
 }
 
-func (d *DataChannelConnection) Close(reason error, timeout time.Duration) {
+func (d *DataConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
 		d.logger.Infof("Connection closing because: %s", reason)
 
@@ -159,7 +159,7 @@ func (d *DataChannelConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (d *DataChannelConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
 	// Make a context and tie it in with our tomb and then send it everywhere
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

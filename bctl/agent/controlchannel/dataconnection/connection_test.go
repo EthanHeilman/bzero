@@ -1,4 +1,4 @@
-package controlchannelconnection
+package dataconnection
 
 import (
 	"encoding/json"
@@ -8,43 +8,33 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection/challenge"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
-	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
 )
 
-func TestControlChannelConnection(t *testing.T) {
+func TestDatachannelConnection(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Agent Control Channel Connection Suite")
+	RunSpecs(t, "Agent Datachannel Connection Suite")
 }
 
-var _ = Describe("Agent Control Channel Connection", Ordered, func() {
+var _ = Describe("Agent Datachannel Connection", Ordered, func() {
+	validUrl := "localhost:0"
+
 	var conn connection.Connection
 	var mockClient *messenger.MockMessenger
-	var challengeServer *mocks.MockServer
-
 	var doneChan chan struct{}
 	var inboundChan chan *signalr.SignalRMessage
 	var err error
 
-	fakeKeyPair, _ := tests.GenerateEd25519Key()
-	fakePrivateKey := fakeKeyPair.Base64EncodedPrivateKey
-
 	logger := logger.MockLogger()
-	params := url.Values{
-		"public_key": {"publicKey"},
-		"version":    {"agentVersion"},
-		"target_id":  {"targetId"},
-	}
+	params := url.Values{}
 	headers := http.Header{}
 
 	setupHappyClient := func() {
@@ -60,31 +50,21 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 		mockClient.On("Inbound").Return(inboundChan)
 	}
 
-	setupHappyChallengeServer := func() {
-		challengeServer = mocks.NewMockServer(mocks.MockHandler{
-			Endpoint: challenge.ChallengeEndpoint,
-			HandlerFunc: func(w http.ResponseWriter, r *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			},
-		})
-	}
-
 	Context("Connection", func() {
 		When("connecting with a valid connection url", func() {
 
 			BeforeEach(func() {
-				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, err = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, err = New(logger, validUrl, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
-				Expect(err).ToNot(HaveOccurred(), "connection did not fail to instantiate")
+				Expect(err).ToNot(HaveOccurred(), "connection object creation failed")
 			})
 
 			It("connects successfully", func() {
 				time.Sleep(time.Second)
-				Expect(conn.Ready()).To(Equal(true), "connection failed to connect")
+				Expect(conn.Ready()).To(Equal(true), "connection failed to connect and/or set itself as ready")
 			})
 		})
 
@@ -93,11 +73,11 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakePrivateKey, params, headers, mockClient)
+				_, err = New(logger, malformedUrl, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
-				Expect(err).To(HaveOccurred(), "connection successfully instantiated")
+				Expect(err).To(HaveOccurred(), "there was no error creating our connection object")
 			})
 		})
 	})
@@ -110,9 +90,8 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -143,9 +122,8 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			}
 
 			BeforeEach(func() {
-				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -166,31 +144,29 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 		When("the underlying connection dies", func() {
 
 			BeforeEach(func() {
-				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
 
-			It("tries to reconnect", func() {
+			It("dies", func() {
 				time.Sleep(time.Second) // allow connection time to catch death
-				Expect(conn.Ready()).To(Equal(true), "the connection is dead")
+				Expect(conn.Ready()).To(Equal(false), "the connection did not disconnect")
 			})
 		})
 
 		When("it is closed from above", func() {
 
 			BeforeEach(func() {
-				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 
 			It("dies", func() {
 				time.Sleep(time.Second) // allow connection time to catch death
-				Expect(conn.Ready()).To(Equal(false), "the connection is still alive")
+				Expect(conn.Ready()).To(Equal(false), "connectino failed to shut down")
 			})
 		})
 	})

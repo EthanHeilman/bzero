@@ -14,13 +14,14 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannelconnection"
+	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -132,7 +133,7 @@ type Agent struct {
 	config         *vault.Vault
 	logger         *logger.Logger
 	fileIo         bzio.BzFileIo
-	conn           *controlchannelconnection.ControlChannelConnection
+	conn           connection.Connection
 	controlChannel *controlchannel.ControlChannel
 
 	agentShutdownChan chan error
@@ -293,7 +294,7 @@ func (a *Agent) startControlChannel() error {
 
 	// Make our connection
 	client := signalr.New(srLogger, websocket.New(wsLogger))
-	conn, err := controlchannelconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client)
+	conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client)
 	if err != nil {
 		return err
 	}
@@ -305,7 +306,7 @@ func (a *Agent) startControlChannel() error {
 }
 
 func (a *Agent) monitorControlChannel() {
-	maximumMissedPongSets := int(controlchannelconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	maximumMissedPongSets := int(controlconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
 	missedPongSets := 0
 
 	for {

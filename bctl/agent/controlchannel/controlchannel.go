@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/datachannelconnection"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
@@ -253,7 +253,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	srLogger := c.logger.GetComponentLogger("SignalR")
 
 	client := signalr.New(srLogger, websocket.New(wsLogger))
-	if conn, err := datachannelconnection.New(subLogger, message.ConnectionServiceUrl, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
