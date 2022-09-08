@@ -223,6 +223,8 @@ func (d *DataConnection) Close(reason error, timeout time.Duration) {
 }
 
 func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+	d.logger.Infof("Establishing connection with %s", connUrl.String())
+
 	// Make a context and tie it in with our tomb and then send it everywhere
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

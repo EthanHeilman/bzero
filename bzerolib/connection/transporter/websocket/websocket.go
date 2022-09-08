@@ -93,6 +93,7 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 
 func (w *Websocket) receive() error {
 	defer w.logger.Infof("Websocket connection closed")
+	w.logger.Infof("Websocket connection started")
 
 	for {
 		// Read incoming message

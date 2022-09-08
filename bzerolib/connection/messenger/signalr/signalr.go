@@ -99,18 +99,22 @@ func (s *SignalR) Connect(
 	}
 
 	// Connect to our endpoint
+	s.logger.Infof("Making websocket connection")
 	if err := s.client.Dial(u, headers, ctx); err != nil {
 		return fmt.Errorf("failed to connect to endpoint %s: %w", u.String(), err)
 	}
 
 	// Negotiate our SignalR version
 	// Ref: https://stackoverflow.com/questions/65214787/signalr-websockets-and-go
+	s.logger.Infof("Initiating SignalR handshake")
 	versionMessageBytes := append([]byte(`{"protocol": "json","version": 1}`), signalRMessageTerminatorByte)
 	if err := s.client.Send(versionMessageBytes); err != nil {
 		rerr := fmt.Errorf("failed to negotiate SignalR version: %w", err)
 		s.client.Close(rerr)
 		return rerr
 	}
+
+	s.logger.Infof("Sucessfully established SignalR protocol")
 
 	// If the handshake was successful, then we've made our connection and we can
 	// start listening and sending on it
