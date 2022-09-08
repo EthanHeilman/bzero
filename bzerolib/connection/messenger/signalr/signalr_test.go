@@ -12,7 +12,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests/mocks"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -25,26 +24,21 @@ func TestSignalR(t *testing.T) {
 var _ = Describe("SignalR", Ordered, func() {
 	var doneChan chan struct{}
 	var inboundChan chan *[]byte
-	var negotiateServer *mocks.MockServer
 	var mockTransport *transporter.MockTransporter
 	var signalR *SignalR
+
+	// This needs to be correctly formatted but we don't care what's on the other side
+	fakeUrl := "http://localhost:0"
 
 	logger := logger.MockLogger()
 	ctx := context.Background()
 	testBytes := []byte("whooopie")
-	endpoint := "/" + negotiateEndpoint
 
 	testTargetFunc := func(msg agentmessage.AgentMessage) (string, error) {
 		return "TestSignalRMethod", nil
 	}
 
 	setupHappyTransport := func() {
-		// Startup a server to handle negotiation
-		negotiateServer = mocks.NewMockServer(mocks.MockHandler{
-			Endpoint:    endpoint,
-			HandlerFunc: handleNegotiate,
-		})
-
 		mockTransport = &transporter.MockTransporter{}
 		mockTransport.On("Dial").Return(nil)
 		mockTransport.On("Send").Return(nil)
@@ -57,45 +51,19 @@ var _ = Describe("SignalR", Ordered, func() {
 		mockTransport.On("Inbound").Return(inboundChan)
 
 		signalR = New(logger, mockTransport)
-		signalR.Connect(ctx, negotiateServer.Addr, http.Header{}, url.Values{}, testTargetFunc)
+		signalR.Connect(ctx, fakeUrl, http.Header{}, url.Values{}, testTargetFunc)
 	}
 
 	Context("Connection", func() {
-		When("It fails to negotiate", func() {
-			testUrlWithNoListener := "localhost:0"
-			var err error
-
-			BeforeEach(func() {
-				mockTransport = &transporter.MockTransporter{}
-				signalR = New(logger, mockTransport)
-
-				err = signalR.Connect(ctx, testUrlWithNoListener, http.Header{}, url.Values{}, testTargetFunc)
-			})
-
-			It("fails to create the connection", func() {
-				Expect(err).To(HaveOccurred(), "SignalR should have failed to connect")
-			})
-		})
-
 		When("The underlying connection fails to connect", func() {
 			var err error
 
 			BeforeEach(func() {
-				// Startup a server to handle negotiation
-				negotiateServer = mocks.NewMockServer(mocks.MockHandler{
-					Endpoint:    endpoint,
-					HandlerFunc: handleNegotiate,
-				})
-
 				mockTransport = &transporter.MockTransporter{}
 				mockTransport.On("Dial").Return(fmt.Errorf("failure"))
 
 				signalR = New(logger, mockTransport)
-				err = signalR.Connect(ctx, negotiateServer.Addr, http.Header{}, url.Values{}, testTargetFunc)
-			})
-
-			AfterEach(func() {
-				negotiateServer.Close()
+				err = signalR.Connect(ctx, fakeUrl, http.Header{}, url.Values{}, testTargetFunc)
 			})
 
 			It("fails to create the connection", func() {
@@ -116,10 +84,6 @@ var _ = Describe("SignalR", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyTransport()
 				err = signalR.Send(testAgentMessage)
-			})
-
-			AfterEach(func() {
-				negotiateServer.Close()
 			})
 
 			It("is able to send without error", func() {
@@ -153,10 +117,6 @@ var _ = Describe("SignalR", Ordered, func() {
 				inboundChan <- &validTestSignalRMessageBytes
 			})
 
-			AfterEach(func() {
-				negotiateServer.Close()
-			})
-
 			It("is able to receive", func() {
 				message := <-signalR.Inbound()
 
@@ -183,10 +143,6 @@ var _ = Describe("SignalR", Ordered, func() {
 				signalR.Close(fmt.Errorf("testing"))
 			})
 
-			AfterEach(func() {
-				negotiateServer.Close()
-			})
-
 			It("closes in a reasonable time", func() {
 				select {
 				case <-signalR.Done():
@@ -202,10 +158,6 @@ var _ = Describe("SignalR", Ordered, func() {
 				setupHappyTransport()
 
 				close(doneChan)
-			})
-
-			AfterEach(func() {
-				negotiateServer.Close()
 			})
 
 			It("closes in a reasonable time", func() {

@@ -18,14 +18,9 @@ import (
 	"time"
 
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"gopkg.in/tomb.v2"
-)
-
-const (
-	negotiateEndpoint = "negotiate"
 )
 
 type SignalR struct {
@@ -93,10 +88,9 @@ func (s *SignalR) Connect(
 		s.doneChan = make(chan struct{})
 	}
 
-	// Make negotiation call to initiate handshake
-	if err := s.negotiate(targetUrl, ctx); err != nil {
-		return fmt.Errorf("failed to complete SignalR handshake: %w", err)
-	}
+	// Normally SignalR would require a negotiate call here to initiate the connection,
+	// however since we're only making websockets, we can omit that
+	// https://github.com/aspnet/SignalR/blob/master/specs/TransportProtocols.md#websockets-full-duplex
 
 	// Build our Url
 	u, err := buildUrl(targetUrl, params)
@@ -165,25 +159,6 @@ func (s *SignalR) avengersEndgame() error {
 			return fmt.Errorf("connection failed to close, forcing shutdown")
 		}
 	}
-}
-
-func (s *SignalR) negotiate(connectionUrl string, ctx context.Context) error {
-	options := httpclient.HTTPOptions{
-		Endpoint: negotiateEndpoint,
-	}
-
-	client, err := httpclient.New(s.logger, connectionUrl, options)
-	if err != nil {
-		return err
-	}
-
-	// Make negotiate call
-	_, err = client.Post(ctx)
-	if err != nil {
-		return fmt.Errorf("failed on call to negotiate: %w", err)
-	}
-
-	return nil
 }
 
 func (s *SignalR) unwrap(raw []byte) error {
