@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -25,6 +26,8 @@ const (
 	// TODO: make these easily configurable values
 	maxRequestSize = 10 * 1024 * 1024  // 10MB
 	maxFileUpload  = 151 * 1024 * 1024 // 151MB a little extra for request fluff
+
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type WebServer struct {
@@ -103,7 +106,7 @@ func (w *WebServer) Start() error {
 
 func (w *WebServer) Close(err error) {
 	if w.conn != nil {
-		w.conn.Close(err)
+		w.conn.Close(err, connectionCloseTimeout)
 	}
 	w.errChan <- err
 }

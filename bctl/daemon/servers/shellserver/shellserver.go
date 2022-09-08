@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -18,6 +19,10 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
+)
+
+const (
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type ShellServer struct {
@@ -74,7 +79,7 @@ func New(
 
 func (ss *ShellServer) Start() error {
 	if err := ss.newDataChannel(string(bzshell.DefaultShell)); err != nil {
-		ss.conn.Close(err)
+		ss.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to create datachannel: %s", err)
 	}
 	return nil
@@ -82,7 +87,7 @@ func (ss *ShellServer) Start() error {
 
 func (ss *ShellServer) Close(err error) {
 	if ss.conn != nil {
-		ss.conn.Close(err)
+		ss.conn.Close(err, connectionCloseTimeout)
 	}
 	ss.errChan <- err
 }

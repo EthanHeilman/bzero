@@ -161,7 +161,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyClient()
 				conn, _ = New(logger, validUrl, params, headers, mockClient)
-				conn.Close(fmt.Errorf("felt like it"))
+				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 
 			It("dies", func() {

@@ -32,7 +32,6 @@ type SignalR struct {
 	tmb      tomb.Tomb
 	logger   *logger.Logger
 	doneChan chan struct{}
-	err      error
 
 	client  transporter.Transporter
 	inbound chan *SignalRMessage
@@ -114,8 +113,9 @@ func (s *SignalR) Connect(
 	// Ref: https://stackoverflow.com/questions/65214787/signalr-websockets-and-go
 	versionMessageBytes := append([]byte(`{"protocol": "json","version": 1}`), signalRMessageTerminatorByte)
 	if err := s.client.Send(versionMessageBytes); err != nil {
-		s.client.Close()
-		return fmt.Errorf("failed to negotiate SignalR version: %w", err)
+		rerr := fmt.Errorf("failed to negotiate SignalR version: %w", err)
+		s.client.Close(rerr)
+		return rerr
 	}
 
 	// If the handshake was successful, then we've made our connection and we can
@@ -133,7 +133,7 @@ func (s *SignalR) Connect(
 					s.logger.Error(err)
 				}
 
-				s.client.Close()
+				s.client.Close(err)
 				return err
 			case <-s.client.Done():
 				return fmt.Errorf("closed websocket")

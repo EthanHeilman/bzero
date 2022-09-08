@@ -343,7 +343,7 @@ func (a *Agent) Close(reason error) {
 	}
 
 	if a.conn != nil {
-		a.conn.Close(reason)
+		a.conn.Close(reason, 10*time.Second)
 	}
 
 	a.config.Data.ShutdownState = fmt.Sprintf("%+v", getState())

@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -20,7 +22,7 @@ func TestWebsocket(t *testing.T) {
 
 var _ = Describe("Websocket", Ordered, func() {
 	var server *MockWebsocketServer
-	var websocket *Websocket
+	var websocket transporter.Transporter
 	var testUrl *url.URL
 
 	logger := logger.MockLogger()
@@ -125,7 +127,7 @@ var _ = Describe("Websocket", Ordered, func() {
 				testUrl, _ = url.Parse(server.Addr)
 
 				websocket.Dial(testUrl, http.Header{}, ctx)
-				websocket.Close()
+				websocket.Close(fmt.Errorf("felt like it"))
 			})
 
 			AfterEach(func() {

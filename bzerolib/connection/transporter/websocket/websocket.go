@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	gorilla "github.com/gorilla/websocket"
+	"gopkg.in/tomb.v2"
 )
 
 const (
@@ -27,37 +29,41 @@ const (
 var websocketUrlScheme = httpsOnlyWebsocketScheme
 
 type Websocket struct {
+	tmb    tomb.Tomb
 	logger *logger.Logger
 	client *gorilla.Conn
-
-	// Variables for managing elegant shutdown
-	doneChan chan struct{}
-	isDead   bool
-	err      error
 
 	// Received messages
 	inbound chan *[]byte
 }
 
-func New(logger *logger.Logger) *Websocket {
+func New(logger *logger.Logger) transporter.Transporter {
 	return &Websocket{
-		doneChan: make(chan struct{}),
-		logger:   logger,
-		inbound:  make(chan *[]byte, 200),
+		logger:  logger,
+		inbound: make(chan *[]byte, 200),
 	}
 }
 
-func (w *Websocket) Close() {
-	w.isDead = true
-	w.client.Close()
+func (w *Websocket) Close(reason error) {
+	if w.tmb.Alive() {
+		w.logger.Infof("Websocket connection closing because: %s", reason)
+
+		// close the websocket connection
+		w.client.Close()
+
+		w.tmb.Kill(reason)
+		w.tmb.Wait()
+	} else {
+		w.logger.Infof("Close was called while in a dying state. Returning immediately")
+	}
 }
 
 func (w *Websocket) Done() <-chan struct{} {
-	return w.doneChan
+	return w.tmb.Dead()
 }
 
 func (w *Websocket) Err() error {
-	return w.err
+	return w.tmb.Err()
 }
 
 func (w *Websocket) Inbound() <-chan *[]byte {
@@ -69,11 +75,8 @@ func (w *Websocket) Send(message []byte) error {
 }
 
 func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Context) (err error) {
-	// Check to see if we have to reinitialize our variables in case this is post death
-	if w.isDead {
-		w.isDead = false
-		w.doneChan = make(chan struct{})
-	}
+	// Reinitialize our variables in case this is post death
+	w.tmb = tomb.Tomb{}
 
 	// Make sure url scheme is correct
 	connUrl.Scheme = websocketUrlScheme
@@ -83,31 +86,26 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 		return fmt.Errorf("error dialing websocket: %w", err)
 	}
 
-	go w.receive()
+	w.tmb.Go(w.receive)
 
 	return nil
 }
 
-func (w *Websocket) receive() {
-	defer func() {
-		w.logger.Infof("Websocket connection closed")
-		w.isDead = true
-		close(w.doneChan)
-	}()
+func (w *Websocket) receive() error {
+	defer w.logger.Infof("Websocket connection closed")
 
 	for {
 		// Read incoming message
-		if _, rawMessage, err := w.client.ReadMessage(); w.isDead {
-			return
+		if _, rawMessage, err := w.client.ReadMessage(); !w.tmb.Alive() {
+			return nil
 		} else if err != nil {
 			// Check if it's a clean exit
 			if !gorilla.IsCloseError(err, gorilla.CloseNormalClosure) {
 				w.logger.Error(err)
-				w.err = err
 			} else {
 				w.logger.Info("Websocket connection closed normally")
 			}
-			return
+			return err
 		} else {
 			w.inbound <- &rawMessage
 		}

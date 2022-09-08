@@ -94,10 +94,8 @@ func Start(logger *logger.Logger,
 		isSendingPongs: conn.Ready(),
 	}
 
-	// The ChannelId is mostly for distinguishing multiple channels over a single connection but the control channel has
-	// its own dedicated connection.  This also makes it so there can only ever be one control channel associated with a
-	// given connection at any time.
-	// TODO: figure out a way to let control channel know its own id before it subscribes
+	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
+	// subscribing to the connection with a unique id. As long as we use the same one when we unsubscribe
 	conn.Subscribe("", control)
 
 	// Set up our handler to deal with incoming messages
@@ -140,7 +138,7 @@ func Start(logger *logger.Logger,
 					})
 
 					// Then close the connection
-					connMeta.Client.Close(fmt.Errorf("control channel has been closed"))
+					connMeta.Client.Close(control.tmb.Err(), 10*time.Second)
 				}
 				return nil
 			case agentMessage := <-control.inputChan:
@@ -312,9 +310,8 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
 			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
-				// this can take a little time, but we don't want it blocking other things
 				c.logger.Infof("Closing connection with id %s", cwRequest.ConnectionId)
-				conn.Client.Close(errors.New("connection closed on daemon"))
+				conn.Client.Close(errors.New("connection closed on daemon"), 10*time.Second)
 				c.deleteConnectionsMap(cwRequest.ConnectionId)
 			} else {
 				return fmt.Errorf("could not close non existent connection with id: %s", cwRequest.ConnectionId)

@@ -32,7 +32,7 @@ func (m *MockTransporter) Send(message []byte) error {
 	return args.Error(0)
 }
 
-func (m *MockTransporter) Close() {
+func (m *MockTransporter) Close(reason error) {
 	m.Called()
 }
 

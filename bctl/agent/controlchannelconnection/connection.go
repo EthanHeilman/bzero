@@ -143,15 +143,19 @@ func (c *ControlChannelConnection) Err() error {
 	return c.tmb.Err()
 }
 
-func (c *ControlChannelConnection) Close(reason error) {
+func (c *ControlChannelConnection) Close(reason error, timeout time.Duration) {
 	if c.tmb.Alive() {
+		c.logger.Infof("Connection closing because: %s", reason)
+
 		c.tmb.Kill(reason)
 
 		select {
 		case <-c.tmb.Dead():
-		case <-time.After(waitForCloseTimeout):
-			c.logger.Info("Timed out waiting for connection to close")
+		case <-time.After(timeout):
+			c.logger.Infof("Timed out after %s waiting for connection to close", timeout.String())
 		}
+	} else {
+		c.logger.Infof("Close was called while in a dying state. Returning immediately")
 	}
 }
 

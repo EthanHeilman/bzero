@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -19,6 +20,10 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
+)
+
+const (
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type DbServer struct {
@@ -86,14 +91,14 @@ func (d *DbServer) Start() error {
 	d.logger.Infof("Resolving TCP address for host:port %s:%s", d.localHost, d.localPort)
 	localTcpAddress, err := net.ResolveTCPAddr("tcp", d.localHost+":"+d.localPort)
 	if err != nil {
-		d.conn.Close(err)
+		d.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to resolve TCP address %s", err)
 	}
 
 	d.logger.Infof("Setting up TCP listener")
 	d.tcpListener, err = net.ListenTCP("tcp", localTcpAddress)
 	if err != nil {
-		d.conn.Close(err)
+		d.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to open local port to listen: %s", err)
 	}
 
@@ -107,7 +112,7 @@ func (d *DbServer) Start() error {
 
 func (d *DbServer) Close(err error) {
 	if d.conn != nil {
-		d.conn.Close(err)
+		d.conn.Close(err, connectionCloseTimeout)
 	}
 	if d.tcpListener != nil {
 		d.tcpListener.Close()

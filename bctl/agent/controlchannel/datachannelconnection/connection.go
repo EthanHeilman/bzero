@@ -22,7 +22,6 @@ const (
 	agentHubEndpoint = "hub/agent"
 
 	MaximumReconnectWaitTime = 1 * time.Hour
-	waitForCloseTimeout      = 10 * time.Second
 )
 
 type DataChannelConnection struct {
@@ -144,15 +143,19 @@ func (d *DataChannelConnection) Err() error {
 	return d.tmb.Err()
 }
 
-func (d *DataChannelConnection) Close(reason error) {
+func (d *DataChannelConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
+		d.logger.Infof("Connection closing because: %s", reason)
+
 		d.tmb.Kill(reason)
 
 		select {
 		case <-d.tmb.Dead():
-		case <-time.After(waitForCloseTimeout):
-			d.logger.Info("Timed out waiting for connection to close")
+		case <-time.After(timeout):
+			d.logger.Infof("Timed out after %s waiting for connection to close", timeout.String())
 		}
+	} else {
+		d.logger.Infof("Close was called while in a dying state. Returning immediately")
 	}
 }
 

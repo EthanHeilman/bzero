@@ -185,7 +185,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
 				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
-				conn.Close(fmt.Errorf("felt like it"))
+				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 
 			It("dies", func() {

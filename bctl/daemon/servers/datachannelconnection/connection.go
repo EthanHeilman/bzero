@@ -43,8 +43,6 @@ const (
 	// How long the daemon waits for the agent to connect
 	agentConnectedTimeout = 30 * time.Second
 
-	waitForCloseTimeout = 10 * time.Second
-
 	MaximumReconnectWaitTime = 1 * time.Hour
 )
 
@@ -151,7 +149,7 @@ func (d *DataChannelConnection) processInbound(message signalr.SignalRMessage) e
 	switch message.Target {
 	case agentDisconnected:
 		rerr := fmt.Errorf("the bzero agent terminated the connection")
-		d.Close(rerr)
+		d.tmb.Kill(rerr)
 		return rerr
 	case agentConnected:
 		// Signal the agentReady channel when we receive a message
@@ -204,15 +202,19 @@ func (d *DataChannelConnection) Err() error {
 	return d.tmb.Err()
 }
 
-func (d *DataChannelConnection) Close(reason error) {
+func (d *DataChannelConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
+		d.logger.Infof("Connection closing because: %s", reason)
+
 		d.tmb.Kill(reason)
 
 		select {
 		case <-d.tmb.Dead():
-		case <-time.After(waitForCloseTimeout):
-			d.logger.Info("Timed out waiting for connection to close")
+		case <-time.After(timeout):
+			d.logger.Infof("Timed out after %s waiting for connection to close", timeout.String())
 		}
+	} else {
+		d.logger.Infof("Close was called while in a dying state. Returning immediately")
 	}
 }
 
@@ -264,7 +266,7 @@ func (d *DataChannelConnection) waitForAgentReady() {
 	case <-d.agentReadyChan:
 		d.ready = true
 	case <-time.After(agentConnectedTimeout):
-		d.Close(fmt.Errorf("timed out waiting for agent to connect"))
+		d.tmb.Kill(fmt.Errorf("timed out waiting for agent to connect"))
 	}
 }
 

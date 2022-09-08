@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -29,6 +30,8 @@ const (
 	// The english command and logId are only generated if the user is using "zli kube ..."
 	// So we use this securityTokenDelimiter to split up our token and extract what might be there
 	securityTokenDelimiter = "++++"
+
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type StatusMessage struct {
@@ -134,7 +137,7 @@ func (k *KubeServer) Start() error {
 
 func (k *KubeServer) Close(err error) {
 	if k.conn != nil {
-		k.conn.Close(err)
+		k.conn.Close(err, connectionCloseTimeout)
 	}
 	k.errChan <- err
 }

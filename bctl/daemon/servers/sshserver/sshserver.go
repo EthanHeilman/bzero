@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"time"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
@@ -18,6 +19,10 @@ import (
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
 	"github.com/google/uuid"
+)
+
+const (
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type SshServer struct {
@@ -93,7 +98,7 @@ func New(
 
 func (s *SshServer) Start() error {
 	if err := s.newDataChannel(s.action); err != nil {
-		s.conn.Close(err)
+		s.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to create datachannel: %s", err)
 	}
 	return nil
@@ -101,7 +106,7 @@ func (s *SshServer) Start() error {
 
 func (s *SshServer) Close(err error) {
 	if s.conn != nil {
-		s.conn.Close(err)
+		s.conn.Close(err, connectionCloseTimeout)
 	}
 	s.errChan <- err
 }

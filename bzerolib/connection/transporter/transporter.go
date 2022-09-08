@@ -12,5 +12,5 @@ type Transporter interface {
 	Inbound() <-chan *[]byte
 	Dial(connUrl *url.URL, headers http.Header, ctx context.Context) (err error)
 	Send(message []byte) error
-	Close()
+	Close(reason error)
 }

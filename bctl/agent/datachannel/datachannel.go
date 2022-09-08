@@ -146,17 +146,18 @@ func (d *DataChannel) flushAllOutputChannelMessages() {
 }
 
 func (d *DataChannel) Close(reason error) {
-	if !d.tmb.Alive() {
-		return
-	}
+	if d.tmb.Alive() {
+		d.logger.Infof("Datachannel closing because: %s", reason)
 
-	d.logger.Infof("Datachannel closed because: %s", reason)
-	d.tmb.Kill(reason) // kills all datachannel, plugin, and action goroutines
-	select {
-	case <-d.tmb.Dead():
-		return
-	case <-time.After(closeTimeout):
-		return
+		d.tmb.Kill(reason)
+
+		select {
+		case <-d.tmb.Dead():
+		case <-time.After(closeTimeout):
+			d.logger.Infof("Timed out after %s waiting for datachannel to close", closeTimeout.String())
+		}
+	} else {
+		d.logger.Infof("Close was called while in a dying state. Returning immediately")
 	}
 }
 

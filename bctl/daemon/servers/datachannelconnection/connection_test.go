@@ -191,7 +191,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 				setupHappyClient()
 				conn = setupHappyConnection(mockClient)
 
-				conn.Close(fmt.Errorf("felt like it"))
+				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 
 			It("dies", func() {
