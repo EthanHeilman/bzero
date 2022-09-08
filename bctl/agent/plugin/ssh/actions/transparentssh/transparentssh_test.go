@@ -79,7 +79,7 @@ func startServer(port string) (chan gossh.Channel, chan []byte) {
 }
 
 func newClient(port string) (*TransparentSsh, chan struct{}, chan smsg.StreamMessage) {
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 
 	config := &gossh.ClientConfig{
 		User:            "testUser",

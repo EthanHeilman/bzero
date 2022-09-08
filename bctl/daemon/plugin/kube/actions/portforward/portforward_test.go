@@ -62,7 +62,7 @@ var _ = Describe("Daemon PortForward action", Ordered, func() {
 		performHandshake = oldPerformHandshake
 	})
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 
 	requestId := "rid"
 	logId := "lid"

@@ -142,7 +142,7 @@ var _ = Describe("Daemon keysplitting", func() {
 	}
 
 	// Configure the SUT's logger to print to Ginkgo's writer
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 
 	// Setup SUT that is used by all tests
 	BeforeEach(func() {
