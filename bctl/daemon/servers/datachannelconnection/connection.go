@@ -113,8 +113,12 @@ func New(
 				return nil
 			case <-conn.client.Done():
 				conn.ready = false
-				logger.Infof("Connection with BastionZero closed and we're not retrying")
-				return fmt.Errorf("underlying connection closed")
+
+				logger.Infof("Lost connection to BastionZero, reconnecting...")
+				if err := conn.connect(connectionUrl, headers, params); err != nil {
+					logger.Errorf("failed to reconnect to BastionZero: %s", err)
+					return err
+				}
 			case message := <-conn.sendQueue:
 				if !conn.ready {
 					// Wait for the agent to connect before sending any messages
@@ -148,7 +152,7 @@ func (d *DataChannelConnection) receive() {
 func (d *DataChannelConnection) processInbound(message signalr.SignalRMessage) error {
 	switch message.Target {
 	case agentDisconnected:
-		rerr := fmt.Errorf("the bzero agent terminated the connection")
+		rerr := fmt.Errorf("the bzero agent terminated the connection, not retrying")
 		d.tmb.Kill(rerr)
 		return rerr
 	case agentConnected:
