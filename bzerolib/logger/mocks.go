@@ -2,13 +2,11 @@ package logger
 
 import (
 	"io"
-
-	. "github.com/onsi/ginkgo/v2"
 )
 
-func MockLogger() *Logger {
+func MockLogger(writer io.Writer) *Logger {
 	config := &Config{
-		ConsoleWriters: []io.Writer{GinkgoWriter},
+		ConsoleWriters: []io.Writer{writer},
 	}
 
 	if logger, err := New(config); err == nil {

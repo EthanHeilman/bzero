@@ -22,7 +22,7 @@ func TestSteam(t *testing.T) {
 }
 
 var _ = Describe("Daemon Stream action", func() {
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	requestId := "rid"
 	logId := "lid"
 	command := "logs"

@@ -25,6 +25,8 @@ import (
 const (
 	HeartRate    = 20 * time.Second
 	closeTimeout = 10 * time.Second
+
+	ManualRestartMsg = "received manual restart from user"
 )
 
 type wsMeta struct {
@@ -48,7 +50,7 @@ type ControlChannel struct {
 	inputChan chan am.AgentMessage
 
 	// regularly notifies the agent we are still functioning
-	agentPingChan chan bool
+	agentPongChan chan bool
 
 	// notifies the agent of significant-but-non-fatal runtime errors
 	runtimeErrChan chan error
@@ -60,6 +62,8 @@ type ControlChannel struct {
 	connectionsLock sync.Mutex
 
 	SocketLock sync.Mutex // Ref: https://github.com/gorilla/websocket/issues/119#issuecomment-198710015
+
+	isSendingPongs bool
 }
 
 func Start(logger *logger.Logger,
@@ -79,8 +83,9 @@ func Start(logger *logger.Logger,
 		targetType:     targetType,
 		inputChan:      make(chan am.AgentMessage, 25),
 		connections:    make(map[string]wsMeta),
-		agentPingChan:  make(chan bool),
+		agentPongChan:  make(chan bool),
 		runtimeErrChan: make(chan error),
+		isSendingPongs: websocket.Ready(),
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
@@ -129,7 +134,7 @@ func Start(logger *logger.Logger,
 					})
 
 					// Then close the websocket
-					wsMetadata.Client.Close(fmt.Errorf("control channel has been closed"))
+					wsMetadata.Client.Close(control.tmb.Err())
 				}
 				return nil
 			case agentMessage := <-control.inputChan:
@@ -180,8 +185,30 @@ func (c *ControlChannel) RuntimeErr() <-chan error {
 }
 
 // used to alert anyone who's listening that we're still alive
-func (c *ControlChannel) Ping() <-chan bool {
-	return c.agentPingChan
+func (c *ControlChannel) Pong() <-chan bool {
+	return c.agentPongChan
+}
+
+// the purpose of this method is to prevent a race between the websocket reconnecting and the agent
+// missing a pong from the CC. The mechanism described here should guarnatee that following a websocket reconnect,
+// the agent is guarnateed to receive a reconnection alert from the CC before it expects to receive any healthcheck pongs
+// Without this mechanism, the agent might restart in the time between the websocket reconnecting and us receiving
+// a healthcheck pong from bastion
+func (c *ControlChannel) ShouldBeSendingPongs() bool {
+	readyToSendPongs := c.websocket.Ready()
+
+	// no matter what, update our state based on the websocket's status
+	defer func() { c.isSendingPongs = readyToSendPongs }()
+
+	// if websocket was disconnected the last time we checked, we want to give ourselves time for the agent to hear from us
+	// before it finds out the websocket is ready again, so in this special case, we ask it to wait for one more set of pongs
+	if readyToSendPongs && !c.isSendingPongs {
+		return false
+	} else {
+		// if websocket is disconnected, or if it has been connected for two consecutive calls,
+		// return the status as is
+		return readyToSendPongs
+	}
 }
 
 // Wraps and sends the payload
@@ -258,7 +285,14 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.HealthCheck:
 		// congratulations, we're still functioning and can tell the agent we're alive
-		c.agentPingChan <- true
+		c.agentPongChan <- true
+	case am.Restart:
+		var restartRequest RestartAgentMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &restartRequest); err != nil {
+			c.logger.Errorf("malformed restart agent request: %s", err)
+			restartRequest = RestartAgentMessage{}
+		}
+		c.Close(fmt.Errorf("%s: %+v", ManualRestartMsg, restartRequest))
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {

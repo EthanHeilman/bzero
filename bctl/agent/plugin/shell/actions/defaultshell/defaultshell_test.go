@@ -26,7 +26,7 @@ var _ = Describe("Default Shell", Ordered, func() {
 	runAsUser := "test"
 	testContent := "BastionZero"
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	// need to buffer this to avoid a deadlock because the test is run in series
 	streamMessageChan := make(chan smsg.StreamMessage, 2)
 	doneChan := make(chan struct{})

@@ -23,7 +23,7 @@ func TestDefaultSsh(t *testing.T) {
 }
 
 var _ = Describe("Agent OpaqueSsh action", func() {
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	testUser := "test-user"
 	testData := "testData"
 	testHostKey := "testHostKey"

@@ -67,7 +67,7 @@ var _ = Describe("Agent Exec action", Ordered, func() {
 	oldGetExecutor := getExecutor
 	oldGetConfig := getConfig
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 
 	requestId := "rid"
 	logId := "lid"

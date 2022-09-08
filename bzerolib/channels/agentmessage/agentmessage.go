@@ -42,4 +42,7 @@ const (
 
 	// regular health checks with the agent to make sure it's doing well
 	HealthCheck MessageType = "healthcheck"
+
+	// poison pill message - an order from an admin to restart
+	Restart MessageType = "restart"
 )

@@ -77,7 +77,7 @@ func TestDefaultSsh(t *testing.T) {
 }
 
 var _ = Describe("Daemon TransparentSsh action", func() {
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	identityFilePath := "testIdFile"
 	knownHostsFilePath := "testKhFile"
 	testData := "testData"
