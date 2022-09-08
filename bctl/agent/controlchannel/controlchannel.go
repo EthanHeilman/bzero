@@ -151,7 +151,7 @@ func Start(logger *logger.Logger,
 					}
 				}()
 			case <-conn.Done():
-				control.Close(fmt.Errorf("connection closed with err: %s", conn.Err()))
+				return fmt.Errorf("connection closed with err: %s", conn.Err())
 			}
 		}
 	})
@@ -160,14 +160,19 @@ func Start(logger *logger.Logger,
 }
 
 func (c *ControlChannel) Close(reason error) {
-	c.logger.Infof("Control channel closing because: %s", reason)
-	c.tmb.Kill(reason)
-	// we need to provide a guarantee that this closes even if websockets / plugins are stuck
-	select {
-	case <-c.tmb.Dead():
-		return
-	case <-time.After(closeTimeout):
-		return
+	if c.tmb.Alive() {
+		c.logger.Infof("Control channel closing because: %s", reason)
+
+		c.tmb.Kill(reason)
+
+		// we need to provide a guarantee that this closes even if websockets / plugins are stuck
+		select {
+		case <-c.tmb.Dead():
+		case <-time.After(closeTimeout):
+			c.logger.Infof("Timed out after %s waiting for connection to close", closeTimeout.String())
+		}
+	} else {
+		c.logger.Infof("Close was called while in a dying state")
 	}
 }
 

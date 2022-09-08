@@ -155,7 +155,7 @@ func (c *ControlChannelConnection) Close(reason error, timeout time.Duration) {
 			c.logger.Infof("Timed out after %s waiting for connection to close", timeout.String())
 		}
 	} else {
-		c.logger.Infof("Close was called while in a dying state. Returning immediately")
+		c.logger.Infof("Close was called while in a dying state")
 	}
 }
 

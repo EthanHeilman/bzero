@@ -157,7 +157,7 @@ func (d *DataChannel) Close(reason error) {
 			d.logger.Infof("Timed out after %s waiting for datachannel to close", closeTimeout.String())
 		}
 	} else {
-		d.logger.Infof("Close was called while in a dying state. Returning immediately")
+		d.logger.Infof("Close was called while in a dying state")
 	}
 }
 

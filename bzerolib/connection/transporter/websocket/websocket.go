@@ -54,7 +54,7 @@ func (w *Websocket) Close(reason error) {
 		w.tmb.Kill(reason)
 		w.tmb.Wait()
 	} else {
-		w.logger.Infof("Close was called while in a dying state. Returning immediately")
+		w.logger.Infof("Close was called while in a dying state")
 	}
 }
 
