@@ -227,54 +227,6 @@ func (a *Agent) Run() {
 	}
 }
 
-func setupLogger() (*logger.Logger, error) {
-	config := logger.Config{
-		ConsoleWriters: []io.Writer{os.Stdout},
-	}
-
-	// if this is systemd, output log to file
-	if agentType == Bzero {
-		config.FilePath = bzeroLogFilePath
-	}
-
-	log, err := logger.New(&config)
-	if err == nil {
-		log.AddAgentVersion(getAgentVersion())
-	}
-
-	return log, err
-}
-
-// report early errors to the bastion so we have greater visibility
-func reportError(logger *logger.Logger, errorReport error) {
-	if logger != nil {
-		logger.Error(errorReport)
-	} else {
-		fmt.Println(errorReport.Error())
-	}
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		hostname = ""
-	}
-
-	errReport := report.ErrorReport{
-		Reporter:  "agent-" + getAgentVersion(),
-		Timestamp: fmt.Sprint(time.Now().Unix()),
-		Message:   errorReport.Error(),
-		State: map[string]string{
-			"activationToken":       activationToken,
-			"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
-			"targetName":            targetName,
-			"targetHostName":        hostname,
-			"goos":                  runtime.GOOS,
-			"goarch":                runtime.GOARCH,
-		},
-	}
-
-	report.ReportError(logger, serviceUrl, errReport)
-}
-
 func (a *Agent) startControlChannel() error {
 	headers := http.Header{}
 	params := url.Values{
@@ -363,6 +315,54 @@ func (a *Agent) Close(reason error) {
 	} else {
 		os.Exit(1)
 	}
+}
+
+func setupLogger() (*logger.Logger, error) {
+	config := logger.Config{
+		ConsoleWriters: []io.Writer{os.Stdout},
+	}
+
+	// if this is systemd, output log to file
+	if agentType == Bzero {
+		config.FilePath = bzeroLogFilePath
+	}
+
+	log, err := logger.New(&config)
+	if err == nil {
+		log.AddAgentVersion(getAgentVersion())
+	}
+
+	return log, err
+}
+
+// report early errors to the bastion so we have greater visibility
+func reportError(logger *logger.Logger, errorReport error) {
+	if logger != nil {
+		logger.Error(errorReport)
+	} else {
+		fmt.Println(errorReport.Error())
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+
+	errReport := report.ErrorReport{
+		Reporter:  "agent-" + getAgentVersion(),
+		Timestamp: fmt.Sprint(time.Now().Unix()),
+		Message:   errorReport.Error(),
+		State: map[string]string{
+			"activationToken":       activationToken,
+			"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
+			"targetName":            targetName,
+			"targetHostName":        hostname,
+			"goos":                  runtime.GOOS,
+			"goarch":                runtime.GOARCH,
+		},
+	}
+
+	report.ReportError(logger, serviceUrl, errReport)
 }
 
 func parseFlags() error {
