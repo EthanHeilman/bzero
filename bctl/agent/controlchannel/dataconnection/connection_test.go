@@ -33,7 +33,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	var inboundChan chan *signalr.SignalRMessage
 	var err error
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	params := url.Values{}
 	headers := http.Header{}
 

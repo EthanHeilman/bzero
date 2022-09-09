@@ -25,7 +25,7 @@ var _ = Describe("Websocket", Ordered, func() {
 	var websocket transporter.Transporter
 	var testUrl *url.URL
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
 
 	testSendData := []byte("whooopie")

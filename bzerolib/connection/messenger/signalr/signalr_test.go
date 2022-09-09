@@ -30,7 +30,7 @@ var _ = Describe("SignalR", Ordered, func() {
 	// This needs to be correctly formatted but we don't care what's on the other side
 	fakeUrl := "http://localhost:0"
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
 	testBytes := []byte("whooopie")
 

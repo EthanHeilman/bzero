@@ -23,7 +23,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 	var client *HttpClient
 	var server *mocks.MockServer
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
 
 	Context("Creation", func() {

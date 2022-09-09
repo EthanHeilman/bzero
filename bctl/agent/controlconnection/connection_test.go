@@ -39,7 +39,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 	fakeKeyPair, _ := tests.GenerateEd25519Key()
 	fakePrivateKey := fakeKeyPair.Base64EncodedPrivateKey
 
-	logger := logger.MockLogger()
+	logger := logger.MockLogger(GinkgoWriter)
 	params := url.Values{
 		"public_key": {"publicKey"},
 		"version":    {"agentVersion"},
