@@ -20,6 +20,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
+var maxBackoffInterval = 15 * time.Minute
+
 const (
 	controlHubEndpoint       = "/api/v1/hub/control"
 	waitForCloseTimeout      = 10 * time.Second
@@ -183,7 +185,7 @@ func (c *ControlConnection) connect(connUrl string, headers http.Header, params 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
 	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
-	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
+	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
 
