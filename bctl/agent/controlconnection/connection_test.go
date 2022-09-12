@@ -74,7 +74,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, err = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, err = New(logger, challengeServer.Url, fakePrivateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -111,7 +111,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Url, fakePrivateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -144,7 +144,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Url, fakePrivateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -167,7 +167,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Url, fakePrivateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -183,7 +183,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyChallengeServer()
 				setupHappyClient()
-				conn, _ = New(logger, challengeServer.Addr, fakePrivateKey, params, headers, mockClient)
+				conn, _ = New(logger, challengeServer.Url, fakePrivateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

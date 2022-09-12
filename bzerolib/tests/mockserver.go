@@ -8,8 +8,7 @@ import (
 type MockServer struct {
 	server *httptest.Server
 
-	Addr      string
-	Recorders map[string]*httptest.ResponseRecorder
+	Url string
 }
 
 type MockHandler struct {
@@ -20,23 +19,15 @@ type MockHandler struct {
 func NewMockServer(handlers ...MockHandler) *MockServer {
 	mux := http.NewServeMux()
 
-	recorderMap := make(map[string]*httptest.ResponseRecorder)
 	for _, handler := range handlers {
-		w := httptest.NewRecorder()
-		wrapperFunc := func(writer http.ResponseWriter, r *http.Request) {
-			handler.HandlerFunc(w, r)
-		}
-		mux.HandleFunc(handler.Endpoint, wrapperFunc)
-
-		recorderMap[handler.Endpoint] = w
+		mux.HandleFunc(handler.Endpoint, handler.HandlerFunc)
 	}
 
 	s := httptest.NewServer(mux)
 
 	return &MockServer{
-		server:    s,
-		Addr:      s.URL,
-		Recorders: recorderMap,
+		server: s,
+		Url:    s.URL,
 	}
 }
 

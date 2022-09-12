@@ -23,6 +23,9 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
+// Byte to indicate the end of a SignalR message
+const TerminatorByte = 0x1E
+
 type SignalR struct {
 	tmb      tomb.Tomb
 	logger   *logger.Logger
@@ -107,7 +110,7 @@ func (s *SignalR) Connect(
 	// Negotiate our SignalR version
 	// Ref: https://stackoverflow.com/questions/65214787/signalr-websockets-and-go
 	s.logger.Infof("Initiating SignalR handshake")
-	versionMessageBytes := append([]byte(`{"protocol": "json","version": 1}`), signalRMessageTerminatorByte)
+	versionMessageBytes := append([]byte(`{"protocol": "json","version": 1}`), TerminatorByte)
 	if err := s.client.Send(versionMessageBytes); err != nil {
 		rerr := fmt.Errorf("failed to negotiate SignalR version: %w", err)
 		s.client.Close(rerr)
@@ -167,7 +170,7 @@ func (s *SignalR) avengersEndgame() error {
 
 func (s *SignalR) unwrap(raw []byte) error {
 	// We may have received multiple messages in one
-	splitMessages := bytes.Split(raw, []byte{signalRMessageTerminatorByte})
+	splitMessages := bytes.Split(raw, []byte{TerminatorByte})
 
 	for _, rawMessage := range splitMessages {
 		// Ignore empty slices AND empty json "{}"
@@ -273,7 +276,7 @@ func (s *SignalR) Send(message am.AgentMessage) error {
 
 	// SignalR messages require a special terminating character to let the server know
 	// that it has received the entire message and can start processing it
-	terminatedMessageBytes := append(trackedMessageBytes, signalRMessageTerminatorByte)
+	terminatedMessageBytes := append(trackedMessageBytes, TerminatorByte)
 
 	// Write our message to our connection
 	err = s.client.Send(terminatedMessageBytes)

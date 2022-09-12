@@ -11,11 +11,21 @@ import (
 type WebsocketServer struct {
 	logger *logger.Logger
 	conn   *websocket.Conn
+
+	received chan []byte
 }
 
 func NewWebsocketServer(logger *logger.Logger) *WebsocketServer {
 	return &WebsocketServer{
-		logger: logger,
+		logger:   logger,
+		received: make(chan []byte),
+	}
+}
+
+func (w *WebsocketServer) Write(message []byte) {
+	if err := w.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+		w.logger.Errorf("failed to write to websocket connection: %s", err)
+		return
 	}
 }
 
@@ -31,12 +41,11 @@ func (w *WebsocketServer) Serve(writer http.ResponseWriter, request *http.Reques
 	defer w.conn.Close()
 
 	for {
-		if messageType, message, err := w.conn.ReadMessage(); err != nil {
+		if _, message, err := w.conn.ReadMessage(); err != nil {
 			w.logger.Errorf("failed to read from websocket connection: %s", err)
 			return
-		} else if err := w.conn.WriteMessage(messageType, message); err != nil {
-			w.logger.Errorf("failed to write to websocket connection: %s", err)
-			return
+		} else {
+			w.received <- message
 		}
 	}
 }
@@ -49,4 +58,5 @@ func (w *WebsocketServer) Close() {
 	// elegant close
 	message := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
 	w.conn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
+	w.conn.Close()
 }

@@ -108,7 +108,7 @@ var _ = Describe("SignalR", Ordered, func() {
 			InvocationId: "123",
 		}
 		testSignalRMessageBytes, _ := json.Marshal(testSignalRMessage)
-		validTestSignalRMessageBytes := append(testSignalRMessageBytes, signalRMessageTerminatorByte)
+		validTestSignalRMessageBytes := append(testSignalRMessageBytes, TerminatorByte)
 
 		When("It connects to a legitimate connection", func() {
 

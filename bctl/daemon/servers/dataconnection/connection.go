@@ -33,6 +33,8 @@ const (
 	Web   ConnectionType = "WEB"
 )
 
+var maxBackoffInterval = 15 * time.Minute
+
 const (
 	daemonHubEndpoint = "hub/daemon"
 
@@ -245,7 +247,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
 	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
-	backoffParams.MaxInterval = time.Minute * 15 // At most 15 minutes in between requests
+	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
 

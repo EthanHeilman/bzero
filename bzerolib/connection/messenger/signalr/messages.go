@@ -2,9 +2,6 @@ package signalr
 
 import "encoding/json"
 
-// Byte to indicate the end of a SignalR message
-const signalRMessageTerminatorByte = 0x1E
-
 type SignalRMessageType int
 
 const (

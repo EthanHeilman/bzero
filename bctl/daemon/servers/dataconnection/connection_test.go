@@ -179,9 +179,9 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 				doneChan <- struct{}{}
 			})
 
-			It("dies", func() {
+			It("reconnects", func() {
 				time.Sleep(time.Second) // allow connection time to catch death
-				Expect(conn.Ready()).To(Equal(false), "the connection is still alive")
+				Expect(conn.Ready()).To(Equal(true), "the connection is still alive")
 			})
 		})
 

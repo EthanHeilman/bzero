@@ -1,7 +1,9 @@
 package dataconnection
 
 import (
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"testing"
@@ -21,14 +23,18 @@ import (
 
 func TestDataConnectionIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Agent Data Connection Integration Suite")
+	RunSpecs(t, "Daemon Data Connection Integration Suite")
 }
 
-var _ = Describe("Agent Data Connection Integration", Ordered, func() {
+var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 	logger := logger.MockLogger(GinkgoWriter)
 
 	params := url.Values{}
 	headers := http.Header{}
+
+	testAgentConnectedMessage := AgentConnectedMessage{
+		ConnectionId: "testID",
+	}
 
 	createConnectionWithBastion := func(cnUrl string) connection.Connection {
 		websocket.WebsocketUrlScheme = websocket.HttpWebsocketScheme
@@ -72,7 +78,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 				}
 
 				mockCN = tests.NewMockServer(tests.MockHandler{
-					Endpoint:    "/" + agentHubEndpoint,
+					Endpoint:    "/" + daemonHubEndpoint,
 					HandlerFunc: respondWithError,
 				})
 
@@ -81,6 +87,24 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 				// put this in its own routine because trying to connect is blocking
 				go func() {
 					conn = createConnectionWithBastion(mockCN.Url)
+
+					messageBytes, _ := json.Marshal(testAgentConnectedMessage)
+
+					signalRMessage := &signalr.SignalRMessage{
+						Type:         int(signalr.Invocation),
+						Target:       agentConnected,
+						Arguments:    []json.RawMessage{messageBytes},
+						InvocationId: fmt.Sprintf("%d", rand.Intn(1000)),
+					}
+
+					trackedMessageBytes, err := json.Marshal(signalRMessage)
+					if err != nil {
+						logger.Errorf("error marshalling outgoing SignalR Message: %+v", testAgentConnectedMessage)
+						return
+					}
+
+					terminatedMessageBytes := append(trackedMessageBytes, signalr.TerminatorByte)
+					websocketServer.Write(terminatedMessageBytes)
 				}()
 			})
 
@@ -105,9 +129,10 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 			var conn connection.Connection
 
 			BeforeEach(func() {
-				mockCN = connectionnode.New(logger, agentHubEndpoint)
+				mockCN = connectionnode.New(logger, daemonHubEndpoint)
 				conn = createConnectionWithBastion(mockCN.Url)
 
+				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
 				mockCN.BreakWebsocket()
 			})
 
@@ -116,9 +141,9 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 				conn.Close(fmt.Errorf("end of test"), time.Second)
 			})
 
-			It("shuts down", func() {
+			It("will try to reconnect", func() {
 				time.Sleep(time.Second)
-				Expect(conn.Ready()).To(Equal(false))
+				Expect(conn.Ready()).To(Equal(true), "connection did not reestablish itself after we unexpectedly broke the websocket connection")
 			})
 		})
 
@@ -127,19 +152,44 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 			var conn connection.Connection
 
 			BeforeEach(func() {
-				mockCN = connectionnode.New(logger, agentHubEndpoint)
+				mockCN = connectionnode.New(logger, daemonHubEndpoint)
 				conn = createConnectionWithBastion(mockCN.Url)
 
+				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
 				mockCN.CloseWebsocket()
 			})
 
 			AfterEach(func() {
 				mockCN.Close()
+				conn.Close(fmt.Errorf("end of test"), time.Second)
 			})
 
 			It("sends all remaining messages in the pipeline", func() {})
 
-			It("shuts down", func() {
+			It("will try to reconnect", func() {
+				time.Sleep(time.Second)
+				Expect(conn.Ready()).To(Equal(true))
+			})
+		})
+
+		When("We receive word agent closes its connection to the connection node", func() {
+			var mockCN *connectionnode.MockConnectionNode
+			var conn connection.Connection
+
+			BeforeEach(func() {
+				mockCN = connectionnode.New(logger, daemonHubEndpoint)
+				conn = createConnectionWithBastion(mockCN.Url)
+
+				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRMessage(agentDisconnected, []byte("{}"))
+			})
+
+			AfterEach(func() {
+				mockCN.Close()
+				conn.Close(fmt.Errorf("end of test"), time.Second)
+			})
+
+			It("dies", func() {
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(false))
 			})

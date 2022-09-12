@@ -73,7 +73,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: verifyParams,
 				})
 
-				client, _ = New(logger, server.Addr, HTTPOptions{
+				client, _ = New(logger, server.Url, HTTPOptions{
 					Params: fakeParams,
 				})
 				_, err = client.Get(ctx)
@@ -109,7 +109,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: verifyHeaders,
 				})
 
-				client, _ = New(logger, server.Addr, HTTPOptions{
+				client, _ = New(logger, server.Url, HTTPOptions{
 					Headers: fakeHeaders,
 				})
 				_, err = client.Get(ctx)
@@ -151,7 +151,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handlePost,
 				})
 
-				client, _ = New(logger, server.Addr, HTTPOptions{})
+				client, _ = New(logger, server.Url, HTTPOptions{})
 				_, err = client.Post(ctx)
 			})
 
@@ -183,7 +183,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handlePatch,
 				})
 
-				client, _ = New(logger, server.Addr, HTTPOptions{})
+				client, _ = New(logger, server.Url, HTTPOptions{})
 				_, err = client.Patch(ctx)
 			})
 
@@ -215,7 +215,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handleGet,
 				})
 
-				client, _ = New(logger, server.Addr, HTTPOptions{})
+				client, _ = New(logger, server.Url, HTTPOptions{})
 				_, err = client.Get(ctx)
 			})
 
@@ -249,7 +249,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 				})
 
 				newctx, cancel := context.WithCancel(ctx)
-				client, _ = New(logger, server.Addr, HTTPOptions{})
+				client, _ = New(logger, server.Url, HTTPOptions{})
 
 				err = fmt.Errorf("context not cancelled yet")
 				_, err = client.Get(newctx)

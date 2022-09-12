@@ -1,98 +1,87 @@
 package connectionnode
 
 import (
+	"encoding/json"
+	"fmt"
+	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"path"
+
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/tests/server"
 )
 
 type MockConnectionNode struct {
-	mux    *http.ServeMux
-	server *httptest.Server
+	logger *logger.Logger
+
+	// servers
+	mux             *http.ServeMux
+	server          *httptest.Server
+	websocketServer *server.WebsocketServer
 
 	prefix string
+
+	// public attributes
+	Url string
 }
 
-// prefix is the endpoint we will always expect every endpoint to begin with
-// e.g. /hub/agent
-func New(endpointPrefix string) *MockConnectionNode {
+// Endpoint is the address at which we will serve our websocket
+func New(logger *logger.Logger, endpoint string) *MockConnectionNode {
+	prefix := path.Join("/", endpoint) // always make sure there's a leading "/"
+
+	// Create our servers
 	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
+	httpServer := httptest.NewServer(mux)
+	websocketServer := server.NewWebsocketServer(logger)
+
+	// Serve a websocket at the root
+	mux.HandleFunc(prefix, websocketServer.Serve)
 
 	return &MockConnectionNode{
-		mux:    mux,
-		server: server,
-		prefix: path.Join("/", endpointPrefix), // always make sure there's a leading "/"
+		logger:          logger,
+		mux:             mux,
+		server:          httpServer,
+		websocketServer: websocketServer,
+		prefix:          prefix,
+		Url:             httpServer.URL,
 	}
 }
 
-func (m *MockConnectionNode) Url() string {
-	return m.server.URL
+func (m *MockConnectionNode) AddEndpoint(endpoint string, handlerFunc http.HandlerFunc) {
+	m.mux.HandleFunc(endpoint, handlerFunc)
 }
 
-func (m *MockConnectionNode) AddHandler(endpoint string, handlerFunc http.HandlerFunc) {
-	// append prefix
-	fullEndpoint := path.Join(m.prefix, endpoint)
+func (m *MockConnectionNode) SendSignalRMessage(target string, message interface{}) {
+	messageBytes, _ := json.Marshal(message)
 
-	m.mux.HandleFunc(fullEndpoint, handlerFunc)
+	signalRMessage := &signalr.SignalRMessage{
+		Type:         int(signalr.Invocation),
+		Target:       target,
+		Arguments:    []json.RawMessage{messageBytes},
+		InvocationId: fmt.Sprintf("%d", rand.Intn(1000)),
+	}
+
+	trackedMessageBytes, err := json.Marshal(signalRMessage)
+	if err != nil {
+		m.logger.Errorf("error marshalling outgoing SignalR Message: %+v", message)
+		return
+	}
+
+	terminatedMessageBytes := append(trackedMessageBytes, signalr.TerminatorByte)
+	m.websocketServer.Write(terminatedMessageBytes)
 }
 
-func (m *MockConnectionNode) AddSignalRHub() {}
+func (m *MockConnectionNode) BreakWebsocket() {
+	m.websocketServer.ForceClose()
+}
+
+func (m *MockConnectionNode) CloseWebsocket() {
+	m.websocketServer.Close()
+}
 
 func (m *MockConnectionNode) Close() {
+	m.websocketServer.Close()
 	m.server.Close()
 }
-
-// func (m *MockBastion) serveWebsocket(w http.ResponseWriter, r *http.Request) {
-// 	upgrader := websocket.Upgrader{}
-
-// 	// Upgrade our raw HTTP connection to a websocket based one
-// 	conn, err := upgrader.Upgrade(w, r, nil)
-// 	if err != nil {
-// 		// m.logger.Errorf("Error during connection upgradation: %s", err)
-// 		return
-// 	}
-// 	defer conn.Close()
-
-// 	go func() {
-// 		select {
-// 		case <-m.interruptChan:
-// 			conn.Close()
-// 		case <-m.doneChan:
-// 			message := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "")
-// 			conn.WriteControl(websocket.CloseMessage, message, time.Now().Add(time.Second))
-// 		}
-// 	}()
-
-// 	// The event loop
-// 	for {
-// 		messageType, message, err := conn.ReadMessage()
-// 		if err != nil {
-// 			// m.logger.Errorf("Error during message reading: %s", err)
-// 			return
-// 		}
-
-// 		// m.ReceivedBytes <- message
-
-// 		err = conn.WriteMessage(messageType, message)
-// 		if err != nil {
-// 			// m.logger.Errorf("Error during message writing: %s", err)
-// 			return
-// 		}
-// 	}
-// 	// for {
-// 	// 	messageType, message, err := conn.ReadMessage()
-// 	// 	if err != nil {
-// 	// 		// m.logger.Errorf("Error during message reading: %s", err)
-// 	// 		break
-// 	// 	}
-
-// 	// 	// m.ReceivedBytes <- message
-
-// 	// 	err = conn.WriteMessage(messageType, message)
-// 	// 	if err != nil {
-// 	// 		// m.logger.Errorf("Error during message writing: %s", err)
-// 	// 		break
-// 	// 	}
-// 	// }
-// }
