@@ -1,6 +1,7 @@
 package connectionnode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -21,15 +22,16 @@ type MockConnectionNode struct {
 	server          *httptest.Server
 	websocketServer *server.WebsocketServer
 
-	prefix string
+	interruptChan chan struct{}
 
 	// public attributes
-	Url string
+	Url      string
+	Received chan *signalr.SignalRMessage
 }
 
 // Endpoint is the address at which we will serve our websocket
 func New(logger *logger.Logger, endpoint string) *MockConnectionNode {
-	prefix := path.Join("/", endpoint) // always make sure there's a leading "/"
+	endpoint = path.Join("/", endpoint) // always make sure there's a leading "/"
 
 	// Create our servers
 	mux := http.NewServeMux()
@@ -37,20 +39,52 @@ func New(logger *logger.Logger, endpoint string) *MockConnectionNode {
 	websocketServer := server.NewWebsocketServer(logger)
 
 	// Serve a websocket at the root
-	mux.HandleFunc(prefix, websocketServer.Serve)
+	mux.HandleFunc(endpoint, websocketServer.Serve)
 
-	return &MockConnectionNode{
+	cn := MockConnectionNode{
 		logger:          logger,
 		mux:             mux,
 		server:          httpServer,
 		websocketServer: websocketServer,
-		prefix:          prefix,
+		interruptChan:   make(chan struct{}),
 		Url:             httpServer.URL,
+		Received:        make(chan *signalr.SignalRMessage, 50),
 	}
+
+	// Set up our go routine to turn the bytes the websocket receives into
+	go func() {
+		for {
+			select {
+			case <-cn.interruptChan:
+				return
+			case raw := <-cn.websocketServer.Received:
+				// We may have received multiple messages in one
+				splitMessages := bytes.Split(raw, []byte{signalr.TerminatorByte})
+
+				for _, rawMessage := range splitMessages {
+					// Ignore empty slices AND empty json "{}"
+					if len(rawMessage) <= 2 {
+						continue
+					}
+
+					var message signalr.SignalRMessage
+					if err := json.Unmarshal(rawMessage, &message); err != nil {
+						logger.Errorf("error unmarshalling SignalR message: %s. Error: %w", string(rawMessage), err)
+					}
+
+					// Push message to queue for processing
+					cn.Received <- &message
+				}
+			}
+		}
+	}()
+
+	return &cn
 }
 
 func (m *MockConnectionNode) AddEndpoint(endpoint string, handlerFunc http.HandlerFunc) {
-	m.mux.HandleFunc(endpoint, handlerFunc)
+	fullEndpoint := path.Join("/", endpoint)
+	m.mux.HandleFunc(fullEndpoint, handlerFunc)
 }
 
 func (m *MockConnectionNode) SendSignalRMessage(target string, message interface{}) {
@@ -60,7 +94,7 @@ func (m *MockConnectionNode) SendSignalRMessage(target string, message interface
 		Type:         int(signalr.Invocation),
 		Target:       target,
 		Arguments:    []json.RawMessage{messageBytes},
-		InvocationId: fmt.Sprintf("%d", rand.Intn(1000)),
+		InvocationId: fmt.Sprint(rand.Intn(1000)),
 	}
 
 	trackedMessageBytes, err := json.Marshal(signalRMessage)

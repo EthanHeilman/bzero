@@ -72,7 +72,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 				}
 
 				mockCN = tests.NewMockServer(tests.MockHandler{
-					Endpoint:    "/" + agentHubEndpoint,
+					Endpoint:    agentHubEndpoint,
 					HandlerFunc: respondWithError,
 				})
 

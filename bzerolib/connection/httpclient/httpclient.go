@@ -147,8 +147,6 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 		return response, fmt.Errorf("%s request failed: %w", string(method), err)
 	}
 
-	h.logger.Infof("STATUS CODE: %d", response.StatusCode)
-
 	// Check if request was successful
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return response, fmt.Errorf("%s request failed with status code %d", string(method), response.StatusCode)

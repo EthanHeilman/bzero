@@ -12,13 +12,13 @@ type WebsocketServer struct {
 	logger *logger.Logger
 	conn   *websocket.Conn
 
-	received chan []byte
+	Received chan []byte
 }
 
 func NewWebsocketServer(logger *logger.Logger) *WebsocketServer {
 	return &WebsocketServer{
 		logger:   logger,
-		received: make(chan []byte),
+		Received: make(chan []byte, 50),
 	}
 }
 
@@ -45,7 +45,7 @@ func (w *WebsocketServer) Serve(writer http.ResponseWriter, request *http.Reques
 			w.logger.Errorf("failed to read from websocket connection: %s", err)
 			return
 		} else {
-			w.received <- message
+			w.Received <- message
 		}
 	}
 }

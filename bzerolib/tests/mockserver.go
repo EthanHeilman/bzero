@@ -3,6 +3,7 @@ package tests
 import (
 	"net/http"
 	"net/http/httptest"
+	"path"
 )
 
 type MockServer struct {
@@ -20,7 +21,8 @@ func NewMockServer(handlers ...MockHandler) *MockServer {
 	mux := http.NewServeMux()
 
 	for _, handler := range handlers {
-		mux.HandleFunc(handler.Endpoint, handler.HandlerFunc)
+		fullEndpoint := path.Join("/", handler.Endpoint)
+		mux.HandleFunc(fullEndpoint, handler.HandlerFunc)
 	}
 
 	s := httptest.NewServer(mux)

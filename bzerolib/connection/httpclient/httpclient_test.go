@@ -252,7 +252,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 				client, _ = New(logger, server.Url, HTTPOptions{})
 
 				err = fmt.Errorf("context not cancelled yet")
-				_, err = client.Get(newctx)
+				go func() { _, err = client.Get(newctx) }()
 				cancel()
 			})
 
@@ -262,7 +262,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 
 			It("cancels the request immediately", func() {
 				time.Sleep(time.Second)
-				Expect(err).ToNot(HaveOccurred(), "Context failed to be cancelled!")
+				Expect(err.Error()).To(ContainSubstring("context canceled"), "HTTP request failed to be cancelled!")
 			})
 		})
 	})
