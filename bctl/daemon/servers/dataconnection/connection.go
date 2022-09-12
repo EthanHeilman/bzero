@@ -64,6 +64,7 @@ type DataConnection struct {
 	// corresponding connection. This is only used for daemon datachannel
 	// connections.
 	agentReadyChan chan bool
+	agentReady     bool
 }
 
 func New(
@@ -122,7 +123,9 @@ func New(
 			case message := <-conn.sendQueue:
 				if !conn.ready {
 					// Wait for the agent to connect before sending any messages
-					// from the output queue
+					// from the output queue. We only do this on the initial connection
+					// because daemon will only try to reconnect if the agent is
+					// still connected
 					conn.waitForAgentReady()
 				}
 				if err := conn.client.Send(*message); err != nil {
@@ -165,6 +168,7 @@ func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
 
 		d.logger.Infof("Agent is connected and ready to receive for connection: %s", agentConnectedMessage.ConnectionId)
 
+		d.agentReady = true
 		d.ready = true
 		d.agentReadyChan <- true
 	default:
@@ -259,6 +263,11 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 				continue
 			}
 
+			// If we're reconnecting, then we don't need to wait for this message
+			if d.agentReady {
+				d.ready = true
+			}
+
 			d.logger.Infof("Successfully connected to %s", connUrl)
 			return nil
 		}
@@ -270,6 +279,7 @@ func (d *DataConnection) waitForAgentReady() {
 	case <-d.tmb.Dying():
 		return
 	case <-d.agentReadyChan:
+		d.agentReady = true
 		d.ready = true
 	case <-time.After(agentConnectedTimeout):
 		d.tmb.Kill(fmt.Errorf("timed out waiting for agent to connect"))
