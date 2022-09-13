@@ -16,6 +16,7 @@ const (
 	TARGET_ID                     = "TARGET_ID"                     // Id of the target to connect to
 	PLUGIN                        = "PLUGIN"                        // Plugin to activate
 	AGENT_PUB_KEY                 = "AGENT_PUB_KEY"                 // Base64 encoded string of agent's public key
+	DEBUG                         = "DEBUG"                         // Flag to indicate if we should start the daemon in debug mode
 
 	// for interacting with the user and the ZLI
 	LOCAL_PORT            = "LOCAL_PORT"            // Daemon port To Use
@@ -76,6 +77,7 @@ var config = map[string]EnvVar{
 	TARGET_ID:                     {},
 	PLUGIN:                        {},
 	AGENT_PUB_KEY:                 {},
+	DEBUG:                         {},
 
 	// for interacting with the user and the ZLI
 	LOCAL_PORT:            {},

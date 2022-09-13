@@ -38,7 +38,7 @@ type Server interface {
 func main() {
 	envErr := loadEnvironment()
 
-	if logger, err := createLogger(); err != nil {
+	if logger, err := createLogger(config[DEBUG].Value == "true"); err != nil {
 		reportError(logger, err)
 	} else {
 		// print out loadEnvironment error now
@@ -79,15 +79,17 @@ func main() {
 	}
 }
 
-func createLogger() (*bzlogger.Logger, error) {
+func createLogger(debug bool) (*bzlogger.Logger, error) {
 	options := &bzlogger.Config{
 		FilePath: config[LOG_PATH].Value,
 	}
 
-	// For the shell and ssh plugins we read/write directly from Stdin/Stdout so we dont want
-	// our logs to show up there
+	// For ssh plugins we proxy the ssh protocol directly from Stdin/Stdout so
+	// we dont want our logs to show up there
+
+	// Otherwise log output to stdout if the daemon is started up in debug mode
 	plugin := config[PLUGIN].Value
-	if plugin != string(bzplugin.Shell) && plugin != string(bzplugin.Ssh) {
+	if debug && plugin != string(bzplugin.Ssh) {
 		options.ConsoleWriters = []io.Writer{os.Stdout}
 	}
 
@@ -135,12 +137,14 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	// This validates the bzcert before creating the server so we can fail
 	// fast if the cert is no longer valid. This may result in prompting the
 	// user to login again if the cert contains expired IdP id tokens
+	logger.Debug("verifying bzcert")
 	cert, err := bzcert.New(zliConfig)
 	if err != nil {
 		// don't attach a message here because we read this error type
 		errChan <- err
 		return
 	}
+	logger.Debug("done verifying bzcert")
 
 	var server Server
 
