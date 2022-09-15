@@ -3,7 +3,9 @@ package webserver
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -11,27 +13,28 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/web"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzweb "bastionzero.com/bctl/v1/bzerolib/plugin/web"
 )
 
 const (
-	// websocket connection parameters for all datachannels created by tcp server
-	autoReconnect = true
-	getChallenge  = false
-
 	// TODO: make these easily configurable values
 	maxRequestSize = 10 * 1024 * 1024  // 10MB
 	maxFileUpload  = 151 * 1024 * 1024 // 151MB a little extra for request fluff
+
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type WebServer struct {
 	logger  *logger.Logger
 	errChan chan error
 
-	websocket *websocket.Websocket
+	conn connection.Connection
 
 	// Web specific vars
 	// Either user the full dns (i.e. targetHostName) or the host:port
@@ -45,16 +48,17 @@ type WebServer struct {
 	cert        *bzcert.DaemonBZCert
 }
 
-func New(logger *logger.Logger,
+func New(
+	logger *logger.Logger,
 	errChan chan error,
 	localPort string,
 	localHost string,
 	targetPort int,
 	targetHost string,
 	cert *bzcert.DaemonBZCert,
-	serviceUrl string,
-	params map[string]string,
-	headers map[string]string,
+	connUrl string,
+	params url.Values,
+	headers http.Header,
 	agentPubKey string,
 ) (*WebServer, error) {
 
@@ -69,12 +73,19 @@ func New(logger *logger.Logger,
 		agentPubKey: agentPubKey,
 	}
 
-	// Create a new websocket
-	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	wsLogger := logger.GetComponentLogger("Websocket")
+	srLogger := logger.GetComponentLogger("SignalR")
+
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	if client, err := dataconnection.New(subLogger, connUrl, params, headers, client); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
+	} else {
+		server.conn = client
 	}
 
-	go server.listenForWebsocketDone()
+	go server.listenForConnectionDone()
 
 	return server, nil
 }
@@ -94,10 +105,16 @@ func (w *WebServer) Start() error {
 }
 
 func (w *WebServer) Close(err error) {
-	if w.websocket != nil {
-		w.websocket.Close(err)
+	if w.conn != nil {
+		w.conn.Close(err, connectionCloseTimeout)
 	}
 	w.errChan <- err
+}
+
+func (w *WebServer) listenForConnectionDone() {
+	// blocks until the underlying tomb is dead
+	<-w.conn.Done()
+	w.Close(w.conn.Err())
 }
 
 // this function operates as middleware between the http handler and the handleHttp call below
@@ -130,7 +147,7 @@ func (w *WebServer) capRequestSize(h http.HandlerFunc) http.HandlerFunc {
 }
 
 func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request) {
-	// every datachannel gets a uuid to distinguish it so a single websockets can map to multiple datachannels
+	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 	dcId := uuid.New().String()
 
 	// create our new plugin and datachannel
@@ -147,7 +164,7 @@ func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request
 		action = bzweb.Websocket
 	}
 
-	if err := w.newDataChannel(dcId, action, w.websocket, plugin); err != nil {
+	if err := w.newDataChannel(dcId, action, plugin); err != nil {
 		w.logger.Errorf("error starting datachannel: %s", err)
 	}
 	if err := plugin.StartAction(action, writer, request); err != nil {
@@ -155,25 +172,9 @@ func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request
 	}
 }
 
-// for creating new websockets
-func (w *WebServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
-	subLogger := w.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Web); err != nil {
-		return err
-	} else {
-		w.websocket = wsClient
-		return nil
-	}
-}
-
-func (w *WebServer) listenForWebsocketDone() {
-	// blocks until the underlying tomb is dead
-	<-w.websocket.Done()
-	w.Close(w.websocket.Err())
-}
-
 // for creating new datachannels
-func (w *WebServer) newDataChannel(dcId string, action bzweb.WebAction, websocket *websocket.Websocket, plugin *web.WebDaemonPlugin) error {
+func (w *WebServer) newDataChannel(dcId string, action bzweb.WebAction, plugin *web.WebDaemonPlugin) error {
+
 	attach := false
 	subLogger := w.logger.GetDatachannelLogger(dcId)
 
@@ -192,7 +193,7 @@ func (w *WebServer) newDataChannel(dcId string, action bzweb.WebAction, websocke
 	}
 
 	actString := "web/" + string(action)
-	_, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, actString, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, w.conn, keysplitter, plugin, actString, synPayload, attach, true)
 	if err != nil {
 		return err
 	}

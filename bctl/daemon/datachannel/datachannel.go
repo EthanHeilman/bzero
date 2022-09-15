@@ -7,8 +7,8 @@ import (
 
 	tomb "gopkg.in/tomb.v2"
 
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	rrr "bastionzero.com/bctl/v1/bzerolib/error"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -55,7 +55,7 @@ type DataChannel struct {
 	logger *logger.Logger
 	id     string // DataChannel's ID
 
-	websocket   websocket.IWebsocket
+	conn        connection.Connection
 	keysplitter IKeysplitting
 	plugin      IPlugin
 
@@ -69,7 +69,7 @@ type DataChannel struct {
 func New(
 	logger *logger.Logger,
 	id string,
-	websocket websocket.IWebsocket,
+	conn connection.Connection,
 	keysplitter IKeysplitting,
 	plugin IPlugin,
 	action string,
@@ -81,15 +81,15 @@ func New(
 	dc := &DataChannel{
 		logger:                     logger,
 		id:                         id,
-		websocket:                  websocket,
+		conn:                       conn,
 		keysplitter:                keysplitter,
 		plugin:                     plugin,
 		inputChan:                  make(chan *am.AgentMessage, 50),
 		processInputChanBeforeExit: processInputChanBeforeExit,
 	}
 
-	// register with websocket so datachannel can send and receive messages
-	websocket.Subscribe(id, dc)
+	// register with connection so datachannel can send and receive messages
+	conn.Subscribe(id, dc)
 
 	// if we're attaching to an existing datachannel vs if we are creating a new one
 	if !attach {
@@ -108,12 +108,10 @@ func New(
 		var err error
 		defer func() {
 			dc.logger.Infof("sending CloseDataChannel message to the agent")
-			websocket.Send(am.AgentMessage{
+			conn.Send(am.AgentMessage{
 				ChannelId:   dc.id,
 				MessageType: string(am.CloseDataChannel),
 			})
-
-			websocket.Unsubscribe(id) // causes decoupling from websocket
 			dc.logger.Info("Datachannel done")
 		}()
 
@@ -127,7 +125,7 @@ func New(
 		for {
 			select {
 			case <-dc.tmb.Dying():
-				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err().Error())
+				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err())
 				dc.plugin.Kill()
 				return nil
 			case <-dc.plugin.Done():
@@ -174,7 +172,7 @@ func (d *DataChannel) handshakeOrTimeout() error {
 				return nil
 			}
 		default:
-			return fmt.Errorf("datachannel must start with a mrzap or error message, recieved: %s", agentMessage.MessageType)
+			return fmt.Errorf("datachannel must start with a mrzap or error message, received: %s", agentMessage.MessageType)
 		}
 	case <-time.After(handshakeTimeout):
 		return fmt.Errorf("handshake timed out")
@@ -193,6 +191,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 				d.logger.Error(err)
 			}
 		case <-time.After(checkOutboxInterval):
+			d.logger.Infof("checking outbox interval: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.keysplitter.IsPipelineEmpty())
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.keysplitter.IsPipelineEmpty() {
 				return
@@ -280,7 +279,7 @@ func (d *DataChannel) openDataChannel(action string, synPayload interface{}) err
 		MessagePayload: messagePayloadBytes,
 		MessageType:    string(am.OpenDataChannel),
 	}
-	d.websocket.Send(odMessage)
+	d.conn.Send(odMessage)
 
 	return nil
 }
@@ -297,8 +296,8 @@ func (d *DataChannel) send(messageType am.MessageType, messagePayload interface{
 			MessagePayload: messageBytes,
 		}
 
-		// Push message to websocket channel output
-		d.websocket.Send(agentMessage)
+		// Push message to connection channel output
+		d.conn.Send(agentMessage)
 		return nil
 	}
 }

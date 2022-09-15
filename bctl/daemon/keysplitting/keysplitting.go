@@ -214,7 +214,7 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 
 				// when we recover, we're recovering based on the nonce in the syn/ack because unless
 				// it's not in response to the initial syn, where the nonce is a true random number,
-				// it is an hpointer which refers to the agent's last recieved and validated message.
+				// it is an hpointer which refers to the agent's last received and validated message.
 				// aka it is the current state of the mrzap hash chain according to the agent and this
 				// recovery mechanism allows us to sync our mrzap state to that
 				k.recovering = false
