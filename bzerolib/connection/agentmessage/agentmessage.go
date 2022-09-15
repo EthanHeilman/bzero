@@ -31,7 +31,7 @@ const (
 	OpenDataChannel  MessageType = "openDataChannel"
 	CloseDataChannel MessageType = "closeDataChannel"
 
-	// websocket controller messages
+	// connection controller messages
 	OpenWebsocket        MessageType = "openWebsocket"
 	CloseWebsocket       MessageType = "closeWebsocket"
 	CloseDaemonWebsocket MessageType = "closeDaemonWebsocket"

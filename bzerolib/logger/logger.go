@@ -103,7 +103,7 @@ func New(config *Config) (*Logger, error) {
 
 	// Add console writers for all specified io.Writer's
 	for _, dest := range config.ConsoleWriters {
-		consoleWriter := zerolog.ConsoleWriter{Out: dest}
+		consoleWriter := zerolog.ConsoleWriter{Out: dest, TimeFormat: time.StampMilli}
 		writers = append(writers, consoleWriter)
 	}
 	multi := zerolog.MultiLevelWriter(writers...)
@@ -137,10 +137,10 @@ func (l *Logger) GetDatachannelLogger(id string) *Logger {
 	}
 }
 
-func (l *Logger) GetWebsocketLogger(id string) *Logger {
+func (l *Logger) GetConnectionLogger(id string) *Logger {
 	return &Logger{
 		logger: l.logger.With().
-			Str("websocket", id).
+			Str("connection", id).
 			Logger(),
 	}
 }

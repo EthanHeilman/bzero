@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strconv"
@@ -11,12 +13,12 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/daemon/exit"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dbserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/kubeserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/shellserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/sshserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/webserver"
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 
@@ -38,29 +40,20 @@ type Server interface {
 func main() {
 	envErr := loadEnvironment()
 
-	if logger, err := createLogger(); err != nil {
+	if logger, err := createLogger(config[DEBUG].Value == "true"); err != nil {
 		reportError(logger, err)
 	} else {
 		// print out loadEnvironment error now
 		if envErr != nil {
 			reportError(logger, envErr)
 		} else {
-			// Create our headers and params
-			headers := make(map[string]string)
-			headers["Authorization"] = config[AUTH_HEADER].Value
-
-			// Add our sessionId and token into the header
-			headers["Cookie"] = fmt.Sprintf("sessionId=%s; sessionToken=%s", config[SESSION_ID].Value, config[SESSION_TOKEN].Value)
-
-			params := make(map[string]string)
-			params["version"] = daemonVersion
 
 			// how the daemon tells the server to stop
 			daemonShutdownChan := make(chan struct{})
 			// any server that experiences a fatal error writes to this channel
 			// additionally, ephemeral servers write to this channel when their datachannel is done
 			serverErrChan := make(chan error)
-			go startServer(logger, daemonShutdownChan, serverErrChan, headers, params)
+			go startServer(logger, daemonShutdownChan, serverErrChan)
 
 			for {
 				select {
@@ -79,15 +72,17 @@ func main() {
 	}
 }
 
-func createLogger() (*bzlogger.Logger, error) {
+func createLogger(debug bool) (*bzlogger.Logger, error) {
 	options := &bzlogger.Config{
 		FilePath: config[LOG_PATH].Value,
 	}
 
-	// For the shell and ssh plugins we read/write directly from Stdin/Stdout so we dont want
-	// our logs to show up there
+	// For ssh plugins we proxy the ssh protocol directly from Stdin/Stdout so
+	// we dont want our logs to show up there
+
+	// Otherwise log output to stdout if the daemon is started up in debug mode
 	plugin := config[PLUGIN].Value
-	if plugin != string(bzplugin.Shell) && plugin != string(bzplugin.Ssh) {
+	if debug && plugin != string(bzplugin.Ssh) {
 		options.ConsoleWriters = []io.Writer{os.Stdout}
 	}
 
@@ -115,15 +110,9 @@ func reportError(logger *bzlogger.Logger, err error) {
 	report.ReportError(logger, config[SERVICE_URL].Value, errReport)
 }
 
-func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error, headers map[string]string, params map[string]string) {
-	connectionServiceUrl := config[CONNECTION_SERVICE_URL].Value
+func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {
 	plugin := config[PLUGIN].Value
-
-	logger.Infof("Opening websocket to the Connection Node: %s for plugin %s", connectionServiceUrl, plugin)
-
-	params["connection_id"] = config[CONNECTION_ID].Value
-	params["connectionServiceUrl"] = connectionServiceUrl
-	params["connectionServiceAuthToken"] = config[CONNECTION_SERVICE_AUTH_TOKEN].Value
+	logger.Infof("Opening connection to the Connection Node: %s for %s plugin", config[CONNECTION_SERVICE_URL].Value, plugin)
 
 	// create our MrZAP object
 	zliConfig, err := zliconfig.New(config[CONFIG_PATH].Value, config[REFRESH_TOKEN_COMMAND].Value)
@@ -135,30 +124,39 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	// This validates the bzcert before creating the server so we can fail
 	// fast if the cert is no longer valid. This may result in prompting the
 	// user to login again if the cert contains expired IdP id tokens
+	logger.Debug("verifying bzcert")
 	cert, err := bzcert.New(zliConfig)
 	if err != nil {
 		// don't attach a message here because we read this error type
 		errChan <- err
 		return
 	}
+	logger.Debug("done verifying bzcert")
+
+	// Create our headers, these are shared by everyone
+	headers := http.Header{
+		"Authorization": {config[AUTH_HEADER].Value},
+		"Cookie":        {fmt.Sprintf("sessionId=%s", config[SESSION_ID].Value), fmt.Sprintf("sessionToken=%s", config[SESSION_TOKEN].Value)},
+	}
+
+	params := url.Values{
+		"version":      {daemonVersion},
+		"connectionId": {config[CONNECTION_ID].Value},
+		"authToken":    {config[CONNECTION_SERVICE_AUTH_TOKEN].Value},
+	}
 
 	var server Server
 
 	switch bzplugin.PluginName(plugin) {
 	case bzplugin.Db:
-		params["websocketType"] = "db"
 		server, err = newDbServer(logger, errChan, headers, params, cert)
 	case bzplugin.Kube:
-		params["websocketType"] = "cluster"
 		server, err = newKubeServer(logger, errChan, headers, params, cert)
 	case bzplugin.Shell:
-		params["websocketType"] = "shell"
 		server, err = newShellServer(logger, errChan, headers, params, cert)
 	case bzplugin.Ssh:
-		params["websocketType"] = "ssh"
 		server, err = newSshServer(logger, errChan, headers, params, cert)
 	case bzplugin.Web:
-		params["websocketType"] = "web"
 		server, err = newWebServer(logger, errChan, headers, params, cert)
 	default:
 		errChan <- fmt.Errorf("unhandled plugin passed when trying to start server: %s", plugin)
@@ -183,17 +181,20 @@ func listenForShutdown(shutdownChan <-chan struct{}, server Server) {
 	}
 }
 
-func newSshServer(logger *bzlogger.Logger, errChan chan error, headers map[string]string, params map[string]string, cert *bzcert.DaemonBZCert) (*sshserver.SshServer, error) {
+func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*sshserver.SshServer, error) {
 	subLogger := logger.GetComponentLogger("sshserver")
 
-	params["target_id"] = config[TARGET_ID].Value
-	params["target_user"] = config[TARGET_USER].Value
-	params["remote_host"] = config[REMOTE_HOST].Value
-	params["remote_port"] = config[REMOTE_PORT].Value
+	// Check if remote port is valid
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
+
+	params["connectionType"] = []string{string(dataconnection.Ssh)}
+	params["target_id"] = []string{config[TARGET_ID].Value}
+	params["target_user"] = []string{config[TARGET_USER].Value}
+	params["remote_host"] = []string{config[REMOTE_HOST].Value}
+	params["remote_port"] = []string{config[REMOTE_PORT].Value}
 
 	return sshserver.New(
 		subLogger,
@@ -201,7 +202,7 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers map[strin
 		config[TARGET_USER].Value,
 		config[DATACHANNEL_ID].Value,
 		cert,
-		config[SERVICE_URL].Value,
+		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
 		config[AGENT_PUB_KEY].Value,
@@ -215,8 +216,10 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers map[strin
 	)
 }
 
-func newShellServer(logger *bzlogger.Logger, errChan chan error, headers map[string]string, params map[string]string, cert *bzcert.DaemonBZCert) (*shellserver.ShellServer, error) {
+func newShellServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*shellserver.ShellServer, error) {
 	subLogger := logger.GetComponentLogger("shellserver")
+
+	params["connectionType"] = []string{string(dataconnection.Shell)}
 
 	return shellserver.New(
 		subLogger,
@@ -224,21 +227,23 @@ func newShellServer(logger *bzlogger.Logger, errChan chan error, headers map[str
 		config[TARGET_USER].Value,
 		config[DATACHANNEL_ID].Value,
 		cert,
-		config[SERVICE_URL].Value,
+		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
 		config[AGENT_PUB_KEY].Value,
 	)
 }
 
-func newWebServer(logger *bzlogger.Logger, errChan chan error, headers map[string]string, params map[string]string, cert *bzcert.DaemonBZCert) (*webserver.WebServer, error) {
+func newWebServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*webserver.WebServer, error) {
 	subLogger := logger.GetComponentLogger("webserver")
 
-	params["target_id"] = config[TARGET_ID].Value
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote port: %s", err)
+		return nil, fmt.Errorf("failed to parse remote port: %w", err)
 	}
+
+	params["connectionType"] = []string{string(dataconnection.Web)}
+	params["target_id"] = []string{config[TARGET_ID].Value}
 
 	return webserver.New(
 		subLogger,
@@ -248,21 +253,23 @@ func newWebServer(logger *bzlogger.Logger, errChan chan error, headers map[strin
 		remotePort,
 		config[REMOTE_HOST].Value,
 		cert,
-		config[SERVICE_URL].Value,
+		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
 		config[AGENT_PUB_KEY].Value,
 	)
 }
 
-func newDbServer(logger *bzlogger.Logger, errChan chan error, headers map[string]string, params map[string]string, cert *bzcert.DaemonBZCert) (*dbserver.DbServer, error) {
+func newDbServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*dbserver.DbServer, error) {
 	subLogger := logger.GetComponentLogger("dbserver")
 
-	params["target_id"] = config[TARGET_ID].Value
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
+
+	params["connectionType"] = []string{string(dataconnection.Db)}
+	params["target_id"] = []string{config[TARGET_ID].Value}
 
 	return dbserver.New(
 		subLogger,
@@ -272,25 +279,26 @@ func newDbServer(logger *bzlogger.Logger, errChan chan error, headers map[string
 		remotePort,
 		config[REMOTE_HOST].Value,
 		cert,
-		config[SERVICE_URL].Value,
+		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
 		config[AGENT_PUB_KEY].Value,
 	)
 }
 
-func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers map[string]string, params map[string]string, cert *bzcert.DaemonBZCert) (*kubeserver.KubeServer, error) {
-	subLogger := logger.GetComponentLogger("kubeserver")
+func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*kubeserver.KubeServer, error) {
 
-	// Set our param value for target_user and target_group
-	params["target_id"] = config[TARGET_ID].Value
-	params["target_user"] = config[TARGET_USER].Value
-	params["target_groups"] = config[TARGET_GROUPS].Value
+	subLogger := logger.GetComponentLogger("kubeserver")
 
 	targetGroups := []string{}
 	if config[TARGET_GROUPS].Value != "" {
 		targetGroups = strings.Split(config[TARGET_GROUPS].Value, ",")
 	}
+
+	params["connectionType"] = []string{string(dataconnection.Kube)}
+	params["target_id"] = []string{config[TARGET_ID].Value}
+	params["target_user"] = []string{config[TARGET_USER].Value}
+	params["target_groups"] = []string{config[TARGET_GROUPS].Value}
 
 	return kubeserver.New(
 		subLogger,
@@ -303,7 +311,7 @@ func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers map[stri
 		config[TARGET_USER].Value,
 		targetGroups,
 		config[LOCALHOST_TOKEN].Value,
-		config[SERVICE_URL].Value,
+		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
 		config[AGENT_PUB_KEY].Value,
@@ -350,13 +358,16 @@ func loadEnvironment() error {
 func formatServiceUrl() error {
 	serviceUrlEntry := config[SERVICE_URL]
 	serviceUrl := serviceUrlEntry.Value
-	if !strings.HasPrefix(serviceUrl, "http") {
-		if url, err := bzhttp.BuildEndpoint("https://", serviceUrl); err != nil {
-			return fmt.Errorf("error adding scheme to serviceUrl %s: %s", serviceUrl, err)
-		} else {
-			serviceUrlEntry.Value = url
-			config[SERVICE_URL] = serviceUrlEntry
-		}
+
+	parsed, err := url.Parse(serviceUrl)
+	if err != nil {
+		return fmt.Errorf("malformatted serviceUrl: %s", serviceUrl)
 	}
+
+	parsed.Scheme = "https"
+
+	serviceUrlEntry.Value = parsed.String()
+	config[SERVICE_URL] = serviceUrlEntry
+
 	return nil
 }
