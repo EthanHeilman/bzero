@@ -153,7 +153,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 				return nil
 			} else if err != nil {
 				if err == io.EOF {
-					d.logger.Errorf("connection closed")
+					d.logger.Infof("db dial connection closed")
 
 					// Let our daemon know that we have got the error and we need to close the connection
 					switch d.streamMessageVersion {

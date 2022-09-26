@@ -56,14 +56,14 @@ var maxBackoffInterval = 5 * time.Second // at most 3 seconds in between request
 const (
 	daemonHubEndpoint = "hub/daemon"
 
-	// SignalR methods that we need to know for processing
-	agentConnected    = "AgentConnected"
-	agentDisconnected = "CloseConnection"
+	// Websocket methods
+	agentConnected  = "AgentConnected"
+	closeConnection = "CloseConnection"
 
 	// How long the daemon waits for the agent to connect
 	agentConnectedTimeout = time.Minute
 
-	MaximumReconnectWaitTime = 5 * time.Minute
+	maximumReconnectWaitTime = 5 * time.Minute
 )
 
 type DataConnection struct {
@@ -84,7 +84,6 @@ type DataConnection struct {
 	// corresponding connection. This is only used for daemon datachannel
 	// connections.
 	agentReadyChan chan bool
-	agentReady     bool
 }
 
 func New(
@@ -103,10 +102,13 @@ func New(
 	connectionUrl.Path = path.Join(connectionUrl.Path, daemonHubEndpoint)
 
 	conn := DataConnection{
-		logger:         logger,
-		client:         client,
-		broker:         broker.New(),
-		sendQueue:      make(chan *am.AgentMessage, 50),
+		logger:    logger,
+		client:    client,
+		broker:    broker.New(),
+		sendQueue: make(chan *am.AgentMessage, 50),
+
+		// We used a buffered channel of size 1 so we dont block receive if the
+		// send queue is empty and we have not yet called waitForAgentReady()
 		agentReadyChan: make(chan bool, 1),
 	}
 
@@ -173,9 +175,15 @@ func (d *DataConnection) receive() {
 
 // Returns error on connection closed
 func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
+	d.logger.Infof("processing new inbound %s message", message.Target)
 	switch message.Target {
-	case agentDisconnected:
-		rerr := fmt.Errorf("the bzero agent terminated the connection, not retrying")
+	case closeConnection:
+		var cdwMessage CloseDaemonWebsocketMessage
+		if err := json.Unmarshal(message.Arguments[0], &cdwMessage); err != nil {
+			return fmt.Errorf("error unmarshalling close daemon websocket message. Error: %s", err)
+		}
+
+		rerr := fmt.Errorf("the bzero agent terminated the connection with reason: %s", cdwMessage.Reason)
 		d.tmb.Kill(rerr)
 		return rerr
 	case agentConnected:
@@ -188,9 +196,10 @@ func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
 
 		d.logger.Infof("Agent is connected and ready to receive for connection: %s", agentConnectedMessage.ConnectionId)
 
-		d.agentReady = true
-		d.ready = true
-		d.agentReadyChan <- true
+		if !d.ready {
+			d.ready = true
+			d.agentReadyChan <- true
+		}
 	default:
 		// Otherwise assume that the invocation contains a single AgentMessage argument
 		if len(message.Arguments) != 1 {
@@ -234,6 +243,29 @@ func (d *DataConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
 		d.logger.Infof("Connection closing because: %s", reason)
 
+		// Sends a message to the agent that we are closing the data connection
+		// websocket so that the agent can also disconnect from the websocket
+		cawMessaged := CloseAgentWebsocketMessage{
+			Reason: reason.Error(),
+		}
+		messagePayloadBytes, err := json.Marshal(cawMessaged)
+		if err != nil {
+			d.logger.Errorf("Failed to marshal close agent websocket message %s", err)
+		} else {
+			// Send the message directly instead of adding to send queue to
+			// avoid race condition where tmb.Kill() will close the underlying
+			// websocket
+			cawMessage := am.AgentMessage{
+				MessageType:    string(am.CloseAgentWebsocket),
+				MessagePayload: messagePayloadBytes,
+				SchemaVersion:  am.CurrentVersion,
+				ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
+			}
+			if err := d.client.Send(cawMessage); err != nil {
+				d.logger.Errorf("failed to send close agent websocket message: %s", err)
+			}
+		}
+
 		d.tmb.Kill(reason)
 
 		select {
@@ -264,7 +296,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
+	backoffParams.MaxElapsedTime = maximumReconnectWaitTime
 	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
@@ -283,11 +315,6 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 				continue
 			}
 
-			// If we're reconnecting, then we don't need to wait for this message
-			if d.agentReady {
-				d.ready = true
-			}
-
 			d.logger.Infof("Successfully connected to %s", connUrl)
 			return nil
 		}
@@ -299,10 +326,9 @@ func (d *DataConnection) waitForAgentReady() {
 	case <-d.tmb.Dying():
 		return
 	case <-d.agentReadyChan:
-		d.agentReady = true
-		d.ready = true
+		return
 	case <-time.After(agentConnectedTimeout):
-		d.tmb.Kill(fmt.Errorf("timed out waiting for agent to connect"))
+		d.Close(fmt.Errorf("timed out waiting for agent to connect"), 60*time.Second)
 	}
 }
 
@@ -315,6 +341,8 @@ func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 		return "OpenDataChannelDaemonToBastionV1", nil
 	case am.CloseDataChannel:
 		return "CloseDataChannelDaemonToBastionV1", nil
+	case am.CloseAgentWebsocket:
+		return "CloseAgentWebsocketV1", nil
 	default:
 		return "", fmt.Errorf("unhandled message type: %s", agentMessage.MessageType)
 	}

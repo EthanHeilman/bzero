@@ -15,6 +15,7 @@ package controlconnection
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -25,20 +26,28 @@ import (
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlconnection/challenge"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
+	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 )
 
-var maxBackoffInterval = 5 * time.Minute
+var (
+	maxBackoffInterval = 5 * time.Minute
+	retryCount         = 0
+)
 
 const (
-	controlHubEndpoint       = "/api/v1/hub/control"
 	waitForCloseTimeout      = 10 * time.Second
 	MaximumReconnectWaitTime = 30 * time.Minute
+
+	connectionServiceEndpoint = "/api/v2/connection-service/url" // bastion
+	controlChannelEndpoint    = "/control-channel"               // connection-orchestrator
+	controlChannelHubEndpoint = "hub/agent-control"              // connection-node
 )
 
 type ControlConnection struct {
@@ -52,27 +61,35 @@ type ControlConnection struct {
 	// A connection broker, allows us to narrowcast to one subscribed datachannel
 	broker *broker.Broker
 
+	// provider of agent identity token and message signer for authenticating messages to the backend
+	agentIdentityProvider agentidentity.IAgentIdentityProvider
+	messageSigner         messagesigner.IMessageSigner
+
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
 }
 
 func New(
 	logger *logger.Logger,
-	connUrl string,
+	bastionUrl string,
 	privateKey string,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
+	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	messageSigner messagesigner.IMessageSigner,
 ) (connection.Connection, error) {
 
 	conn := ControlConnection{
-		logger:    logger,
-		client:    client,
-		broker:    broker.New(),
-		sendQueue: make(chan *am.AgentMessage, 50),
+		logger:                logger,
+		client:                client,
+		broker:                broker.New(),
+		agentIdentityProvider: agentIdentityProvider,
+		messageSigner:         messageSigner,
+		sendQueue:             make(chan *am.AgentMessage, 50),
 	}
 
-	if err := conn.connect(connUrl, headers, params, privateKey); err != nil {
+	if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
 		return nil, err
 	}
 
@@ -98,7 +115,7 @@ func New(
 				conn.ready = false
 
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(connUrl, headers, params, privateKey); err != nil {
+				if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
@@ -174,14 +191,11 @@ func (c *ControlConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (c *ControlConnection) connect(connUrl string, headers http.Header, params url.Values, privateKey string) error {
-	// Check if the connection url is a validly formatted url
-	connectionUrl, err := url.ParseRequestURI(connUrl)
-	if err != nil {
+func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values, privateKey string) error {
+	// Make sure bastionUrl is valid
+	if _, err := url.ParseRequestURI(bastionUrl); err != nil {
 		return err
 	}
-	// Build our endpoint which we'll use to connect to
-	connectionUrl.Path = path.Join(connectionUrl.Path, controlHubEndpoint)
 
 	// Make a context and tie it in with our tomb and then send it everywhere
 	ctx, cancel := context.WithCancel(context.Background())
@@ -200,6 +214,7 @@ func (c *ControlConnection) connect(connUrl string, headers http.Header, params 
 	backoffParams.MaxElapsedTime = MaximumReconnectWaitTime
 	backoffParams.MaxInterval = maxBackoffInterval
 
+	retryCount = 0
 	ticker := backoff.NewTicker(backoffParams)
 
 	for {
@@ -211,25 +226,47 @@ func (c *ControlConnection) connect(connUrl string, headers http.Header, params 
 				return fmt.Errorf("failed to connect after %s", backoffParams.MaxElapsedTime)
 			}
 
-			if solvedChallenge, err := challenge.Get(c.logger, connUrl, params["target_id"][0], params["version"][0], privateKey, ctx); err != nil {
-				c.logger.Debugf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
+			retryCount++
+
+			// get the connectionOrchestratorUrl from bastion
+			connectionOrchestratorUrl, err := c.getConnectionServiceUrl(bastionUrl, ctx)
+			if err != nil {
+				c.logger.Infof("Retrying in %s because we failed to get connection service url from bastion: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
-			} else {
-				params["solved_challenge"] = []string{solvedChallenge}
 			}
 
-			// And sign our agent version
-			if signedAgentVersion, err := challenge.Solve(params["version"][0], privateKey); err != nil {
-				return fmt.Errorf("error signing agent version: %s", err)
-			} else {
-				params["signed_agent_version"] = []string{signedAgentVersion}
+			agentIdentityToken, err := c.agentIdentityProvider.GetToken(ctx)
+			if err != nil {
+				c.logger.Infof("Retrying in %s because we failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
+				continue
 			}
+
+			getControlChannelResponse, err := c.getControlChannel(connectionOrchestratorUrl, agentIdentityToken)
+			if err != nil {
+				c.logger.Infof("Retrying in %s because we failed to get assigned a connection node from the orchestrator: %s", backoffParams.NextBackOff().Round(time.Second), err)
+				continue
+			}
+
+			connectionUrl, err := url.Parse(getControlChannelResponse.ConnectionUrl)
+			if err != nil {
+				return err
+			}
+			connectionUrl.Path = path.Join(connectionUrl.Path, controlChannelHubEndpoint)
+
+			message, sig, err := c.buildOpenControlChannelMessage(params["version"][0], getControlChannelResponse.ConnectionUrl, getControlChannelResponse.ControlChannelId)
+			if err != nil {
+				return fmt.Errorf("failed to build open control channel message %w", err)
+			}
+
+			headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", agentIdentityToken)}
+			params["message"] = []string{message}
+			params["signature"] = []string{sig}
 
 			if err := c.client.Connect(ctx, connectionUrl.String(), headers, params, targetSelectHandler); err != nil {
 				c.logger.Infof("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
 			} else {
-				c.logger.Infof("Successfully connected to %s", connUrl)
+				c.logger.Infof("Successfully connected to %s", connectionUrl)
 				c.ready = true
 				return nil
 			}
@@ -241,8 +278,112 @@ func (c *ControlConnection) connect(connUrl string, headers http.Header, params 
 func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.HealthCheck:
-		return "AliveCheckAgentToBastion", nil
+		return "Heartbeat", nil
+	case am.ClusterUsers:
+		return "ClusterUsers", nil
 	default:
 		return "", fmt.Errorf("unsupported message type")
 	}
+}
+
+func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx context.Context) (string, error) {
+	// Build the http client and request
+	options := httpclient.HTTPOptions{
+		Endpoint: connectionServiceEndpoint,
+	}
+
+	client, err := httpclient.New(c.logger, serviceUrl, options)
+	if err != nil {
+		return "", err
+	}
+
+	// make our request
+	resp, err := client.Get(ctx)
+	if err != nil {
+		return "", fmt.Errorf("error making get request to get connection service url")
+	}
+
+	// Decode and return response
+	defer resp.Body.Close()
+	responseDecoded := GetConnectionServiceResponse{}
+	json.NewDecoder(resp.Body).Decode(&responseDecoded)
+	return responseDecoded.ConnectionServiceUrl, nil
+}
+
+func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken string) (*GetControlChannelResponse, error) {
+	// Create a new GetControlChannel message
+	getControlChannel := GetControlChannel{
+		BackendAgentMessage: am.BackendAgentMessage{
+			MessageType: am.GetControlChannel,
+			Timestamp:   time.Now().Unix(),
+		},
+	}
+
+	// Serialize the message
+	getControlChannelPayload, err := json.Marshal(getControlChannel)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling getControlChannel message: %w", err)
+	}
+
+	// Sign the message
+	sig, err := c.messageSigner.SignMessage(getControlChannelPayload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign getControlChannel message: %w", err)
+	}
+
+	// Build the http client and request
+	options := httpclient.HTTPOptions{
+		Endpoint: controlChannelEndpoint,
+		Headers: http.Header{
+			"Authorization": {fmt.Sprintf("Bearer %s", agentIdentityToken)},
+		},
+		Params: url.Values{
+			"message":   {base64.StdEncoding.EncodeToString(getControlChannelPayload)},
+			"signature": {sig},
+		},
+	}
+
+	client, err := httpclient.New(c.logger, connUrl, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Make request
+	response, err := client.Get(context.Background())
+	if err != nil {
+		return nil, fmt.Errorf("error making get request for control channel. Request: %+v Error: %s. Response: %+v", getControlChannel, err, response)
+	}
+
+	// Decode and return response
+	defer response.Body.Close()
+	responseDecoded := GetControlChannelResponse{}
+	json.NewDecoder(response.Body).Decode(&responseDecoded)
+	return &responseDecoded, nil
+}
+
+func (c *ControlConnection) buildOpenControlChannelMessage(version string, connectionUrl string, controlChannelId string) (string, string, error) {
+	// Create a new OpenControlChannel message
+	openControlChannel := OpenControlChannel{
+		Version:          version,
+		ControlChannelId: controlChannelId,
+		ConnectionUrl:    connectionUrl,
+		BackendAgentMessage: am.BackendAgentMessage{
+			MessageType: am.OpenControlChannel,
+			Timestamp:   time.Now().Unix(),
+		},
+	}
+
+	// Serialize the message
+	openControlChannelPayload, err := json.Marshal(openControlChannel)
+	if err != nil {
+		return "", "", fmt.Errorf("error marshalling openControlChannel message: %w", err)
+	}
+
+	// Sign the message
+	sig, err := c.messageSigner.SignMessage(openControlChannelPayload)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to sign openControlChannel message %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(openControlChannelPayload), sig, nil
 }

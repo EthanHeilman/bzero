@@ -182,7 +182,7 @@ func (b *bzhttp) get() (*http.Response, error) {
 			ticker.Stop()
 			return response, nil
 		} else {
-			b.logger.Errorf("Received status code %d making GET request, will retry in %s", response.StatusCode, b.backoffParams.NextBackOff().Round(time.Second))
+			b.logger.Errorf("Received status code %d making GET request to %s, will retry in %s", response.StatusCode, b.endpoint, b.backoffParams.NextBackOff().Round(time.Second))
 			continue
 		}
 	}

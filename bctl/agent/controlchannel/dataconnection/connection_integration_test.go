@@ -6,16 +6,21 @@ import (
 	"net/url"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
+	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"bastionzero.com/bctl/v1/bzerolib/tests/connectionnode"
 	"bastionzero.com/bctl/v1/bzerolib/tests/server"
 
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 )
 
 var _ = Describe("Agent Data Connection Integration", Ordered, func() {
@@ -24,20 +29,31 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	params := url.Values{}
 	headers := http.Header{}
 
+	fakeKeyPair, _ := tests.GenerateEd25519Key()
+	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	connectionId := uuid.New().String()
+
+	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
+	mockKeysplittingConfig.On("GetPrivateKey").Return(fakeKeyPair.Base64EncodedPrivateKey)
+	mockKeysplittingConfig.On("GetPublicKey").Return(fakeKeyPair.Base64EncodedPublicKey)
+
+	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
+	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+
 	createConnectionWithBastion := func(cnUrl string) connection.Connection {
 		websocket.WebsocketUrlScheme = websocket.HttpWebsocketScheme
 		wsLogger := logger.GetComponentLogger("Websocket")
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, params, headers, client)
+		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, client)
 
 		return conn
 	}
 
 	Context("Connecting", func() {
 
-		When("The Connection Node thows errors while trying to connect", func() {
+		When("The Connection Node throws errors while trying to connect", func() {
 			var websocketServer *server.WebsocketServer
 			var mockCN *tests.MockServer
 			var conn connection.Connection
@@ -112,7 +128,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 
 			It("shuts down", func() {
 				time.Sleep(time.Second)
-				Expect(conn.Ready()).To(Equal(false))
+				Expect(conn.Ready()).To(Equal(true), "connection did not reestablish itself after we unexpectedly broke the websocket connection")
 			})
 		})
 
@@ -133,9 +149,9 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 
 			It("sends all remaining messages in the pipeline", func() {})
 
-			It("shuts down", func() {
+			It("will try to reconnect", func() {
 				time.Sleep(time.Second)
-				Expect(conn.Ready()).To(Equal(false))
+				Expect(conn.Ready()).To(Equal(true))
 			})
 		})
 	})

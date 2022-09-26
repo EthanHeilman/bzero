@@ -10,6 +10,7 @@ require (
 	bastionzero.com/bctl/v1/bzerolib v0.0.0
 	github.com/Masterminds/semver v1.5.0
 	github.com/cenkalti/backoff v2.2.1+incompatible
+	github.com/coreos/go-oidc/v3 v3.0.0
 	github.com/creack/pty v1.1.15
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/google/uuid v1.2.0

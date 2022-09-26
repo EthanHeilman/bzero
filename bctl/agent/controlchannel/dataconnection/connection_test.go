@@ -8,12 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
+	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
+	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -27,6 +32,10 @@ func TestDatachannelConnection(t *testing.T) {
 var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	validUrl := "localhost:0"
 
+	fakeKeyPair, _ := tests.GenerateEd25519Key()
+	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	fakeConnectionId := uuid.New().String()
+
 	var conn connection.Connection
 	var mockClient *messenger.MockMessenger
 	var doneChan chan struct{}
@@ -36,6 +45,13 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	logger := logger.MockLogger(GinkgoWriter)
 	params := url.Values{}
 	headers := http.Header{}
+
+	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
+	mockKeysplittingConfig.On("GetPrivateKey").Return(fakeKeyPair.Base64EncodedPrivateKey)
+	mockKeysplittingConfig.On("GetPublicKey").Return(fakeKeyPair.Base64EncodedPublicKey)
+
+	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
+	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
 
 	setupHappyClient := func() {
 		doneChan = make(chan struct{})
@@ -55,7 +71,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, validUrl, params, headers, mockClient)
+				conn, err = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -73,7 +89,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, params, headers, mockClient)
+				_, err = New(logger, malformedUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -91,7 +107,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -116,14 +132,14 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			testSignalRMessage := &signalr.SignalRMessage{
 				Type:         int(signalr.Invocation),
-				Target:       "Test",
+				Target:       "RequestBastionToAgentV1",
 				Arguments:    []json.RawMessage{testAgentMessageBytes},
 				InvocationId: "random",
 			}
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -145,14 +161,14 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
 
-			It("dies", func() {
+			It("reconnects", func() {
 				time.Sleep(time.Second) // allow connection time to catch death
-				Expect(conn.Ready()).To(Equal(false), "the connection did not disconnect")
+				Expect(conn.Ready()).To(Equal(true), "the connection is still alive")
 			})
 		})
 
@@ -160,7 +176,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

@@ -28,20 +28,23 @@ const (
 	Error MessageType = "error"
 
 	// datachannel controller messages
-	OpenDataChannel  MessageType = "openDataChannel"
-	CloseDataChannel MessageType = "closeDataChannel"
+	OpenDataChannel      MessageType = "openDataChannel"
+	CloseDataChannel     MessageType = "closeDataChannel"
+	CloseDaemonWebsocket MessageType = "closeDaemonWebsocket"
+	CloseAgentWebsocket  MessageType = "closeAgentWebsocket"
 
 	// connection controller messages
-	OpenWebsocket        MessageType = "openWebsocket"
-	CloseWebsocket       MessageType = "closeWebsocket"
-	CloseDaemonWebsocket MessageType = "closeDaemonWebsocket"
-	ReconnectWebsocket   MessageType = "reconnectWebsocket"
+	OpenWebsocket  MessageType = "openWebsocket"
+	CloseWebsocket MessageType = "closeWebsocket"
 
 	// message for force closing all connections an agent has
 	CloseAllConnections MessageType = "closeAllConnections"
 
 	// regular health checks with the agent to make sure it's doing well
 	HealthCheck MessageType = "healthcheck"
+
+	// control channel message to update valid cluster users for a kube cluster
+	ClusterUsers MessageType = "clusterusers"
 
 	// poison pill message - an order from an admin to restart
 	Restart MessageType = "restart"
