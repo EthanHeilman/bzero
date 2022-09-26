@@ -15,6 +15,7 @@ package dataconnection
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,11 +23,14 @@ import (
 	"path"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
+	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
+	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 )
@@ -35,15 +39,23 @@ import (
 var maxBackoffInterval = 5 * time.Second // At most 3 seconds in between requests
 
 const (
-	agentHubEndpoint = "hub/agent"
-
 	MaximumReconnectWaitTime = 5 * time.Minute
+	agentHubEndpoint         = "hub/agent/v2"
+
+	// Websocket methods
+	requestBastionToAgentV1 = "RequestBastionToAgentV1"
+	openDataChannel         = "OpenDataChannel"
+	closeDataChannel        = "CloseDataChannel"
+	daemonConnected         = "DaemonConnected"
+	daemonDisconnected      = "DaemonDisconnected"
+	closeConnection         = "CloseConnection"
 )
 
 type DataConnection struct {
-	tmb    tomb.Tomb
-	logger *logger.Logger
-	ready  bool
+	tmb          tomb.Tomb
+	logger       *logger.Logger
+	ready        bool
+	connectionId string
 
 	// This is our underlying connection
 	client messenger.Messenger
@@ -53,15 +65,29 @@ type DataConnection struct {
 
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
+
+	// config values needed for keysplitting when creating datachannels
+	ksConfig keysplitting.IKeysplittingConfig
+
+	// provider of agent identity token and message signer for authenticating messages to the backend
+	agentIdentityProvider agentidentity.IAgentIdentityProvider
+	messageSigner         messagesigner.IMessageSigner
+
+	// Channel indicating when the DaemonConnected control message is sent in the websocket
+	daemonReadyChan chan bool
 }
 
 func New(
 	logger *logger.Logger,
 	connUrl string,
+	connectionId string,
+	ksConfig keysplitting.IKeysplittingConfig,
+	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	messageSigner messagesigner.IMessageSigner,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
-) (connection.Connection, error) {
+) (*DataConnection, error) {
 
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.ParseRequestURI(connUrl)
@@ -71,10 +97,15 @@ func New(
 	connectionUrl.Path = path.Join(connectionUrl.Path, agentHubEndpoint)
 
 	conn := DataConnection{
-		logger:    logger,
-		client:    client,
-		broker:    broker.New(),
-		sendQueue: make(chan *am.AgentMessage, 50),
+		logger:                logger,
+		connectionId:          connectionId,
+		client:                client,
+		broker:                broker.New(),
+		sendQueue:             make(chan *am.AgentMessage, 50),
+		ksConfig:              ksConfig,
+		agentIdentityProvider: agentIdentityProvider,
+		messageSigner:         messageSigner,
+		daemonReadyChan:       make(chan bool),
 	}
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
@@ -101,8 +132,11 @@ func New(
 				return nil
 			case <-conn.client.Done():
 				conn.ready = false
-				logger.Infof("Connection with BastionZero closed and we're not retrying")
-				return fmt.Errorf("underlying connection closed")
+				logger.Infof("Lost connection to BastionZero, reconnecting...")
+				if err := conn.connect(connectionUrl, headers, params); err != nil {
+					logger.Errorf("failed to reconnect to BastionZero: %s", err)
+					return err
+				}
 			case message := <-conn.sendQueue:
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
@@ -120,22 +154,87 @@ func (d *DataConnection) receive() {
 		case <-d.tmb.Dead():
 			return
 		case message := <-d.client.Inbound():
+			switch message.Target {
+			case closeConnection:
+				var rerr error
+				var cawMessage CloseAgentWebsocketMessage
+				if err := json.Unmarshal(message.Arguments[0], &cawMessage); err != nil {
+					rerr = fmt.Errorf("error unmarshalling close agent websocket message. Error: %s", err)
+				} else {
+					rerr = fmt.Errorf("the daemon terminated the connection with reason %s", cawMessage)
+				}
+				d.tmb.Kill(rerr)
+			case daemonConnected:
+				d.logger.Info("daemon is connected")
+				d.daemonReadyChan <- true
+			case daemonDisconnected:
+				reconnectTimeout := 60 * time.Second
+				d.logger.Infof("daemon disconnected...waiting %s for daemon to reconnect", reconnectTimeout)
+				go d.waitForDaemonToConnect(reconnectTimeout)
+			case openDataChannel:
+				var odMessage OpenDataChannelMessage
+				err := json.Unmarshal(message.Arguments[0], &odMessage)
+				if err != nil {
+					d.logger.Errorf("error unmarshalling open data channel message: %s. Payload: %v", err, message.Arguments)
+				}
+				if err := d.openDataChannel(odMessage); err != nil {
+					d.logger.Errorf("error handling open data channel control message: %s", err)
+				}
+			case closeDataChannel:
+				var cdMessage CloseDataChannelMessage
+				err := json.Unmarshal(message.Arguments[0], &cdMessage)
+				if err != nil {
+					d.logger.Errorf("error unmarshalling close data channel message: %s. Payload: %v", err, message.Arguments)
+				}
+				if err := d.closeDataChannel(cdMessage); err != nil {
+					d.logger.Errorf("error handling close data channel control message: %s", err)
+				}
+			case requestBastionToAgentV1:
+				// Assume that the invocation contains a single AgentMessage argument
+				if len(message.Arguments) != 1 {
+					d.logger.Errorf("expected a single agent message argument but got %d arguments", len(message.Arguments))
+				}
 
-			// Otherwise assume that the invocation contains a single AgentMessage argument
-			if len(message.Arguments) != 1 {
-				d.logger.Errorf("expected a single agent message argument but got %d arguments", len(message.Arguments))
-			}
+				var agentMessage am.AgentMessage
+				if err := json.Unmarshal(message.Arguments[0], &agentMessage); err != nil {
+					d.logger.Errorf("error unmarshalling %s message: %s", message.Target, err)
+				}
 
-			var agentMessage am.AgentMessage
-			if err := json.Unmarshal(message.Arguments[0], &agentMessage); err != nil {
-				d.logger.Errorf("error unmarshalling %s message: %s", message.Target, err)
-			}
-
-			if err := d.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
-				d.logger.Errorf("failed to forward agent message to datachannel: %s", err)
+				// forward the message to the datachannel using the broker
+				if err := d.broker.DirectMessage(agentMessage.ChannelId, agentMessage); err != nil {
+					d.logger.Errorf("failed to forward agent message to data channel: %s", err)
+				}
+			default:
+				d.logger.Errorf("Unhandled method target: %s", message.Target)
 			}
 		}
 	}
+}
+
+func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error {
+	dcId := odMessage.DataChannelId
+	d.logger.Infof("got new open data channel control message for id: %s", dcId)
+
+	subLogger := d.logger.GetDatachannelLogger(dcId)
+	ksSubLogger := d.logger.GetComponentLogger("mrzap")
+
+	if keysplitter, err := keysplitting.New(ksSubLogger, d.ksConfig); err != nil {
+		return err
+	} else {
+		_, err := datachannel.New(&d.tmb, subLogger, d, keysplitter, dcId, odMessage.Syn)
+		return err
+	}
+}
+
+func (d *DataConnection) closeDataChannel(cdMessage CloseDataChannelMessage) error {
+	dcId := cdMessage.DataChannelId
+	d.logger.Infof("got new close data channel control message for %s", dcId)
+
+	if ok := d.broker.CloseChannel(dcId, fmt.Errorf("received close data channel control message from daemon")); !ok {
+		return fmt.Errorf("agent connection does not have a datachannel with id: %s", dcId)
+	}
+
+	return nil
 }
 
 func (d *DataConnection) Send(agentMessage am.AgentMessage) {
@@ -162,6 +261,27 @@ func (d *DataConnection) Err() error {
 func (d *DataConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
 		d.logger.Infof("Connection closing because: %s", reason)
+
+		// Sends a message to the daemon that we are closing the data connection
+		// websocket so that the daemon can also disconnect from the websocket
+		cdwMessaged := CloseDaemonWebsocketMessage{
+			Reason: reason.Error(),
+		}
+		messagePayloadBytes, err := json.Marshal(cdwMessaged)
+		if err != nil {
+			d.logger.Errorf("Failed to marshal close daemon websocket message %s", err)
+		} else {
+			cdwMessage := am.AgentMessage{
+				MessageType:    string(am.CloseDaemonWebsocket),
+				MessagePayload: messagePayloadBytes,
+				SchemaVersion:  am.CurrentVersion,
+				ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
+			}
+
+			if err := d.client.Send(cdwMessage); err != nil {
+				d.logger.Errorf("failed to send close daemon websocket message: %s", err)
+			}
+		}
 
 		d.tmb.Kill(reason)
 
@@ -205,6 +325,38 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 				return fmt.Errorf("failed to connect after %s", backoffParams.MaxElapsedTime)
 			}
 
+			agentIdentityToken, err := d.agentIdentityProvider.GetToken(ctx)
+			if err != nil {
+				d.logger.Errorf("Retrying in %s because failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
+				continue
+			}
+
+			openAgentWebsocketMessage := OpenAgentWebsocketMessage{
+				BackendAgentMessage: am.BackendAgentMessage{
+					MessageType: am.OpenAgentWebsocket,
+					Timestamp:   time.Now().Unix(),
+				},
+				ConnectionId: d.connectionId,
+			}
+
+			openAgentWebsocketPayload, err := json.Marshal(openAgentWebsocketMessage)
+			if err != nil {
+				return fmt.Errorf("error marshalling openAgentWebsocket message: %w", err)
+			}
+
+			// Sign the message
+			sig, err := d.messageSigner.SignMessage(openAgentWebsocketPayload)
+			if err != nil {
+				return fmt.Errorf("failed to sign openAgentWebsocket message: %w", err)
+			}
+
+			// Add our AgentIdentityToken as Bearer Authorization header
+			headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", agentIdentityToken)}
+
+			// Add message + signature as query params
+			params["message"] = []string{base64.StdEncoding.EncodeToString(openAgentWebsocketPayload)}
+			params["signature"] = []string{sig}
+
 			if err := d.client.Connect(ctx, connUrl.String(), headers, params, targetSelectHandler); err != nil {
 				d.logger.Errorf("Retrying in %s because we failed to connect: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
@@ -212,8 +364,22 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 
 			d.logger.Infof("Successfully connected to %s", connUrl)
 			d.ready = true
+
+			go d.waitForDaemonToConnect(60 * time.Second)
 			return nil
 		}
+	}
+}
+
+// wait for daemon connect message or timeout and close the connection
+func (d *DataConnection) waitForDaemonToConnect(timeout time.Duration) {
+	select {
+	case <-d.tmb.Dying():
+		break
+	case <-d.daemonReadyChan:
+		break
+	case <-time.After(timeout):
+		d.Close(fmt.Errorf("timed out waiting for daemon to connect after %s", timeout), 10*time.Second)
 	}
 }
 
@@ -227,4 +393,8 @@ func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 	default:
 		return "", fmt.Errorf("unable to determine SignalR endpoint for message type: %s", agentMessage.MessageType)
 	}
+}
+
+func (d *DataConnection) NumDataChannels() int {
+	return d.broker.NumChannels()
 }

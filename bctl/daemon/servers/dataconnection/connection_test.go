@@ -91,7 +91,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 				conn = setupHappyConnection(mockClient)
 			})
 
-			It("waits for the agent to connect before settting itself to ready", func() {
+			It("waits for the agent to connect before setting itself to ready", func() {
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(true), "the connection is not ready")
 			})
@@ -132,7 +132,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 	})
 
 	Context("Receive", func() {
-		When("receiving a mesage from the underlying connection", func() {
+		When("receiving a message from the underlying connection", func() {
 			var mockChannel *broker.MockChannel
 			testId := "1234"
 
@@ -181,7 +181,11 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 
 			It("reconnects", func() {
 				time.Sleep(time.Second) // allow connection time to catch death
-				Expect(conn.Ready()).To(Equal(true), "the connection is still alive")
+
+				Expect(conn.Ready()).To(Equal(false), "the connection is ready before the agent reconnects")
+				inboundChan <- testSignalRMessage
+				time.Sleep(time.Second) // allow connection time to process agent connected message
+				Expect(conn.Ready()).To(Equal(true), "the connection is not ready after the agent connects")
 			})
 		})
 

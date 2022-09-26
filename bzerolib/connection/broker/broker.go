@@ -24,12 +24,33 @@ func New() *Broker {
 }
 
 func (b *Broker) Close(reason error) {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	for cId, channel := range b.subscribers {
+		channel.Close(reason)
+		delete(b.subscribers, cId)
+	}
+}
+
+func (b *Broker) CloseChannel(cId string, reason error) bool {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	if channel, ok := b.subscribers[cId]; ok {
+		channel.Close(reason)
+		delete(b.subscribers, cId)
+		return true
+	}
+
+	return false
+}
+
+func (b *Broker) NumChannels() int {
 	b.lock.RLock()
 	defer b.lock.RUnlock()
 
-	for _, channel := range b.subscribers {
-		channel.Close(reason)
-	}
+	return len(b.subscribers)
 }
 
 func (b *Broker) Subscribe(id string, subscriber IChannel) {

@@ -3,6 +3,7 @@ package vault
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"sync"
 
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"github.com/fsnotify/fsnotify"
 	coreV1 "k8s.io/api/core/v1"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -35,26 +37,27 @@ type Vault struct {
 	Data SecretData
 
 	// Kube secret related
-	client   coreV1Types.SecretInterface
-	secret   *coreV1.Secret
-	fileLock sync.Mutex
+	client    coreV1Types.SecretInterface
+	secret    *coreV1.Secret
+	vaultLock sync.Mutex
 }
 
 type SecretData struct {
-	PublicKey       string
-	PrivateKey      string
-	ServiceUrl      string
-	TargetName      string
-	Namespace       string
-	IdpProvider     string
-	IdpOrgId        string
-	TargetId        string
-	EnvironmentId   string
-	EnvironmentName string
-	AgentType       string
-	Version         string
-	ShutdownReason  string
-	ShutdownState   string
+	PublicKey          string
+	PrivateKey         string
+	ServiceUrl         string
+	TargetName         string
+	Namespace          string
+	IdpProvider        string
+	IdpOrgId           string
+	TargetId           string
+	EnvironmentId      string
+	EnvironmentName    string
+	AgentType          string
+	Version            string
+	ShutdownReason     string
+	ShutdownState      string
+	AgentIdentityToken string
 }
 
 func LoadVault() (*Vault, error) {
@@ -260,9 +263,11 @@ func (v *Vault) Save() error {
 func (v *Vault) GetPublicKey() string {
 	return v.Data.PublicKey
 }
+
 func (v *Vault) GetPrivateKey() string {
 	return v.Data.PrivateKey
 }
+
 func (v *Vault) GetIdpProvider() string {
 	return v.Data.IdpProvider
 }
@@ -271,10 +276,24 @@ func (v *Vault) GetIdpOrgId() string {
 	return v.Data.IdpOrgId
 }
 
+func (v *Vault) GetAgentIdentityToken() string {
+	return v.Data.AgentIdentityToken
+}
+
+func (v *Vault) SaveAgentIdentityToken(agentIdentityToken string) error {
+	v.Data.AgentIdentityToken = agentIdentityToken
+	return v.Save()
+}
+
+func (v *Vault) GetMessageSigner() (*messagesigner.MessageSigner, error) {
+	privKey, _ := base64.StdEncoding.DecodeString(v.GetPrivateKey())
+	return messagesigner.New(privKey)
+}
+
 // There is no selective saving, saving the vault will overwrite anything existing
 func (v *Vault) saveSystemd() error {
-	v.fileLock.Lock()
-	defer v.fileLock.Unlock()
+	v.vaultLock.Lock()
+	defer v.vaultLock.Unlock()
 
 	// overwrite entire file every time
 	dataBytes, _ := json.Marshal(v.Data)
@@ -293,6 +312,9 @@ func (v *Vault) saveSystemd() error {
 }
 
 func (v *Vault) saveCluster() error {
+	v.vaultLock.Lock()
+	defer v.vaultLock.Unlock()
+
 	// Now encode the secretConfig
 	encodedSecretConfig, err := EncodeToBytes(v.Data)
 	if err != nil {
@@ -303,9 +325,10 @@ func (v *Vault) saveCluster() error {
 	v.secret.Data[vaultKey] = encodedSecretConfig
 
 	// Update the secret
-	if _, err := v.client.Update(context.Background(), v.secret, metaV1.UpdateOptions{}); err != nil {
+	if secret, err := v.client.Update(context.Background(), v.secret, metaV1.UpdateOptions{}); err != nil {
 		return fmt.Errorf("could not update secret client: %v", err.Error())
 	} else {
+		v.secret = secret
 		return nil
 	}
 }

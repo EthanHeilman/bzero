@@ -43,7 +43,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 
 	Context("Connecting", func() {
 
-		When("The Connection Node thows errors while trying to connect", func() {
+		When("The Connection Node throws errors while trying to connect", func() {
 			var websocketServer *server.WebsocketServer
 			var mockCN *tests.MockServer
 			var conn connection.Connection
@@ -127,6 +127,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 				conn = createConnectionWithBastion(mockCN.Url)
 
 				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				time.Sleep(time.Millisecond)
 				mockCN.BreakWebsocket()
 			})
 
@@ -137,6 +138,9 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 
 			It("will try to reconnect", func() {
 				time.Sleep(time.Second)
+				Expect(conn.Ready()).To(Equal(false), "connection was ready before agent had reconnected")
+				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				time.Sleep(time.Millisecond)
 				Expect(conn.Ready()).To(Equal(true), "connection did not reestablish itself after we unexpectedly broke the websocket connection")
 			})
 		})
@@ -150,6 +154,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 				conn = createConnectionWithBastion(mockCN.Url)
 
 				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				time.Sleep(time.Second)
 				mockCN.CloseWebsocket()
 			})
 
@@ -162,20 +167,30 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 
 			It("will try to reconnect", func() {
 				time.Sleep(time.Second)
-				Expect(conn.Ready()).To(Equal(true))
+				Expect(conn.Ready()).To(Equal(false), "connection was ready before agent has reconnected")
+
+				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				time.Sleep(time.Second)
+				Expect(conn.Ready()).To(Equal(true), "connection ready after agent has reconnected")
 			})
 		})
 
 		When("We receive word agent closes its connection to the connection node", func() {
 			var mockCN *connectionnode.MockConnectionNode
 			var conn connection.Connection
+			mockCloseReason := "mock close reason"
 
 			BeforeEach(func() {
 				mockCN = connectionnode.New(logger, daemonHubEndpoint)
+
+				mockCloseDaemonWebsocketMessage := CloseDaemonWebsocketMessage{
+					Reason: mockCloseReason,
+				}
+
 				conn = createConnectionWithBastion(mockCN.Url)
 
 				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
-				mockCN.SendSignalRMessage(agentDisconnected, []byte("{}"))
+				mockCN.SendSignalRMessage(closeConnection, mockCloseDaemonWebsocketMessage)
 			})
 
 			AfterEach(func() {
@@ -186,6 +201,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 			It("dies", func() {
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(false))
+				Expect(conn.Err().Error()).To(ContainSubstring((mockCloseReason)))
 			})
 		})
 	})

@@ -8,12 +8,14 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
@@ -49,10 +51,10 @@ const (
 
 	bzeroLogFilePath = "/var/log/bzero/bzero-agent.log"
 
-	// based on convention from backend -- there's nothing magical about the number 6 but we need to guarantee
+	// there's nothing magical about the number 3 but we need to guarantee
 	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
-	// as of this writing, this means an expected pong every six seconds, with a "disconnect" reported after 2 minutes
-	bastionDisconnectTimeout  = 6 * controlchannel.HeartRate
+	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
+	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
 	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
 )
 
@@ -194,7 +196,7 @@ func (a *Agent) Run() {
 		// recover in case the agent panics
 		if msg := recover(); msg != nil {
 			reportError(a.logger, fmt.Errorf("bzero agent crashed with panic: %+v", msg))
-			err = fmt.Errorf("crashed with panic: %+v", msg)
+			err = fmt.Errorf("crashed with panic: %+v. stack trace: %s", msg, debug.Stack())
 		}
 
 		a.Close(err)
@@ -241,18 +243,28 @@ func (a *Agent) startControlChannel() error {
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
 	connId := uuid.New().String()
 	connLogger := ccLogger.GetConnectionLogger(connId)
+	aipLogger := ccLogger.GetComponentLogger("AgentIdentityProvider")
 	wsLogger := ccLogger.GetComponentLogger("Websocket")
 	srLogger := ccLogger.GetComponentLogger("SignalR")
 
 	// Make our connection
 	client := signalr.New(srLogger, websocket.New(wsLogger))
-	conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client)
+	ms, err := a.config.GetMessageSigner()
+	agentIdentityProvider := agentidentity.New(
+		aipLogger,
+		a.config.Data.ServiceUrl,
+		a.config.Data.TargetId,
+		a.config,
+		ms,
+	)
+
+	conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client, agentIdentityProvider, ms)
 	if err != nil {
 		return err
 	}
 
 	// create logger for control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, agentIdentityProvider, ms, a.config)
 
 	return err
 }
@@ -498,11 +510,7 @@ func isRegistered() (bool, error) {
 }
 
 func getAgentVersion() string {
-	if os.Getenv("DEV") == "true" {
-		return "6.7.0"
-	} else {
-		return "$AGENT_VERSION"
-	}
+	return "$AGENT_VERSION"
 }
 
 func getState() map[string]string {
