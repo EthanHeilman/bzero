@@ -29,8 +29,6 @@ func (m *MockDaemonBZCert) Hash() string {
 	args := m.Called()
 	cert := args.Get(0).(*bzcert.VerifiedBZCert)
 	return cert.Hash()
-	// hashBytes, _ := util.HashPayload(cert)
-	// return base64.StdEncoding.EncodeToString(hashBytes)
 }
 
 func (m *MockDaemonBZCert) PrivateKey() string {
