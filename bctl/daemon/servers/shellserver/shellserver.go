@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
@@ -39,6 +40,8 @@ type ShellServer struct {
 	// fields for new datachannels
 	agentPubKey string
 	cert        *bzcert.DaemonBZCert
+
+	tmb tomb.Tomb
 }
 
 func New(
@@ -74,6 +77,22 @@ func New(
 		server.conn = client
 	}
 
+	// Create a tmb that just waits until its killed via server.Close and pushes
+	// the error to the errChan. Using a tmb prevents any side-effects from
+	// server.Close from being called multiple times.
+	server.tmb.Go(func() error {
+		select {
+		case <-server.tmb.Dying():
+			server.logger.Infof("shell server tmb is dying")
+			err := server.tmb.Err()
+			if server.conn != nil {
+				server.conn.Close(err, connectionCloseTimeout)
+			}
+			server.errChan <- err
+			return err
+		}
+	})
+
 	return server, nil
 }
 
@@ -86,10 +105,7 @@ func (ss *ShellServer) Start() error {
 }
 
 func (ss *ShellServer) Close(err error) {
-	if ss.conn != nil {
-		ss.conn.Close(err, connectionCloseTimeout)
-	}
-	ss.errChan <- err
+	ss.tmb.Kill(err)
 }
 
 func (ss *ShellServer) listenForChildrenDone() {

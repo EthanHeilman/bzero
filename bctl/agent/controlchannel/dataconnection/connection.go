@@ -126,6 +126,29 @@ func New(
 				// Close any listening datachannels
 				conn.broker.Close(fmt.Errorf("connection closed"))
 
+				// Sends a message to the daemon that we are closing the data connection
+				// websocket so that the daemon can also disconnect from the websocket
+				cdwMessaged := CloseDaemonWebsocketMessage{
+					Reason: conn.Err().Error(),
+				}
+				messagePayloadBytes, err := json.Marshal(cdwMessaged)
+				if err != nil {
+					conn.logger.Errorf("Failed to marshal close daemon websocket message %s", err)
+				} else {
+					cdwMessage := am.AgentMessage{
+						MessageType:    string(am.CloseDaemonWebsocket),
+						MessagePayload: messagePayloadBytes,
+						SchemaVersion:  am.CurrentVersion,
+						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
+					}
+
+					conn.Send(cdwMessage)
+				}
+
+				// close the send queue and send all remaining messages before
+				// closing the websocket
+				conn.sendRemainingMessages()
+
 				// Close the underlying connection
 				conn.client.Close(conn.tmb.Err())
 
@@ -140,6 +163,8 @@ func New(
 			case message := <-conn.sendQueue:
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
+				} else {
+					conn.logger.Debugf("sent %s message", message.MessageType)
 				}
 			}
 		}
@@ -261,28 +286,6 @@ func (d *DataConnection) Err() error {
 func (d *DataConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
 		d.logger.Infof("Connection closing because: %s", reason)
-
-		// Sends a message to the daemon that we are closing the data connection
-		// websocket so that the daemon can also disconnect from the websocket
-		cdwMessaged := CloseDaemonWebsocketMessage{
-			Reason: reason.Error(),
-		}
-		messagePayloadBytes, err := json.Marshal(cdwMessaged)
-		if err != nil {
-			d.logger.Errorf("Failed to marshal close daemon websocket message %s", err)
-		} else {
-			cdwMessage := am.AgentMessage{
-				MessageType:    string(am.CloseDaemonWebsocket),
-				MessagePayload: messagePayloadBytes,
-				SchemaVersion:  am.CurrentVersion,
-				ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
-			}
-
-			if err := d.client.Send(cdwMessage); err != nil {
-				d.logger.Errorf("failed to send close daemon websocket message: %s", err)
-			}
-		}
-
 		d.tmb.Kill(reason)
 
 		select {
@@ -292,6 +295,24 @@ func (d *DataConnection) Close(reason error, timeout time.Duration) {
 		}
 	} else {
 		d.logger.Infof("Close was called while in a dying state")
+	}
+}
+
+func (d *DataConnection) sendRemainingMessages() {
+	// close the send queue and send all remaining messages
+	d.logger.Infof("sending remaining %d message(s) in send queue before closing websocket", len(d.sendQueue))
+	sendQueueLength := len(d.sendQueue)
+	for i := 0; i < sendQueueLength; i++ {
+		message := <-d.sendQueue
+		if err := d.client.Send(*message); err != nil {
+			d.logger.Errorf("failed to send message: %s", err)
+		} else {
+			d.logger.Debugf("sent %s message", message.MessageType)
+		}
+	}
+
+	if len(d.sendQueue) > 0 {
+		d.logger.Errorf("more messages were added to the send queue after the connection was in dying state")
 	}
 }
 
