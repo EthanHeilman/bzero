@@ -91,19 +91,6 @@ func New(
 	// register with connection so datachannel can send and receive messages
 	conn.Subscribe(id, dc)
 
-	// if we're attaching to an existing datachannel vs if we are creating a new one
-	if !attach {
-		// tell Bastion we're opening a datachannel and send SYN to agent initiates an authenticated datachannel
-		logger.Info("Sending request to agent to open a new datachannel")
-		if err := dc.openDataChannel(action, synPayload); err != nil {
-			return nil, err
-		}
-	} else if _, err := keysplitter.BuildSyn(action, synPayload, true); err != nil {
-		return nil, fmt.Errorf("failed to build and send syn for attachment flow")
-	} else {
-		logger.Infof("Sending SYN on existing datachannel %s with actions %s.", dc.id, action)
-	}
-
 	dc.tmb.Go(func() error {
 		var err error
 		defer func() {
@@ -115,8 +102,11 @@ func New(
 			dc.logger.Info("Datachannel done")
 		}()
 
+		go dc.sendKeysplitting()
+		go dc.zapPluginOutput()
+
 		// wait for the syn/ack to our intial syn message or an error
-		if err = dc.handshakeOrTimeout(); err != nil {
+		if err = dc.handshakeOrTimeout(attach, action, synPayload); err != nil {
 			dc.logger.Error(err)
 			return err
 		}
@@ -146,36 +136,61 @@ func New(
 		}
 	})
 
-	go dc.sendKeysplitting()
-	go dc.zapPluginOutput()
-
 	return dc, nil
 }
 
-func (d *DataChannel) handshakeOrTimeout() error {
-	start := time.Now()
-	select {
-	case <-d.tmb.Dying():
-		return nil
-	case agentMessage := <-d.inputChan:
-		// log the time it took to complete the handshake
-		diff := time.Since(start)
-		d.logger.Infof("It took %s to complete handshake", diff.Round(time.Millisecond).String())
+func (d *DataChannel) handshakeOrTimeout(attach bool, action string, synPayload interface{}) error {
+	maxRetry := 3
+	retryCount := 0
 
-		switch am.MessageType(agentMessage.MessageType) {
-		case am.Error:
-			return d.handleError(agentMessage)
-		case am.Keysplitting:
-			if err := d.handleKeysplitting(agentMessage); err != nil {
-				return err
-			} else {
-				return nil
+	// This will initialize our handshake by either attaching to an existing
+	// datachannel (and sending a lone syn) OR by creating a new datachannel on the
+	// agent by sending the syn as part of a OpenDataChannel request
+	if err := d.start(attach, action, synPayload); err != nil {
+		return err
+	}
+
+	d.logger.Info("Waiting for handshake to complete")
+	start := time.Now()
+	for {
+		select {
+		case <-d.tmb.Dying():
+			return nil
+
+		case agentMessage := <-d.inputChan:
+			switch am.MessageType(agentMessage.MessageType) {
+			case am.Error:
+				d.logger.Errorf("Received error message on initial syn: %s", string(agentMessage.MessagePayload))
+
+				// Limit the number of times we retry to initiate handshake it is very likely
+				// this error will be unrecoverable
+				if retryCount >= maxRetry {
+					err := fmt.Errorf("retried %d times to recover from error on initial syn without success", maxRetry)
+					d.logger.Error(err)
+					return err
+				}
+				retryCount++
+
+				// If we get an error on that first syn, we have to restart the flow
+				if err := d.start(attach, action, synPayload); err != nil {
+					return err
+				}
+			case am.Keysplitting:
+				// log the time it took to complete the handshake
+				diff := time.Since(start)
+				d.logger.Infof("It took %s to complete handshake", diff.Round(time.Millisecond).String())
+
+				if err := d.handleKeysplitting(agentMessage); err != nil {
+					return err
+				} else {
+					return nil
+				}
+			default:
+				return fmt.Errorf("datachannel must start with a mrzap or error message, received: %s", agentMessage.MessageType)
 			}
-		default:
-			return fmt.Errorf("datachannel must start with a mrzap or error message, received: %s", agentMessage.MessageType)
+		case <-time.After(handshakeTimeout):
+			return fmt.Errorf("handshake timed out")
 		}
-	case <-time.After(handshakeTimeout):
-		return fmt.Errorf("handshake timed out")
 	}
 }
 
@@ -214,6 +229,7 @@ func (d *DataChannel) sendKeysplitting() error {
 			return nil
 		case ksMessage := <-d.keysplitter.Outbox():
 			if ksMessage.Type == ksmsg.Syn || !d.keysplitter.Recovering() {
+				d.logger.Infof("Sending a keysplitting %s message", ksMessage.Type)
 				d.send(am.Keysplitting, ksMessage)
 			}
 		}
@@ -248,6 +264,22 @@ func (d *DataChannel) Close(reason error) {
 	}
 	d.tmb.Kill(reason) // kills all datachannel, plugin, and action goroutines
 	d.tmb.Wait()
+}
+
+func (d *DataChannel) start(attach bool, action string, synPayload interface{}) error {
+	// if we're attaching to an existing datachannel vs if we are creating a new one
+	if !attach {
+		// tell Bastion we're opening a datachannel and send SYN to agent initiates an authenticated datachannel
+		d.logger.Info("Sending request to agent to open a new datachannel")
+		return d.openDataChannel(action, synPayload)
+	}
+
+	if _, err := d.keysplitter.BuildSyn(action, synPayload, true); err != nil {
+		return fmt.Errorf("failed to build and send syn for attachment flow")
+	} else {
+		d.logger.Infof("Sending SYN on existing datachannel %s with action %s", d.id, action)
+		return nil
+	}
 }
 
 func (d *DataChannel) openDataChannel(action string, synPayload interface{}) error {

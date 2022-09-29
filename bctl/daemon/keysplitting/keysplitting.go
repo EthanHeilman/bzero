@@ -118,8 +118,6 @@ func (k *Keysplitting) Recover(errMessage rrr.ErrorMessage) error {
 		} else if pair := k.pipelineMap.GetPair(errMessage.HPointer); pair == nil && !k.recovering {
 			k.logger.Infof("agent error is not on a message sent by this datachannel")
 			return nil // not a fatal error
-		} else if msg, ok := pair.Value.(ksmsg.KeysplittingMessage); ok && msg.Type == ksmsg.Syn {
-			return fmt.Errorf("unable to recover because we hit an error on our syn message: %s", errMessage.Message)
 		} else if k.recovering {
 			k.logger.Infof("ignoring error message because we're already in recovery")
 			return nil // not a fatal error
@@ -131,12 +129,6 @@ func (k *Keysplitting) Recover(errMessage rrr.ErrorMessage) error {
 	} else {
 		k.errorRecoveryAttempt++
 		k.logger.Infof("Attempt #%d to recover from error: %s", k.errorRecoveryAttempt, errMessage.Message)
-	}
-
-	// Refresh our BZCert before rebuilding the syn in case the cert expired.
-	// This may still fail if the initialId Token is no longer valid
-	if err := k.bzcert.Refresh(); err != nil {
-		return fmt.Errorf("failed to refresh BastionZero certificate: %w", err)
 	}
 
 	k.recovering = true
@@ -356,6 +348,12 @@ func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (
 	// Reset state
 	k.isHandshakeComplete = false
 	k.lastAck = nil
+
+	// Refresh our BZCert before rebuilding the syn in case the cert expired.
+	// This may still fail if the initialId Token is no longer valid
+	if err := k.bzcert.Refresh(); err != nil {
+		return nil, fmt.Errorf("failed to refresh BastionZero certificate: %w", err)
+	}
 
 	if k.synAction == "initial" {
 		k.synAction = action
