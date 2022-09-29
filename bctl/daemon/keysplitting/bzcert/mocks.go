@@ -1,10 +1,7 @@
 package bzcert
 
 import (
-	"encoding/base64"
-
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -13,9 +10,9 @@ type MockDaemonBZCert struct {
 	mock.Mock
 }
 
-func (m *MockDaemonBZCert) Cert() *bzcert.BZCert {
+func (m *MockDaemonBZCert) Cert() *bzcert.VerifiedBZCert {
 	args := m.Called()
-	return args.Get(0).(*bzcert.BZCert)
+	return args.Get(0).(*bzcert.VerifiedBZCert)
 }
 
 func (m *MockDaemonBZCert) Verify(idpProvider string, idpOrgId string) error {
@@ -30,9 +27,10 @@ func (m *MockDaemonBZCert) Refresh() error {
 
 func (m *MockDaemonBZCert) Hash() string {
 	args := m.Called()
-	cert := args.Get(0).(*bzcert.BZCert)
-	hashBytes, _ := util.HashPayload(cert)
-	return base64.StdEncoding.EncodeToString(hashBytes)
+	cert := args.Get(0).(*bzcert.VerifiedBZCert)
+	return cert.Hash()
+	// hashBytes, _ := util.HashPayload(cert)
+	// return base64.StdEncoding.EncodeToString(hashBytes)
 }
 
 func (m *MockDaemonBZCert) PrivateKey() string {

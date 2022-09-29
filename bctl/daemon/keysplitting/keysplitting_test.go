@@ -41,12 +41,14 @@ var _ = Describe("Daemon keysplitting", func() {
 	daemonKeypair, _ := tests.GenerateEd25519Key()
 	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonKeypair.Base64EncodedPrivateKey, daemonKeypair.Base64EncodedPublicKey)
 
-	fakeBZCert := commonbzcert.BZCert{
-		Rand:            "dummyCerRand",
-		SignatureOnRand: "dummyCerRandSignature",
-		InitialIdToken:  "dummyInitialIdToken",
-		CurrentIdToken:  "dummyCurrentIdToken",
-		ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
+	fakeBZCert := commonbzcert.VerifiedBZCert{
+		BZCert: &commonbzcert.BZCert{
+			Rand:            "dummyCerRand",
+			SignatureOnRand: "dummyCerRandSignature",
+			InitialIdToken:  "dummyInitialIdToken",
+			CurrentIdToken:  "dummyCurrentIdToken",
+			ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
+		},
 	}
 
 	createMockKeysplitter := func() (*Keysplitting, error) {

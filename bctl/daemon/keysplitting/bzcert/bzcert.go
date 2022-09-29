@@ -12,14 +12,13 @@ import (
 )
 
 type IDaemonBZCert interface {
-	bzcert.IBZCert
-	Cert() *bzcert.BZCert
+	Cert() *bzcert.VerifiedBZCert
 	PrivateKey() string
 	Refresh() error
 }
 
 type DaemonBZCert struct {
-	bzcert.BZCert
+	bzcert.VerifiedBZCert
 
 	// unexported members
 	privateKey               string
@@ -43,8 +42,8 @@ func New(
 	return cert, nil
 }
 
-func (b *DaemonBZCert) Cert() *bzcert.BZCert {
-	return &b.BZCert
+func (b *DaemonBZCert) Cert() *bzcert.VerifiedBZCert {
+	return &b.VerifiedBZCert
 }
 
 func (b *DaemonBZCert) PrivateKey() string {
@@ -87,17 +86,26 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	}
 
 	// Update all of our objects values
-	b.InitialIdToken = b.config.CertConfig.InitialIdToken
-	b.CurrentIdToken = b.config.TokenSet.CurrentIdToken
-	b.ClientPublicKey = b.config.CertConfig.PublicKey
-	b.Rand = b.config.CertConfig.CerRand
-	b.SignatureOnRand = b.config.CertConfig.CerRandSignature
 	b.privateKey = privateKey
 
-	// Finally also check the bzcert is valid
-	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId); err != nil {
-		return err
+	// Verify BZCert built from the config
+	verifier, err := bzcert.NewVerifier(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId)
+	if err != nil {
+		return fmt.Errorf("error initializing certificate verifier: %w", err)
 	}
+	verifiedCert, err := verifier.Verify(&bzcert.BZCert{
+		InitialIdToken:  b.config.CertConfig.InitialIdToken,
+		CurrentIdToken:  b.config.TokenSet.CurrentIdToken,
+		ClientPublicKey: b.config.CertConfig.PublicKey,
+		Rand:            b.config.CertConfig.CerRand,
+		SignatureOnRand: b.config.CertConfig.CerRandSignature,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to verify the certificate: %w", err)
+	}
+
+	// Then update
+	b.VerifiedBZCert = *verifiedCert
 
 	// Track the expiration date for our current identity token
 	parser := jwt.Parser{SkipClaimsValidation: true}
@@ -108,5 +116,5 @@ func (b *DaemonBZCert) populateFromConfig() error {
 		b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
 	}
 
-	return b.HashCert()
+	return nil
 }

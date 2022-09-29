@@ -93,13 +93,15 @@ func getMicrosoftIssUrl(orgId string) string {
 	return fmt.Sprintf("%s/%s/v2.0", microsoftUrl, tenantId)
 }
 
-func (v *BZCertVerifier) Verify(bzcert *BZCert) (exp time.Time, err error) {
-	if err = v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
-		return exp, &InitialIdTokenError{InnerError: err}
-	} else if exp, err = v.verifyCurrentIdToken(bzcert.CurrentIdToken); err != nil {
-		return exp, &CurrentIdTokenError{InnerError: err}
+func (v *BZCertVerifier) Verify(bzcert *BZCert) (*VerifiedBZCert, error) {
+	if err := v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
+		return nil, &InitialIdTokenError{InnerError: err}
+	} else if exp, err := v.verifyCurrentIdToken(bzcert.CurrentIdToken); err != nil {
+		return nil, &CurrentIdTokenError{InnerError: err}
+	} else if verifiedBzCert, err := NewVerifiedBZCert(bzcert, exp); err != nil {
+		return nil, err
 	} else {
-		return
+		return verifiedBzCert, nil
 	}
 }
 

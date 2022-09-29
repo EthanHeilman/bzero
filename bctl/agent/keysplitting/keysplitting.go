@@ -118,9 +118,9 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		dataPayload := ksMessage.KeysplittingPayload.(ksmsg.DataPayload)
 
 		// Check BZCert matches one we have stored
-		if k.clientBZCert.Hash() != dataPayload.BZCertHash {
-			return ErrBZCertMismatch
-		}
+		// if k.clientBZCert.Hash() != dataPayload.BZCertHash {
+		// 	return ErrBZCertMismatch
+		// }
 
 		// Verify the signature
 		if err := ksMessage.VerifySignature(k.clientBZCert.ClientPublicKey); err != nil {
@@ -128,9 +128,9 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		}
 
 		// Check that BZCert isn't expired
-		if k.clientBZCert.Expired() {
-			return ErrBZCertExpired
-		}
+		// if k.clientBZCert.Expired() {
+		// 	return ErrBZCertExpired
+		// }
 
 		// Verify received hash pointer matches expected
 		if dataPayload.HPointer != k.expectedHPointer {

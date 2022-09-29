@@ -317,7 +317,7 @@ func (k *Keysplitting) buildResponse(ksMessage *ksmsg.KeysplittingMessage, actio
 	}
 
 	// Use the agreed upon schema version from the synack when building data messages
-	if responseMessage, err := ksMessage.BuildUnsignedData(action, payload, k.bzcert.Hash(), k.schemaVersion.String()); err != nil {
+	if responseMessage, err := ksMessage.BuildUnsignedData(action, payload, k.bzcert.Cert().Hash(), k.schemaVersion.String()); err != nil {
 		return responseMessage, err
 	} else if err := responseMessage.Sign(k.bzcert.PrivateKey()); err != nil {
 		return responseMessage, fmt.Errorf("%w: %s", ErrFailedToSign, err)
@@ -372,7 +372,7 @@ func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (
 		ActionPayload: payloadBytes,
 		TargetId:      k.agentPubKey,
 		Nonce:         util.Nonce(),
-		BZCert:        *k.bzcert.Cert(),
+		BZCert:        *k.bzcert.Cert().BZCert,
 	}
 
 	ksMessage := ksmsg.KeysplittingMessage{
