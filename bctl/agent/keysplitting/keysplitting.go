@@ -16,14 +16,22 @@ const schemaVersionTargetIdNotSet string = "1.0"
 type IKeysplittingConfig interface {
 	GetPublicKey() string
 	GetPrivateKey() string
+	GetIdpProvider() string
+	GetIdpOrgId() string
+}
+
+type BZCertVerifier interface {
+	Verify(bzcert *bzcrt.BZCert) (*bzcrt.VerifiedBZCert, error)
 }
 
 type Keysplitting struct {
 	lastDataMessage  *ksmsg.KeysplittingMessage
 	expectedHPointer string
-	clientBZCert     *bzcrt.BZCert // only for one client
+	clientBZCert     *bzcrt.VerifiedBZCert // only for one client
 	publickey        string
 	privatekey       string
+
+	bzCertVerifier BZCertVerifier
 
 	agentSchemaVersion *semver.Version
 
@@ -36,6 +44,10 @@ type KeysplittingParameters struct {
 	// Config contains the agent's keysplitting configuration. If unset, New()
 	// returns an error.
 	Config IKeysplittingConfig
+	// Verifier is the verifier to use when validating the BZCert parsed from
+	// Syn messages. If unset, New() uses the verifier defined in BzeroLib and
+	// configures it using parameters queried from the Config.
+	Verifier BZCertVerifier
 	// SchemaVersion is the schema version the agent uses when building ack
 	// messages (SynAck and DataAck) when the daemon's schema version is greater
 	// than or equal to this value. If unset, New() uses the schema version
@@ -52,6 +64,17 @@ func New(parameters KeysplittingParameters) (*Keysplitting, error) {
 	} else {
 		keysplitter.publickey = parameters.Config.GetPublicKey()
 		keysplitter.privatekey = parameters.Config.GetPrivateKey()
+	}
+
+	// Validate Verifier
+	if parameters.Verifier == nil {
+		if verifier, err := bzcrt.NewVerifier(parameters.Config.GetIdpProvider(), parameters.Config.GetIdpOrgId()); err != nil {
+			return nil, fmt.Errorf("failed to init BZCertVerifier: %w", err)
+		} else {
+			keysplitter.bzCertVerifier = verifier
+		}
+	} else {
+		keysplitter.bzCertVerifier = parameters.Verifier
 	}
 
 	// Validate SchemaVersion
@@ -85,9 +108,10 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		bzcert := synPayload.BZCert
 
 		// Verify the BZCert
-		// if err := bzcert.Verify(k.idpProvider, k.idpOrgId); err != nil {
-		// 	return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
-		// }
+		verifiedBzCert, err := k.bzCertVerifier.Verify(&bzcert)
+		if err != nil {
+			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
+		}
 
 		// Verify the signature
 		if err := ksMessage.VerifySignature(synPayload.BZCert.ClientPublicKey); err != nil {
@@ -113,14 +137,14 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 			}
 		}
 
-		k.clientBZCert = &bzcert
+		k.clientBZCert = verifiedBzCert
 	case ksmsg.Data:
 		dataPayload := ksMessage.KeysplittingPayload.(ksmsg.DataPayload)
 
 		// Check BZCert matches one we have stored
-		// if k.clientBZCert.Hash() != dataPayload.BZCertHash {
-		// 	return ErrBZCertMismatch
-		// }
+		if k.clientBZCert.Hash() != dataPayload.BZCertHash {
+			return ErrBZCertMismatch
+		}
 
 		// Verify the signature
 		if err := ksMessage.VerifySignature(k.clientBZCert.ClientPublicKey); err != nil {
@@ -128,9 +152,9 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		}
 
 		// Check that BZCert isn't expired
-		// if k.clientBZCert.Expired() {
-		// 	return ErrBZCertExpired
-		// }
+		if k.clientBZCert.Expired() {
+			return ErrBZCertExpired
+		}
 
 		// Verify received hash pointer matches expected
 		if dataPayload.HPointer != k.expectedHPointer {
