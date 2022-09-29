@@ -139,6 +139,10 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 
 		k.clientBZCert = verifiedBzCert
 	case ksmsg.Data:
+		if k.clientBZCert == nil {
+			return fmt.Errorf("cannot validate Data msg because never received valid Syn")
+		}
+
 		dataPayload := ksMessage.KeysplittingPayload.(ksmsg.DataPayload)
 
 		// Check BZCert matches one we have stored

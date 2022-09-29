@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	agentKs "bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting/mocks"
@@ -15,6 +16,7 @@ import (
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestAgentKeysplitting(t *testing.T) {
@@ -31,7 +33,7 @@ var _ = Describe("Agent keysplitting", func() {
 	var mockAgentKeysplittingConfig *mocks.IKeysplittingConfig
 
 	var daemonSchemaVersion string
-	var bzCertHash string
+	var daemonBZCert *bzcert.BZCert
 	const testAction string = "test/action"
 
 	GetDaemonSchemaVersionAsSemVer := func() *semver.Version {
@@ -50,12 +52,7 @@ var _ = Describe("Agent keysplitting", func() {
 			ActionPayload: payload,
 			TargetId:      agentKeypair.Base64EncodedPublicKey,
 			Nonce:         util.Nonce(),
-			// We mock the BZCertVerifier elsewhere. We only need to set
-			// ClientPublicKey because that is the only field the agent uses
-			// after the verifier successfully validates.
-			BZCert: bzcert.BZCert{
-				ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
-			},
+			BZCert:        *daemonBZCert,
 		}
 
 		return &ksmsg.KeysplittingMessage{
@@ -67,10 +64,13 @@ var _ = Describe("Agent keysplitting", func() {
 		return BuildSynWithPayload([]byte{})
 	}
 	BuildDataWithPayload := func(ackMsg *ksmsg.KeysplittingMessage, payload []byte) *ksmsg.KeysplittingMessage {
+		bzcertHash, err := daemonBZCert.HashCert()
+		Expect(err).ShouldNot(HaveOccurred())
+
 		dataMsg, err := ackMsg.BuildUnsignedData(
 			testAction,
 			payload,
-			bzCertHash,
+			bzcertHash,
 			GetDaemonSchemaVersionAsSemVer().String(),
 		)
 		Expect(err).ShouldNot(HaveOccurred())
@@ -108,21 +108,27 @@ var _ = Describe("Agent keysplitting", func() {
 		GinkgoWriter.Printf("Daemon keypair: Private key: %v; Public key: %v\n", daemonKeypair.Base64EncodedPrivateKey, daemonKeypair.Base64EncodedPublicKey)
 		Expect(err).ShouldNot(HaveOccurred())
 
-		// Set BZCert expiration time to the future
-		// bzCertExpirationTime = time.Now().Add(1 * time.Hour)
-
 		// Set schema version to use when building daemon messages
 		daemonSchemaVersion = ksmsg.SchemaVersion
 
-		// Setup mocks here
+		// Set daemon's BZCert to use throughout the test. An individual test
+		// (or context) can modify this to test something other than the default
+		// behavior configured here.
+		//
+		// We only need to set ClientPublicKey to have a valid BZCert because
+		// that is the only field the agent uses after the verifier successfully
+		// validates.
+		daemonBZCert = &bzcert.BZCert{
+			ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
+		}
+
+		// Setup common mocks here
 		mockAgentKeysplittingConfig = &mocks.IKeysplittingConfig{}
 
 		// Configure default behavior for mocks here. An individual test (or
 		// context) can clear these by setting mock.ExpectedCalls to nil
 		mockAgentKeysplittingConfig.On("GetPublicKey").Return(agentKeypair.Base64EncodedPublicKey)
 		mockAgentKeysplittingConfig.On("GetPrivateKey").Return(agentKeypair.Base64EncodedPrivateKey)
-		mockAgentKeysplittingConfig.On("GetIdpProvider").Return("FakeIdpProvider")
-		mockAgentKeysplittingConfig.On("GetIdpOrgId").Return("FakeIdpOrgId")
 	})
 
 	AfterEach(func() {
@@ -132,6 +138,24 @@ var _ = Describe("Agent keysplitting", func() {
 	Context("Build agent acks", func() {
 		var agentSchemaVersion string
 		var expectedSchemaVersion string
+		var mockBZCertVerifier *mocks.BZCertVerifier
+
+		BeforeEach(func() {
+			// All tests in this Context need the BZCertVerifier to always
+			// validate
+			mockBZCertVerifier = &mocks.BZCertVerifier{}
+
+			// Create a verified BzCert
+			//
+			// Set expiration time to to the future, so tests don't fail stating
+			// the BzCert is expired
+			verifiedBZCert, err := bzcert.NewVerifiedBZCert(daemonBZCert, time.Now().Add(1*time.Hour))
+			Expect(err).ShouldNot(HaveOccurred())
+
+			// And return it when Verify is called with the test suite's
+			// preconfigured, daemon BzCert
+			mockBZCertVerifier.On("Verify", daemonBZCert).Return(verifiedBZCert, nil)
+		})
 
 		CommonAssertBehavior := func() {
 			var daemonMsg *ksmsg.KeysplittingMessage
@@ -213,13 +237,12 @@ var _ = Describe("Agent keysplitting", func() {
 
 			When("the daemon message is a Data", func() {
 				BeforeEach(func() {
-					// We must validate a Syn message before we can build an
-					// ack for Data, otherwise daemonSchemaVersion will be
-					// nil
+					// We must validate a Syn message before we can build an ack
+					// for Data, otherwise daemonSchemaVersion will be nil
 					validatedSyn := BuildSynAndValidate()
 
-					// We need some Ack (SynAck in this case) in order to
-					// build Data
+					// We need some Ack (SynAck in this case) in order to build
+					// Data
 					synAck, err := sut.BuildAck(validatedSyn, testAction, []byte{})
 					Expect(err).ShouldNot(HaveOccurred())
 
@@ -261,7 +284,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 				// Init the SUT with the agent schema version
 				var err error
-				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion})
+				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion, Verifier: mockBZCertVerifier})
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 
@@ -277,7 +300,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 				// Init the SUT with the agent schema version
 				var err error
-				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion})
+				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion, Verifier: mockBZCertVerifier})
 				Expect(err).ShouldNot(HaveOccurred())
 			})
 
@@ -287,6 +310,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 	Context("Validate daemon messages", func() {
 		var msgUnderTest *ksmsg.KeysplittingMessage
+		var mockBZCertVerifier *mocks.BZCertVerifier
 
 		AssertBehavior := func() {
 			It("validate succeeds when the message is signed", func() {
@@ -300,9 +324,12 @@ var _ = Describe("Agent keysplitting", func() {
 		}
 
 		BeforeEach(func() {
+			// Reset mock per test
+			mockBZCertVerifier = &mocks.BZCertVerifier{}
+
 			// Init the SUT
 			var err error
-			sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig})
+			sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, Verifier: mockBZCertVerifier})
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
@@ -338,8 +365,23 @@ var _ = Describe("Agent keysplitting", func() {
 
 		When("the message is a Data-->SynAck-->Syn", func() {
 			var synMsg *ksmsg.KeysplittingMessage
+			var bzCertExpirationTime time.Time
 
-			BeforeEachBehavior := func() {
+			BeforeEach(func() {
+				// Reset bzCertExpirationTime to default
+				bzCertExpirationTime = time.Now().Add(1 * time.Hour)
+			})
+
+			// Common setup behavior for all tests in this When block
+			SetupBehavior := func() {
+				// Create a verified BzCert
+				verifiedBZCert, err := bzcert.NewVerifiedBZCert(daemonBZCert, bzCertExpirationTime)
+				Expect(err).ShouldNot(HaveOccurred())
+
+				// And return it when Verify is called with the test suite's
+				// preconfigured, daemon BzCert
+				mockBZCertVerifier.On("Verify", daemonBZCert).Return(verifiedBZCert, nil)
+
 				// We must build a Syn, validate it, and build a SynAck, so that
 				// we can send Data successfully
 				By("Building and validating a Syn message without error")
@@ -354,7 +396,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 			When("the happy path", func() {
 				BeforeEach(func() {
-					BeforeEachBehavior()
+					SetupBehavior()
 					// There is nothing extra to configure
 				})
 
@@ -382,7 +424,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 				When("the BZCert hash does not match the agent's stored BZCert hash", func() {
 					BeforeEach(func() {
-						BeforeEachBehavior()
+						SetupBehavior()
 
 						By("Modifying BZCert hash not to match")
 						dataPayload, _ := msgUnderTest.KeysplittingPayload.(ksmsg.DataPayload)
@@ -402,7 +444,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 				When("the message is unsigned", func() {
 					BeforeEach(func() {
-						BeforeEachBehavior()
+						SetupBehavior()
 						msgUnderTest.Signature = ""
 					})
 
@@ -416,8 +458,8 @@ var _ = Describe("Agent keysplitting", func() {
 				When("the BZCert has expired", func() {
 					BeforeEach(func() {
 						// Set expiration time to the past
-						// bzCertExpirationTime = time.Now().Add(-1 * time.Hour)
-						BeforeEachBehavior()
+						bzCertExpirationTime = time.Now().Add(-1 * time.Hour)
+						SetupBehavior()
 
 						By(fmt.Sprintf("Signing %v without error", msgUnderTest.Type))
 						SignDaemonMsg(msgUnderTest)
@@ -432,7 +474,7 @@ var _ = Describe("Agent keysplitting", func() {
 
 				When("the HPointer points to the wrong message", func() {
 					BeforeEach(func() {
-						BeforeEachBehavior()
+						SetupBehavior()
 
 						By("Modifying HPointer to point to the wrong message")
 						dataPayload, _ := msgUnderTest.KeysplittingPayload.(ksmsg.DataPayload)
@@ -456,9 +498,14 @@ var _ = Describe("Agent keysplitting", func() {
 			BeforeEach(func() {
 				By("Building a Syn message without error")
 				msgUnderTest = BuildSyn()
-				// Mock the BZCertVerifier so that Verify succeeds on our Syn's
-				// BZCert
-				// mockBzCertVerifier.On("Verify", msgUnderTest.KeysplittingPayload.(ksmsg.SynPayload).BZCert).Return(bzCertHash, bzCertExpirationTime, nil)
+
+				// Create a verified BzCert
+				verifiedBZCert, err := bzcert.NewVerifiedBZCert(daemonBZCert, time.Now().Add(1*time.Hour))
+				Expect(err).ShouldNot(HaveOccurred())
+
+				// And return it when Verify is called with the test suite's
+				// preconfigured, daemon BzCert
+				mockBZCertVerifier.On("Verify", daemonBZCert).Return(verifiedBZCert, nil)
 			})
 
 			When("the happy path", func() {
@@ -508,9 +555,9 @@ var _ = Describe("Agent keysplitting", func() {
 					BeforeEach(func() {
 						// Reset the mock for this context because it already
 						// has an expected call defined in an outer context
-						// mockBzCertVerifier.ExpectedCalls = nil
+						mockBZCertVerifier.ExpectedCalls = nil
 						bzCertVerifierError = errors.New("BZCert error")
-						// mockBzCertVerifier.On("Verify", mock.Anything).Return(nil, bzCertVerifierError)
+						mockBZCertVerifier.On("Verify", mock.Anything).Return(nil, bzCertVerifierError)
 					})
 
 					AssertFailedBehavior()

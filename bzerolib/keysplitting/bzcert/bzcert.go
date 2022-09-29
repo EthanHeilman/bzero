@@ -16,15 +16,15 @@ type VerifiedBZCert struct {
 }
 
 func NewVerifiedBZCert(bzCert *BZCert, exp time.Time) (*VerifiedBZCert, error) {
-	hashBytes, ok := util.HashPayload(*bzCert)
-	if !ok {
-		return nil, fmt.Errorf("failed to hash the certificate")
+	hash, err := bzCert.HashCert()
+	if err != nil {
+		return nil, err
 	}
 
 	return &VerifiedBZCert{
 		BZCert:     bzCert,
 		expiration: exp,
-		hash:       base64.StdEncoding.EncodeToString(hashBytes),
+		hash:       hash,
 	}, nil
 }
 
@@ -71,6 +71,10 @@ type BZCert struct {
 // 	return nil
 // }
 
-// func (b *BZCert) HashCert() error {
-
-// }
+func (b *BZCert) HashCert() (string, error) {
+	if hashBytes, ok := util.HashPayload(*b); !ok {
+		return "", fmt.Errorf("failed to hash the certificate")
+	} else {
+		return base64.StdEncoding.EncodeToString(hashBytes), nil
+	}
+}
