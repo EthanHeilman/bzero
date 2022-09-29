@@ -241,9 +241,8 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	d.logger.Infof("got new open data channel control message for id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
-	ksSubLogger := d.logger.GetComponentLogger("mrzap")
 
-	if keysplitter, err := keysplitting.New(ksSubLogger, d.ksConfig); err != nil {
+	if keysplitter, err := keysplitting.New(keysplitting.KeysplittingParameters{Config: d.ksConfig}); err != nil {
 		return err
 	} else {
 		_, err := datachannel.New(&d.tmb, subLogger, d, keysplitter, dcId, odMessage.Syn)

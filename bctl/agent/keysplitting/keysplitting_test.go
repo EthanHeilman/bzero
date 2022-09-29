@@ -4,20 +4,17 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-	"time"
 
 	agentKs "bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting/mocks"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stretchr/testify/mock"
 )
 
 func TestAgentKeysplitting(t *testing.T) {
@@ -32,11 +29,9 @@ var _ = Describe("Agent keysplitting", func() {
 	var daemonKeypair *tests.Ed25519KeyPair
 
 	var mockAgentKeysplittingConfig *mocks.IKeysplittingConfig
-	var mockBzCertVerifier *mocks.BZCertVerifier
 
 	var daemonSchemaVersion string
 	var bzCertHash string
-	var bzCertExpirationTime time.Time
 	const testAction string = "test/action"
 
 	GetDaemonSchemaVersionAsSemVer := func() *semver.Version {
@@ -62,9 +57,6 @@ var _ = Describe("Agent keysplitting", func() {
 				ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
 			},
 		}
-
-		// Set bzCertHash variable, so Data messages can reference it
-		bzCertHash = synPayload.BZCert.Hash()
 
 		return &ksmsg.KeysplittingMessage{
 			Type:                ksmsg.Syn,
@@ -102,7 +94,6 @@ var _ = Describe("Agent keysplitting", func() {
 	BuildSynAndValidate := func() *ksmsg.KeysplittingMessage {
 		synMsg := BuildSyn()
 		SignDaemonMsg(synMsg)
-		mockBzCertVerifier.On("Verify", synMsg.KeysplittingPayload.(ksmsg.SynPayload).BZCert).Return(bzCertHash, bzCertExpirationTime, nil)
 		ValidateDaemonMsg(synMsg)
 		return synMsg
 	}
@@ -118,189 +109,183 @@ var _ = Describe("Agent keysplitting", func() {
 		Expect(err).ShouldNot(HaveOccurred())
 
 		// Set BZCert expiration time to the future
-		bzCertExpirationTime = time.Now().Add(1 * time.Hour)
+		// bzCertExpirationTime = time.Now().Add(1 * time.Hour)
 
 		// Set schema version to use when building daemon messages
 		daemonSchemaVersion = ksmsg.SchemaVersion
 
 		// Setup mocks here
 		mockAgentKeysplittingConfig = &mocks.IKeysplittingConfig{}
-		mockBzCertVerifier = &mocks.BZCertVerifier{}
 
 		// Configure default behavior for mocks here. An individual test (or
 		// context) can clear these by setting mock.ExpectedCalls to nil
 		mockAgentKeysplittingConfig.On("GetPublicKey").Return(agentKeypair.Base64EncodedPublicKey)
 		mockAgentKeysplittingConfig.On("GetPrivateKey").Return(agentKeypair.Base64EncodedPrivateKey)
+		mockAgentKeysplittingConfig.On("GetIdpProvider").Return("FakeIdpProvider")
+		mockAgentKeysplittingConfig.On("GetIdpOrgId").Return("FakeIdpOrgId")
 	})
 
 	AfterEach(func() {
 		mockAgentKeysplittingConfig.AssertExpectations(GinkgoT())
-		mockBzCertVerifier.AssertExpectations(GinkgoT())
 	})
 
-	Describe("build agent acks", func() {
-		Describe("the happy path", func() {
-			var agentSchemaVersion string
-			var expectedSchemaVersion string
+	Context("Build agent acks", func() {
+		var agentSchemaVersion string
+		var expectedSchemaVersion string
 
-			CommonAssertBehavior := func() {
-				var daemonMsg *ksmsg.KeysplittingMessage
+		CommonAssertBehavior := func() {
+			var daemonMsg *ksmsg.KeysplittingMessage
 
-				Context("when the daemon message is a Syn", func() {
-					var validatedDataMessage *ksmsg.KeysplittingMessage
+			When("the daemon message is a Syn", func() {
+				var validatedDataMessage *ksmsg.KeysplittingMessage
 
-					BeforeEach(func() {
-						// Must re-init, so parallel specs don't leak into each
-						// other
-						validatedDataMessage = nil
-					})
-
-					AssertBehavior := func() {
-						It("SynAck is built correctly", func() {
-							payload := []byte{}
-							synAck, err := sut.BuildAck(daemonMsg, testAction, payload)
-							Expect(err).ShouldNot(HaveOccurred())
-
-							By("Asserting the keysplitting message is correct")
-							Expect(synAck.Type).To(Equal(ksmsg.SynAck))
-							Expect(synAck.Signature).NotTo(BeEmpty())
-							synAckPayload, ok := synAck.KeysplittingPayload.(ksmsg.SynAckPayload)
-							Expect(ok).To(BeTrue())
-
-							By("Asserting the keysplitting message payload details are correct")
-							Expect(synAckPayload.SchemaVersion).To(Equal(expectedSchemaVersion))
-							Expect(synAckPayload.Type).To(BeEquivalentTo(ksmsg.SynAck))
-							Expect(synAckPayload.Action).To(Equal(testAction))
-							Expect(synAckPayload.ActionResponsePayload).To(Equal(payload))
-							Expect(synAckPayload.Timestamp).NotTo(BeEmpty())
-							Expect(synAckPayload.TargetPublicKey).To(Equal(agentKeypair.Base64EncodedPublicKey))
-							if validatedDataMessage == nil {
-								Expect(synAckPayload.Nonce).NotTo(BeEmpty())
-							} else {
-								// The RSynAck's nonce is defined to equal the
-								// hash of the last validated Data messaage in
-								// order to preserve the hash chain.
-								Expect(synAckPayload.Nonce).Should(Equal(validatedDataMessage.Hash()), "because the hash chain should be maintained when data has already been validated")
-							}
-							Expect(synAckPayload.HPointer).Should(Equal(daemonMsg.Hash()), fmt.Sprintf("The HPointer should point to the daemon message that was validated: %#v", daemonMsg))
-
-							By("Asserting the message signature validates")
-							Expect(synAck.VerifySignature(agentKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
-						})
-					}
-
-					Context("when no data messages have been validated", func() {
-						BeforeEach(func() {
-							daemonMsg = BuildSynAndValidate()
-						})
-
-						AssertBehavior()
-					})
-
-					Context("when one data message has been validated", func() {
-						BeforeEach(func() {
-							validatedSynMessage := BuildSynAndValidate()
-
-							// Build Data message and validate
-							By("Building SynAck without error")
-							var err error
-							synAck, err := sut.BuildAck(validatedSynMessage, testAction, []byte{})
-							Expect(err).ShouldNot(HaveOccurred())
-							By("Building Data message without error")
-							dataMsg := BuildData(&synAck)
-							SignDaemonMsg(dataMsg)
-							By("Validating Data message without error")
-							err = sut.Validate(dataMsg)
-							Expect(err).ShouldNot(HaveOccurred())
-
-							daemonMsg = BuildSynAndValidate()
-							validatedDataMessage = dataMsg
-						})
-
-						AssertBehavior()
-					})
+				BeforeEach(func() {
+					// Must re-init, so parallel specs don't leak into each
+					// other
+					validatedDataMessage = nil
 				})
 
-				Context("when the daemon message is a Data", func() {
-					BeforeEach(func() {
-						// We must validate a Syn message before we can build an
-						// ack for Data, otherwise daemonSchemaVersion will be
-						// nil
-						validatedSyn := BuildSynAndValidate()
-
-						// We need some Ack (SynAck in this case) in order to
-						// build Data
-						synAck, err := sut.BuildAck(validatedSyn, testAction, []byte{})
-						Expect(err).ShouldNot(HaveOccurred())
-
-						daemonMsg = BuildData(&synAck)
-					})
-
-					It("DataAck is built correctly", func() {
+				AssertBehavior := func() {
+					It("SynAck is built correctly", func() {
 						payload := []byte{}
-						dataAck, err := sut.BuildAck(daemonMsg, testAction, payload)
+						synAck, err := sut.BuildAck(daemonMsg, testAction, payload)
 						Expect(err).ShouldNot(HaveOccurred())
 
 						By("Asserting the keysplitting message is correct")
-						Expect(dataAck.Type).To(Equal(ksmsg.DataAck))
-						Expect(dataAck.Signature).NotTo(BeEmpty())
-						dataAckPayload, ok := dataAck.KeysplittingPayload.(ksmsg.DataAckPayload)
+						Expect(synAck.Type).To(Equal(ksmsg.SynAck))
+						Expect(synAck.Signature).NotTo(BeEmpty())
+						synAckPayload, ok := synAck.KeysplittingPayload.(ksmsg.SynAckPayload)
 						Expect(ok).To(BeTrue())
 
 						By("Asserting the keysplitting message payload details are correct")
-						Expect(dataAckPayload.SchemaVersion).To(Equal(expectedSchemaVersion))
-						Expect(dataAckPayload.Type).To(BeEquivalentTo(ksmsg.DataAck))
-						Expect(dataAckPayload.Action).To(Equal(testAction))
-						Expect(dataAckPayload.Timestamp).To(Equal(""))
-						Expect(dataAckPayload.TargetPublicKey).To(Equal(agentKeypair.Base64EncodedPublicKey))
-						Expect(dataAckPayload.HPointer).Should(Equal(daemonMsg.Hash()), fmt.Sprintf("The HPointer should point to the daemon message that was validated: %#v", daemonMsg))
-						Expect(dataAckPayload.ActionResponsePayload).To(Equal(payload))
+						Expect(synAckPayload.SchemaVersion).To(Equal(expectedSchemaVersion))
+						Expect(synAckPayload.Type).To(BeEquivalentTo(ksmsg.SynAck))
+						Expect(synAckPayload.Action).To(Equal(testAction))
+						Expect(synAckPayload.ActionResponsePayload).To(Equal(payload))
+						Expect(synAckPayload.Timestamp).NotTo(BeEmpty())
+						Expect(synAckPayload.TargetPublicKey).To(Equal(agentKeypair.Base64EncodedPublicKey))
+						if validatedDataMessage == nil {
+							Expect(synAckPayload.Nonce).NotTo(BeEmpty())
+						} else {
+							// The RSynAck's nonce is defined to equal the
+							// hash of the last validated Data messaage in
+							// order to preserve the hash chain.
+							Expect(synAckPayload.Nonce).Should(Equal(validatedDataMessage.Hash()), "because the hash chain should be maintained when data has already been validated")
+						}
+						Expect(synAckPayload.HPointer).Should(Equal(daemonMsg.Hash()), fmt.Sprintf("The HPointer should point to the daemon message that was validated: %#v", daemonMsg))
 
 						By("Asserting the message signature validates")
-						Expect(dataAck.VerifySignature(agentKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
+						Expect(synAck.VerifySignature(agentKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
 					})
-				})
-			}
+				}
 
-			Context("when daemon schema version is less than agent schema version", func() {
-				BeforeEach(func() {
-					daemonSchemaVersion = "1.0.0"
-					agentSchemaVersion = "2.0.0"
+				When("no data messages have been validated", func() {
+					BeforeEach(func() {
+						daemonMsg = BuildSynAndValidate()
+					})
 
-					expectedSchemaVersion = daemonSchemaVersion
-
-					logger := logger.MockLogger(GinkgoWriter)
-
-					// Init the SUT with the agent schema version
-					var err error
-					sut, err = agentKs.New(logger, mockAgentKeysplittingConfig)
-					Expect(err).ShouldNot(HaveOccurred())
+					AssertBehavior()
 				})
 
-				CommonAssertBehavior()
+				When("one data message has been validated", func() {
+					BeforeEach(func() {
+						validatedSynMessage := BuildSynAndValidate()
+
+						// Build Data message and validate
+						By("Building SynAck without error")
+						var err error
+						synAck, err := sut.BuildAck(validatedSynMessage, testAction, []byte{})
+						Expect(err).ShouldNot(HaveOccurred())
+						By("Building Data message without error")
+						dataMsg := BuildData(&synAck)
+						SignDaemonMsg(dataMsg)
+						By("Validating Data message without error")
+						err = sut.Validate(dataMsg)
+						Expect(err).ShouldNot(HaveOccurred())
+
+						daemonMsg = BuildSynAndValidate()
+						validatedDataMessage = dataMsg
+					})
+
+					AssertBehavior()
+				})
 			})
 
-			Context("when daemon schema version is not less than agent schema version", func() {
+			When("the daemon message is a Data", func() {
 				BeforeEach(func() {
-					daemonSchemaVersion = "2.1.0"
-					agentSchemaVersion = "2.0.0"
+					// We must validate a Syn message before we can build an
+					// ack for Data, otherwise daemonSchemaVersion will be
+					// nil
+					validatedSyn := BuildSynAndValidate()
 
-					expectedSchemaVersion = agentSchemaVersion
-
-					logger := logger.MockLogger(GinkgoWriter)
-
-					// Init the SUT with the agent schema version
-					var err error
-					sut, err = agentKs.New(logger, mockAgentKeysplittingConfig)
+					// We need some Ack (SynAck in this case) in order to
+					// build Data
+					synAck, err := sut.BuildAck(validatedSyn, testAction, []byte{})
 					Expect(err).ShouldNot(HaveOccurred())
+
+					daemonMsg = BuildData(&synAck)
 				})
 
-				CommonAssertBehavior()
+				It("DataAck is built correctly", func() {
+					payload := []byte{}
+					dataAck, err := sut.BuildAck(daemonMsg, testAction, payload)
+					Expect(err).ShouldNot(HaveOccurred())
+
+					By("Asserting the keysplitting message is correct")
+					Expect(dataAck.Type).To(Equal(ksmsg.DataAck))
+					Expect(dataAck.Signature).NotTo(BeEmpty())
+					dataAckPayload, ok := dataAck.KeysplittingPayload.(ksmsg.DataAckPayload)
+					Expect(ok).To(BeTrue())
+
+					By("Asserting the keysplitting message payload details are correct")
+					Expect(dataAckPayload.SchemaVersion).To(Equal(expectedSchemaVersion))
+					Expect(dataAckPayload.Type).To(BeEquivalentTo(ksmsg.DataAck))
+					Expect(dataAckPayload.Action).To(Equal(testAction))
+					Expect(dataAckPayload.Timestamp).To(Equal(""))
+					Expect(dataAckPayload.TargetPublicKey).To(Equal(agentKeypair.Base64EncodedPublicKey))
+					Expect(dataAckPayload.HPointer).Should(Equal(daemonMsg.Hash()), fmt.Sprintf("The HPointer should point to the daemon message that was validated: %#v", daemonMsg))
+					Expect(dataAckPayload.ActionResponsePayload).To(Equal(payload))
+
+					By("Asserting the message signature validates")
+					Expect(dataAck.VerifySignature(agentKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
+				})
 			})
+		}
+
+		When("daemon schema version is less than agent schema version", func() {
+			BeforeEach(func() {
+				daemonSchemaVersion = "1.0.0"
+				agentSchemaVersion = "2.0.0"
+
+				expectedSchemaVersion = daemonSchemaVersion
+
+				// Init the SUT with the agent schema version
+				var err error
+				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion})
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+
+			CommonAssertBehavior()
+		})
+
+		When("daemon schema version is not less than agent schema version", func() {
+			BeforeEach(func() {
+				daemonSchemaVersion = "2.1.0"
+				agentSchemaVersion = "2.0.0"
+
+				expectedSchemaVersion = agentSchemaVersion
+
+				// Init the SUT with the agent schema version
+				var err error
+				sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig, SchemaVersion: agentSchemaVersion})
+				Expect(err).ShouldNot(HaveOccurred())
+			})
+
+			CommonAssertBehavior()
 		})
 	})
 
-	Describe("validate daemon messages", func() {
+	Context("Validate daemon messages", func() {
 		var msgUnderTest *ksmsg.KeysplittingMessage
 
 		AssertBehavior := func() {
@@ -315,16 +300,13 @@ var _ = Describe("Agent keysplitting", func() {
 		}
 
 		BeforeEach(func() {
-			// Configure the SUT's logger to print to Ginkgo's writer
-			logger := logger.MockLogger(GinkgoWriter)
-
 			// Init the SUT
 			var err error
-			sut, err = agentKs.New(logger, mockAgentKeysplittingConfig)
+			sut, err = agentKs.New(agentKs.KeysplittingParameters{Config: mockAgentKeysplittingConfig})
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 
-		Context("when the message is the wrong type", func() {
+		When("the message is the wrong type", func() {
 			var validateError error
 
 			AssertFailedBehavior := func() {
@@ -337,7 +319,7 @@ var _ = Describe("Agent keysplitting", func() {
 				validateError = sut.Validate(msgUnderTest)
 			})
 
-			Context("when the message is a SynAck", func() {
+			When("the message is a SynAck", func() {
 				BeforeEach(func() {
 					msgUnderTest = &ksmsg.KeysplittingMessage{Type: ksmsg.SynAck}
 				})
@@ -345,7 +327,7 @@ var _ = Describe("Agent keysplitting", func() {
 				AssertFailedBehavior()
 			})
 
-			Context("when the message is a DataAck", func() {
+			When("the message is a DataAck", func() {
 				BeforeEach(func() {
 					msgUnderTest = &ksmsg.KeysplittingMessage{Type: ksmsg.DataAck}
 				})
@@ -354,7 +336,7 @@ var _ = Describe("Agent keysplitting", func() {
 			})
 		})
 
-		Context("when the message is a Data-->SynAck-->Syn", func() {
+		When("the message is a Data-->SynAck-->Syn", func() {
 			var synMsg *ksmsg.KeysplittingMessage
 
 			BeforeEachBehavior := func() {
@@ -370,7 +352,7 @@ var _ = Describe("Agent keysplitting", func() {
 				msgUnderTest = BuildData(&synAck)
 			}
 
-			Describe("the happy path", func() {
+			When("the happy path", func() {
 				BeforeEach(func() {
 					BeforeEachBehavior()
 					// There is nothing extra to configure
@@ -379,7 +361,7 @@ var _ = Describe("Agent keysplitting", func() {
 				AssertBehavior()
 			})
 
-			Describe("failure modes", func() {
+			When("failure modes", func() {
 				var validateError error
 
 				AssertFailedBehavior := func() {
@@ -398,7 +380,7 @@ var _ = Describe("Agent keysplitting", func() {
 					validateError = sut.Validate(msgUnderTest)
 				})
 
-				Context("when the BZCert hash does not match the agent's stored BZCert hash", func() {
+				When("the BZCert hash does not match the agent's stored BZCert hash", func() {
 					BeforeEach(func() {
 						BeforeEachBehavior()
 
@@ -418,7 +400,7 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the message is unsigned", func() {
+				When("the message is unsigned", func() {
 					BeforeEach(func() {
 						BeforeEachBehavior()
 						msgUnderTest.Signature = ""
@@ -431,10 +413,10 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the BZCert has expired", func() {
+				When("the BZCert has expired", func() {
 					BeforeEach(func() {
 						// Set expiration time to the past
-						bzCertExpirationTime = time.Now().Add(-1 * time.Hour)
+						// bzCertExpirationTime = time.Now().Add(-1 * time.Hour)
 						BeforeEachBehavior()
 
 						By(fmt.Sprintf("Signing %v without error", msgUnderTest.Type))
@@ -448,7 +430,7 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the HPointer points to the wrong message", func() {
+				When("the HPointer points to the wrong message", func() {
 					BeforeEach(func() {
 						BeforeEachBehavior()
 
@@ -470,16 +452,16 @@ var _ = Describe("Agent keysplitting", func() {
 			})
 		})
 
-		Context("when the message is a Syn", func() {
+		When("the message is a Syn", func() {
 			BeforeEach(func() {
 				By("Building a Syn message without error")
 				msgUnderTest = BuildSyn()
 				// Mock the BZCertVerifier so that Verify succeeds on our Syn's
 				// BZCert
-				mockBzCertVerifier.On("Verify", msgUnderTest.KeysplittingPayload.(ksmsg.SynPayload).BZCert).Return(bzCertHash, bzCertExpirationTime, nil)
+				// mockBzCertVerifier.On("Verify", msgUnderTest.KeysplittingPayload.(ksmsg.SynPayload).BZCert).Return(bzCertHash, bzCertExpirationTime, nil)
 			})
 
-			Describe("the happy path", func() {
+			When("the happy path", func() {
 				// There is nothing extra to setup
 				AssertBehavior()
 
@@ -501,7 +483,7 @@ var _ = Describe("Agent keysplitting", func() {
 				})
 			})
 
-			Describe("failure modes", func() {
+			When("failure modes", func() {
 				var validateError error
 
 				AssertFailedBehavior := func() {
@@ -520,15 +502,15 @@ var _ = Describe("Agent keysplitting", func() {
 					validateError = sut.Validate(msgUnderTest)
 				})
 
-				Context("when the BZCert is invalid", func() {
+				When("the BZCert is invalid", func() {
 					var bzCertVerifierError error
 
 					BeforeEach(func() {
 						// Reset the mock for this context because it already
 						// has an expected call defined in an outer context
-						mockBzCertVerifier.ExpectedCalls = nil
+						// mockBzCertVerifier.ExpectedCalls = nil
 						bzCertVerifierError = errors.New("BZCert error")
-						mockBzCertVerifier.On("Verify", mock.Anything).Return("", time.Time{}, bzCertVerifierError)
+						// mockBzCertVerifier.On("Verify", mock.Anything).Return(nil, bzCertVerifierError)
 					})
 
 					AssertFailedBehavior()
@@ -538,7 +520,7 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the message is unsigned", func() {
+				When("the message is unsigned", func() {
 					BeforeEach(func() {
 						msgUnderTest.Signature = ""
 					})
@@ -550,7 +532,7 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the schema version cannot be parsed", func() {
+				When("the schema version cannot be parsed", func() {
 					BeforeEach(func() {
 						By("Modifying schema version to be invalid")
 						synPayload, _ := msgUnderTest.KeysplittingPayload.(ksmsg.SynPayload)
@@ -568,7 +550,7 @@ var _ = Describe("Agent keysplitting", func() {
 					})
 				})
 
-				Context("when the target ID does not match the agent's public key", func() {
+				When("the target ID does not match the agent's public key", func() {
 					BeforeEach(func() {
 						By("Modifying target ID to not match the agent's public key")
 						synPayload, _ := msgUnderTest.KeysplittingPayload.(ksmsg.SynPayload)

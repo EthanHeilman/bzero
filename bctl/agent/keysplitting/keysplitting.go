@@ -7,51 +7,75 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"github.com/Masterminds/semver"
 )
 
 // schema version <= this value doesn't set targetId to the agent's pubkey
 const schemaVersionTargetIdNotSet string = "1.0"
 
+type IKeysplittingConfig interface {
+	GetPublicKey() string
+	GetPrivateKey() string
+}
+
 type Keysplitting struct {
-	logger           *logger.Logger
 	lastDataMessage  *ksmsg.KeysplittingMessage
 	expectedHPointer string
 	clientBZCert     *bzcrt.BZCert // only for one client
 	publickey        string
 	privatekey       string
-	idpProvider      string
-	idpOrgId         string
+
+	agentSchemaVersion *semver.Version
 
 	// define constraints based on schema version
 	shouldCheckTargetId *semver.Constraints
-
 	daemonSchemaVersion *semver.Version
 }
 
-type IKeysplittingConfig interface {
-	GetPublicKey() string
-	GetPrivateKey() string
-	GetIdpProvider() string
-	GetIdpOrgId() string
+type KeysplittingParameters struct {
+	// Config contains the agent's keysplitting configuration. If unset, New()
+	// returns an error.
+	Config IKeysplittingConfig
+	// SchemaVersion is the schema version the agent uses when building ack
+	// messages (SynAck and DataAck) when the daemon's schema version is greater
+	// than or equal to this value. If unset, New() uses the schema version
+	// defined in BzeroLib.
+	SchemaVersion string
 }
 
-func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, error) {
-	shouldCheckTargetIdConstraint, err := semver.NewConstraint(fmt.Sprintf("> %s", schemaVersionTargetIdNotSet))
+func New(parameters KeysplittingParameters) (*Keysplitting, error) {
+	keysplitter := &Keysplitting{}
+
+	// Validate Config
+	if parameters.Config == nil {
+		return nil, fmt.Errorf("invalid parameters: Config field must be set")
+	} else {
+		keysplitter.publickey = parameters.Config.GetPublicKey()
+		keysplitter.privatekey = parameters.Config.GetPrivateKey()
+	}
+
+	// Validate SchemaVersion
+	var schemaVersion string
+	if parameters.SchemaVersion == "" {
+		schemaVersion = ksmsg.SchemaVersion
+	} else {
+		schemaVersion = parameters.SchemaVersion
+	}
+	agentSchemaVersion, err := semver.NewVersion(schemaVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse agent schema version: %w", err)
+	}
+	keysplitter.agentSchemaVersion = agentSchemaVersion
+
+	// Setup other required fields that aren't derived from parameters struct
+	shouldCheckTargetIdConstraint, err := semver.NewConstraint(fmt.Sprintf("> %v", schemaVersionTargetIdNotSet))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create check target id constraint: %w", err)
 	}
+	keysplitter.shouldCheckTargetId = shouldCheckTargetIdConstraint
+	keysplitter.expectedHPointer = ""
 
-	return &Keysplitting{
-		logger:              logger,
-		expectedHPointer:    "",
-		publickey:           config.GetPublicKey(),
-		privatekey:          config.GetPrivateKey(),
-		idpProvider:         config.GetIdpProvider(),
-		idpOrgId:            config.GetIdpOrgId(),
-		shouldCheckTargetId: shouldCheckTargetIdConstraint,
-	}, nil
+	return keysplitter, nil
 }
 
 func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
@@ -61,9 +85,9 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		bzcert := synPayload.BZCert
 
 		// Verify the BZCert
-		if err := bzcert.Verify(k.idpProvider, k.idpOrgId); err != nil {
-			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
-		}
+		// if err := bzcert.Verify(k.idpProvider, k.idpOrgId); err != nil {
+		// 	return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
+		// }
 
 		// Verify the signature
 		if err := ksMessage.VerifySignature(synPayload.BZCert.ClientPublicKey); err != nil {
