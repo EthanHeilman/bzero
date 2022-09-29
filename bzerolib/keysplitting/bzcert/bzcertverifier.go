@@ -65,10 +65,7 @@ func NewVerifier(idpProvider string, idpOrgId string) (*BZCertVerifier, error) {
 		return nil, fmt.Errorf("unrecognized SSO provider: %s", idpProvider)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(60*time.Second))
-	defer cancel()
-
-	provider, err := oidc.NewProvider(ctx, issuerUrl)
+	provider, err := oidc.NewProvider(context.Background(), issuerUrl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to establish connection with SSO provider %s: %w", idpProvider, err)
 	}
