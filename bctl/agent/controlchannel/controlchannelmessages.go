@@ -1,8 +1,11 @@
 package controlchannel
 
+import "encoding/json"
+
 type HeartbeatMessage struct {
-	Alive           bool   `json:"alive"`
-	NumDataChannels uint32 `json:"numDataChannels"`
+	Alive           bool            `json:"alive"`
+	NumDataChannels uint32          `json:"numDataChannels"`
+	ProcessStats    json.RawMessage `json:"processStats"`
 }
 
 type ClusterUsersMessage struct {

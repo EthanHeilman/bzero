@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -35,6 +36,42 @@ const (
 
 	ManualRestartMsg = "received manual restart from user"
 )
+
+// ref: https://pkg.go.dev/runtime#MemStats
+type processStats struct {
+	// Alloc is bytes of allocated heap objects.
+	//
+	// This is the same as HeapAlloc (see below).
+	Alloc uint64
+
+	// TotalAlloc is cumulative bytes allocated for heap objects.
+	//
+	// TotalAlloc increases as heap objects are allocated, but
+	// unlike Alloc and HeapAlloc, it does not decrease when
+	// objects are freed.
+	TotalAlloc uint64
+
+	// Sys is the total bytes of memory obtained from the OS.
+	//
+	// Sys is the sum of the XSys fields below. Sys measures the
+	// virtual address space reserved by the Go runtime for the
+	// heap, stacks, and other internal data structures. It's
+	// likely that not all of the virtual address space is backed
+	// by physical memory at any given moment, though in general
+	// it all was at some point.
+	Sys uint64
+
+	// Mallocs is the cumulative count of heap objects allocated.
+	// The number of live objects is Mallocs - Frees.
+	Mallocs uint64
+
+	// Frees is the cumulative count of heap objects freed.
+	Frees uint64
+
+	// Below not a part of the golang Memory stats
+	LiveObjects   uint64
+	NumGoRoutines int
+}
 
 type AgentDatachannelConnection interface {
 	connection.Connection
@@ -318,9 +355,25 @@ func (c *ControlChannel) reportHealth() error {
 		numDataChannels += conn.NumDataChannels()
 	}
 
+	// Read our current memory statistics
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	stats := processStats{
+		Alloc:         mem.Alloc,
+		TotalAlloc:    mem.TotalAlloc,
+		Sys:           mem.Sys,
+		Mallocs:       mem.Mallocs,
+		Frees:         mem.Frees,
+		LiveObjects:   mem.Mallocs - mem.Frees,
+		NumGoRoutines: runtime.NumGoroutine(),
+	}
+	jsonStat, _ := json.Marshal(stats)
+
 	heartbeatMessage := HeartbeatMessage{
 		Alive:           true,
 		NumDataChannels: uint32(numDataChannels),
+		ProcessStats:    jsonStat,
 	}
 
 	err := c.send(am.HealthCheck, heartbeatMessage)
