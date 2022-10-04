@@ -104,16 +104,15 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 	switch ksMessage.Type {
 	case ksmsg.Syn:
 		synPayload := ksMessage.KeysplittingPayload.(ksmsg.SynPayload)
-		bzcert := synPayload.BZCert
 
 		// Verify the BZCert
-		verifiedBzCert, err := k.bzCertVerifier.Verify(&bzcert)
+		verifiedBzCert, err := k.bzCertVerifier.Verify(&synPayload.BZCert)
 		if err != nil {
 			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
 		}
 
 		// Verify the signature
-		if err := ksMessage.VerifySignature(synPayload.BZCert.ClientPublicKey); err != nil {
+		if err := ksMessage.VerifySignature(verifiedBzCert.ClientPublicKey); err != nil {
 			return fmt.Errorf("%w: failed to verify Syn's signature: %v", ErrInvalidSignature, err)
 		}
 
