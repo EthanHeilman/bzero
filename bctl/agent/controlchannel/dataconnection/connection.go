@@ -26,11 +26,13 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 )
@@ -56,6 +58,10 @@ type DataConnection struct {
 	logger       *logger.Logger
 	ready        bool
 	connectionId string
+
+	// Telemtry object to keep track of stats
+	stats *throughputstats.ThroughputStats
+	start time.Time
 
 	// This is our underlying connection
 	client messenger.Messenger
@@ -87,7 +93,7 @@ func New(
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
-) (*DataConnection, error) {
+) (connection.Connection, error) {
 
 	// Check if the connection url is a validly formatted url
 	connectionUrl, err := url.ParseRequestURI(connUrl)
@@ -106,7 +112,9 @@ func New(
 		agentIdentityProvider: agentIdentityProvider,
 		messageSigner:         messageSigner,
 		daemonReadyChan:       make(chan bool),
+		start:                 time.Now(),
 	}
+	conn.stats = throughputstats.New("AgentMessage", conn.tmb.Dead())
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
 		return nil, err
@@ -164,6 +172,8 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
+					conn.stats.CountOutbound(1)
+
 					conn.logger.Debugf("sent %s message", message.MessageType)
 				}
 			}
@@ -173,12 +183,33 @@ func New(
 	return &conn, nil
 }
 
+func (d *DataConnection) Id() string {
+	return d.connectionId
+}
+
+func (d *DataConnection) Stats() json.RawMessage {
+	s := append(d.client.Stats(), d.stats.Digest())
+	d.stats.Reset()
+
+	m := map[string]any{
+		"connected":       d.ready,
+		"throughput":      s,
+		"lifetime":        time.Since(d.start).Round(time.Second).String(),
+		"numDatachannels": d.broker.NumChannels(),
+	}
+	mBytes, _ := json.Marshal(m)
+
+	return mBytes
+}
+
 func (d *DataConnection) receive() {
 	for {
 		select {
 		case <-d.tmb.Dead():
 			return
 		case message := <-d.client.Inbound():
+			d.stats.CountInbound(1)
+
 			switch message.Target {
 			case closeConnection:
 				var rerr error

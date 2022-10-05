@@ -15,6 +15,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	gorilla "github.com/gorilla/websocket"
 	"gopkg.in/tomb.v2"
 )
@@ -31,6 +32,8 @@ type Websocket struct {
 	logger *logger.Logger
 	client *gorilla.Conn
 
+	stats *throughputstats.ThroughputStats
+
 	// Received messages
 	inbound chan *[]byte
 }
@@ -40,6 +43,12 @@ func New(logger *logger.Logger) transporter.Transporter {
 		logger:  logger,
 		inbound: make(chan *[]byte, 200),
 	}
+}
+
+func (w *Websocket) Stats() throughputstats.Digest {
+	stat := w.stats.Digest()
+	w.stats.Reset()
+	return stat
 }
 
 func (w *Websocket) Close(reason error) {
@@ -70,6 +79,7 @@ func (w *Websocket) Inbound() <-chan *[]byte {
 
 func (w *Websocket) Send(message []byte) error {
 	if w.client != nil {
+		w.stats.CountOutbound(len(message))
 		return w.client.WriteMessage(gorilla.TextMessage, message)
 	} else {
 		return fmt.Errorf("cannot send message because websocket is closed")
@@ -87,6 +97,7 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 
 	// Reinitialize our variables in case this is post death
 	w.tmb = tomb.Tomb{}
+	w.stats = throughputstats.New("bytes", w.tmb.Dead())
 
 	w.tmb.Go(w.receive)
 
@@ -99,7 +110,7 @@ func (w *Websocket) receive() error {
 
 	for {
 		// Read incoming message
-		if _, rawMessage, err := w.client.ReadMessage(); !w.tmb.Alive() {
+		if n, rawMessage, err := w.client.ReadMessage(); !w.tmb.Alive() {
 			return nil
 		} else if err != nil {
 			// Check if it's a clean exit
@@ -110,6 +121,8 @@ func (w *Websocket) receive() error {
 			}
 			return err
 		} else {
+			w.stats.CountInbound(n)
+
 			w.inbound <- &rawMessage
 		}
 	}

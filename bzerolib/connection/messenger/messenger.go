@@ -17,9 +17,11 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 )
 
 type Messenger interface {
+	Stats() []throughputstats.Digest
 	Close(reason error)
 	Done() <-chan struct{}
 	Inbound() <-chan *signalr.SignalRMessage

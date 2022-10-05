@@ -14,9 +14,12 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 )
 
 type Transporter interface {
+	Stats() throughputstats.Digest
 	Done() <-chan struct{}
 	Err() error
 	Inbound() <-chan *[]byte

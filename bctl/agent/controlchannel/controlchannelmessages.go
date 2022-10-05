@@ -4,8 +4,8 @@ import "encoding/json"
 
 type HeartbeatMessage struct {
 	Alive           bool            `json:"alive"`
-	NumDataChannels uint32          `json:"numDataChannels"`
 	ProcessStats    json.RawMessage `json:"processStats"`
+	ConnectionStats json.RawMessage `json:"connectionStats"`
 }
 
 type ClusterUsersMessage struct {

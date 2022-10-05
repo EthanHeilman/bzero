@@ -69,13 +69,9 @@ type processStats struct {
 	Frees uint64
 
 	// Below not a part of the golang Memory stats
-	LiveObjects   uint64
-	NumGoRoutines int
-}
-
-type AgentDatachannelConnection interface {
-	connection.Connection
-	NumDataChannels() int
+	LiveObjects      uint64
+	NumGoRoutines    int
+	TotalConnections int
 }
 
 type ControlChannel struct {
@@ -103,7 +99,7 @@ type ControlChannel struct {
 	targetType string
 
 	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
-	connections     map[string]AgentDatachannelConnection
+	connections     map[string]connection.Connection
 	connectionsLock sync.Mutex
 
 	SocketLock sync.Mutex // Ref: https://github.com/gorilla/websocket/issues/119#issuecomment-198710015
@@ -133,7 +129,7 @@ func Start(logger *logger.Logger,
 		messageSigner:         messageSigner,
 		ksConfig:              ksConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
-		connections:           make(map[string]AgentDatachannelConnection),
+		connections:           make(map[string]connection.Connection),
 		agentPongChan:         make(chan bool),
 		runtimeErrChan:        make(chan error),
 		isSendingPongs:        conn.Ready(),
@@ -349,31 +345,32 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 }
 
 func (c *ControlChannel) reportHealth() error {
-	// Build heartbeat message
-	numDataChannels := 0
+	connStats := map[string]json.RawMessage{}
 	for _, conn := range c.connections {
-		numDataChannels += conn.NumDataChannels()
+		connStats[conn.Id()] = conn.Stats()
 	}
+	jsonConnStats, _ := json.Marshal(connStats)
 
 	// Read our current memory statistics
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
-	stats := processStats{
-		Alloc:         mem.Alloc,
-		TotalAlloc:    mem.TotalAlloc,
-		Sys:           mem.Sys,
-		Mallocs:       mem.Mallocs,
-		Frees:         mem.Frees,
-		LiveObjects:   mem.Mallocs - mem.Frees,
-		NumGoRoutines: runtime.NumGoroutine(),
+	pstats := processStats{
+		Alloc:            mem.Alloc,
+		TotalAlloc:       mem.TotalAlloc,
+		Sys:              mem.Sys,
+		Mallocs:          mem.Mallocs,
+		Frees:            mem.Frees,
+		LiveObjects:      mem.Mallocs - mem.Frees,
+		NumGoRoutines:    runtime.NumGoroutine(),
+		TotalConnections: len(c.connections),
 	}
-	jsonStat, _ := json.Marshal(stats)
+	jsonProcessStat, _ := json.Marshal(pstats)
 
 	heartbeatMessage := HeartbeatMessage{
 		Alive:           true,
-		NumDataChannels: uint32(numDataChannels),
-		ProcessStats:    jsonStat,
+		ProcessStats:    jsonProcessStat,
+		ConnectionStats: jsonConnStats,
 	}
 
 	err := c.send(am.HealthCheck, heartbeatMessage)
@@ -465,7 +462,7 @@ func (c *ControlChannel) reportClusterUsers() error {
 }
 
 // Helper function so we avoid writing to this map at the same time
-func (c *ControlChannel) updateConnectionsMap(id string, newConn AgentDatachannelConnection) {
+func (c *ControlChannel) updateConnectionsMap(id string, newConn connection.Connection) {
 	c.connectionsLock.Lock()
 	c.connections[id] = newConn
 	c.connectionsLock.Unlock()
@@ -477,7 +474,7 @@ func (c *ControlChannel) deleteConnectionsMap(id string) {
 	c.connectionsLock.Unlock()
 }
 
-func (c *ControlChannel) getConnectionMap(id string) (AgentDatachannelConnection, bool) {
+func (c *ControlChannel) getConnectionMap(id string) (connection.Connection, bool) {
 	c.connectionsLock.Lock()
 	defer c.connectionsLock.Unlock()
 	meta, ok := c.connections[id]

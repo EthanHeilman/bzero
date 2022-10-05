@@ -34,6 +34,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 )
 
 var (
@@ -51,9 +52,14 @@ const (
 )
 
 type ControlConnection struct {
-	tmb    tomb.Tomb
-	logger *logger.Logger
-	ready  bool
+	tmb          tomb.Tomb
+	logger       *logger.Logger
+	ready        bool
+	connectionId string
+
+	// Telemtry object to keep track of stats
+	intervalStats *throughputstats.ThroughputStats
+	start         time.Time
 
 	// This is our underlying connection
 	client messenger.Messenger
@@ -87,7 +93,9 @@ func New(
 		agentIdentityProvider: agentIdentityProvider,
 		messageSigner:         messageSigner,
 		sendQueue:             make(chan *am.AgentMessage, 50),
+		start:                 time.Now(),
 	}
+	conn.intervalStats = throughputstats.New("AgentMessage", conn.tmb.Dead())
 
 	if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
 		return nil, err
@@ -120,6 +128,8 @@ func New(
 					return err
 				}
 			case message := <-conn.sendQueue:
+				conn.intervalStats.CountOutbound(1)
+
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				}
@@ -130,12 +140,31 @@ func New(
 	return &conn, nil
 }
 
+func (c *ControlConnection) Id() string {
+	return c.connectionId
+}
+
+func (c *ControlConnection) Stats() json.RawMessage {
+	s := append(c.client.Stats(), c.intervalStats.Digest())
+	c.intervalStats.Reset()
+
+	m := map[string]any{
+		"connected":  c.ready,
+		"throughput": s,
+		"lifetime":   time.Since(c.start).Round(time.Second).String(),
+	}
+	mBytes, _ := json.Marshal(m)
+
+	return mBytes
+}
+
 func (c *ControlConnection) receive() {
 	for {
 		select {
 		case <-c.tmb.Dead():
 			return
 		case message := <-c.client.Inbound():
+			c.intervalStats.CountInbound(1)
 
 			// Otherwise assume that the invocation contains a single AgentMessage argument
 			if len(message.Arguments) != 1 {
@@ -267,6 +296,7 @@ func (c *ControlConnection) connect(bastionUrl string, headers http.Header, para
 				continue
 			} else {
 				c.logger.Infof("Successfully connected to %s", connectionUrl)
+				c.connectionId = getControlChannelResponse.ControlChannelId
 				c.ready = true
 				return nil
 			}
