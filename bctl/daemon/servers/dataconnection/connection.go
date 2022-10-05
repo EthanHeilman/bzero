@@ -118,7 +118,7 @@ func New(
 		// send queue is empty and we have not yet called waitForAgentReady()
 		agentReadyChan: make(chan bool, 1),
 	}
-	conn.stats = throughputstats.New("AgentMessage", conn.tmb.Dead())
+	conn.stats = throughputstats.New("AgentMessages", conn.tmb.Dead())
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
 		return nil, err
@@ -267,9 +267,13 @@ func (d *DataConnection) Stats() json.RawMessage {
 		"throughput": s,
 		"lifetime":   time.Since(d.start).Round(time.Second).String(),
 	}
-	mBytes, _ := json.Marshal(m)
 
-	return mBytes
+	if mBytes, err := json.Marshal(m); err != nil {
+		d.logger.Errorf("failed to marshal stats object: %s", err)
+		return []byte{}
+	} else {
+		return mBytes
+	}
 }
 
 func (d *DataConnection) Send(agentMessage am.AgentMessage) {

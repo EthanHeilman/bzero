@@ -48,7 +48,11 @@ func New(unit string, done <-chan struct{}) *Throughput {
 					t.max = t.count
 				}
 
-				t.avg = ((t.avg * float64(t.total)) + float64(t.count)) / float64(t.total+1)
+				prevDenominator := t.duration.Seconds() / interval.Seconds()
+				t.duration += interval
+				newDenominator := t.duration.Seconds() / interval.Seconds()
+
+				t.avg = ((t.avg * prevDenominator) + float64(t.count)) / newDenominator
 
 				t.total += t.count
 				t.duration += interval

@@ -142,7 +142,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 
 	resp, err := bzhttp.Post(r.logger, tokenEndpoint, "application/json", reqBytes, headers, params)
 	if err != nil {
-		return "", fmt.Errorf("failed to get activation token: %s. {Endpoint: %s, Request: %+v, Response: %+v}", err, tokenEndpoint, req, resp)
+		return "", fmt.Errorf("failed to get activation token: %s. {Endpoint: %s, Request: %+v, Response Status: %s}", err, tokenEndpoint, req, resp.Status)
 	}
 
 	// read our activation token request body
@@ -212,7 +212,7 @@ func (r *Registration) getRegistrationResponse(activationToken string, targetId 
 	// Perform the request
 	resp, err := bzhttp.Post(r.logger, registrationEndpoint, "application/json", reqBytes, map[string]string{}, map[string]string{})
 	if err != nil {
-		return regResponse, fmt.Errorf("error registering agent with bastion: %s. {Endpoint: %s, Request: %+v, Response: %+v}", err, registrationEndpoint, req, resp)
+		return regResponse, fmt.Errorf("error registering agent with bastion: %s. {Endpoint: %s, Request: %+v, Response Status: %s}", err, registrationEndpoint, req, resp.Status)
 	}
 
 	if respBytes, err := io.ReadAll(resp.Body); err != nil {

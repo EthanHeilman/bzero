@@ -95,7 +95,7 @@ func New(
 		sendQueue:             make(chan *am.AgentMessage, 50),
 		start:                 time.Now(),
 	}
-	conn.intervalStats = throughputstats.New("AgentMessage", conn.tmb.Dead())
+	conn.intervalStats = throughputstats.New("AgentMessages", conn.tmb.Dead())
 
 	if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
 		return nil, err
@@ -153,9 +153,13 @@ func (c *ControlConnection) Stats() json.RawMessage {
 		"throughput": s,
 		"lifetime":   time.Since(c.start).Round(time.Second).String(),
 	}
-	mBytes, _ := json.Marshal(m)
 
-	return mBytes
+	if mBytes, err := json.Marshal(m); err != nil {
+		c.logger.Errorf("failed to marshal stats object: %s", err)
+		return []byte{}
+	} else {
+		return mBytes
+	}
 }
 
 func (c *ControlConnection) receive() {

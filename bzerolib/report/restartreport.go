@@ -33,6 +33,6 @@ func ReportRestart(logger *logger.Logger, serviceUrl string, restartReport Resta
 	}
 
 	if resp, err := bzhttp.Post(logger, endpoint, "application/json", restartBytes, map[string]string{}, map[string]string{}); err != nil {
-		logger.Errorf("failed to report restart: %s, Endpoint: %s, Request: %+v, Response: %+v", err, endpoint, restartReport, resp)
+		logger.Errorf("failed to report restart: %s, Endpoint: %s, Request: %+v, Response Status: %s", err, endpoint, restartReport, resp.Status)
 	}
 }
