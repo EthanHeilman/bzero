@@ -197,6 +197,7 @@ func (d *DataConnection) Stats() json.RawMessage {
 		"lifetime":        time.Since(d.start).Round(time.Second).String(),
 		"numDatachannels": d.broker.NumChannels(),
 	}
+
 	mBytes, _ := json.Marshal(m)
 
 	return mBytes

@@ -69,8 +69,15 @@ type processStats struct {
 	Frees uint64
 
 	// Below not a part of the golang Memory stats
-	LiveObjects      uint64
-	NumGoRoutines    int
+
+	// Mallocs - Frees
+	LiveObjects uint64
+
+	// Another helpful stat provided for free by golang
+	// Total number of go routines in the entire process
+	NumGoRoutines int
+
+	// Total number of connections this agent is maintaining
 	TotalConnections int
 }
 
@@ -294,11 +301,9 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 		c.updateConnectionsMap(message.ConnectionId, conn)
 
 		// wait for this connection to close and then delete it from the map
-		select {
-		case <-conn.Done():
-			c.logger.Infof("Connection %s closed: %s.", message.ConnectionId, conn.Err())
-			c.deleteConnectionsMap(message.ConnectionId)
-		}
+		<-conn.Done()
+		c.logger.Infof("Connection %s closed: %s.", message.ConnectionId, conn.Err())
+		c.deleteConnectionsMap(message.ConnectionId)
 	}
 	return nil
 }
@@ -356,21 +361,21 @@ func (c *ControlChannel) reportHealth() error {
 	runtime.ReadMemStats(&mem)
 
 	pstats := processStats{
-		Alloc:            mem.Alloc,
-		TotalAlloc:       mem.TotalAlloc,
-		Sys:              mem.Sys,
-		Mallocs:          mem.Mallocs,
-		Frees:            mem.Frees,
-		LiveObjects:      mem.Mallocs - mem.Frees,
-		NumGoRoutines:    runtime.NumGoroutine(),
-		TotalConnections: len(c.connections),
+		Alloc:         mem.Alloc,
+		TotalAlloc:    mem.TotalAlloc,
+		Sys:           mem.Sys,
+		Mallocs:       mem.Mallocs,
+		Frees:         mem.Frees,
+		LiveObjects:   mem.Mallocs - mem.Frees,
+		NumGoRoutines: runtime.NumGoroutine(),
 	}
 	jsonProcessStat, _ := json.Marshal(pstats)
 
 	heartbeatMessage := HeartbeatMessage{
-		Alive:           true,
-		ProcessStats:    jsonProcessStat,
-		ConnectionStats: jsonConnStats,
+		Alive:            true,
+		ProcessStats:     jsonProcessStat,
+		NumConnections:   len(c.connections),
+		ConnectionsStats: jsonConnStats,
 	}
 
 	err := c.send(am.HealthCheck, heartbeatMessage)

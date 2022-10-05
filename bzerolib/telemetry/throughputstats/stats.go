@@ -1,25 +1,23 @@
 package throughputstats
 
 import (
-	"encoding/json"
-
 	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughput"
 )
 
 type Digest struct {
-	Inbound  json.RawMessage `json:"inbound"`
-	Outbound json.RawMessage `json:"outbound"`
+	Inbound  string `json:"inbound"`
+	Outbound string `json:"outbound"`
 }
 
 type ThroughputStats struct {
-	inbound  throughput.Throughput
-	outbound throughput.Throughput
+	inbound  *throughput.Throughput
+	outbound *throughput.Throughput
 }
 
 func New(unit string, done <-chan struct{}) *ThroughputStats {
 	return &ThroughputStats{
-		inbound:  *throughput.New(unit, done),
-		outbound: *throughput.New(unit, done),
+		inbound:  throughput.New(unit, done),
+		outbound: throughput.New(unit, done),
 	}
 }
 

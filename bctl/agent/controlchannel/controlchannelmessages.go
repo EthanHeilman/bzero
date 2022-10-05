@@ -3,9 +3,10 @@ package controlchannel
 import "encoding/json"
 
 type HeartbeatMessage struct {
-	Alive           bool            `json:"alive"`
-	ProcessStats    json.RawMessage `json:"processStats"`
-	ConnectionStats json.RawMessage `json:"connectionStats"`
+	Alive            bool            `json:"alive"`
+	ProcessStats     json.RawMessage `json:"processStats"`
+	NumConnections   int             `json:"numConnections"`
+	ConnectionsStats json.RawMessage `json:"connectionsStats"`
 }
 
 type ClusterUsersMessage struct {
