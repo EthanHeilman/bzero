@@ -113,6 +113,7 @@ func New(
 
 func (k *KubeServer) Start() error {
 	// Create HTTP Server listens for incoming kubectl commands
+	k.logger.Debugf("starting kube server...")
 	go func() {
 		// Define our http handlers
 		http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -127,9 +128,11 @@ func (k *KubeServer) Start() error {
 			k.statusCallback(w, r)
 		})
 
+		k.logger.Debugf("listening for connections at %s:%s", k.localHost, k.localHost)
 		if err := http.ListenAndServeTLS(k.localHost+":"+k.localPort, k.certPath, k.keyPath, nil); err != nil {
 			k.logger.Error(err)
 		}
+		k.logger.Debugf("successfully began listening")
 	}()
 
 	return nil
