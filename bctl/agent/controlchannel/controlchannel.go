@@ -71,6 +71,11 @@ type ControlChannel struct {
 	isSendingPongs bool
 
 	ClusterUserCache []string
+
+	// used for collecting stats and sending in heartbeats
+	connectionsOpened int
+	connectionsClosed int
+	start             time.Time
 }
 
 func Start(logger *logger.Logger,
@@ -98,6 +103,7 @@ func Start(logger *logger.Logger,
 		runtimeErrChan:        make(chan error),
 		isSendingPongs:        conn.Ready(),
 		ClusterUserCache:      []string{},
+		start:                 time.Now(),
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
@@ -253,6 +259,8 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.messageSigner, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
+		c.connectionsOpened++
+
 		// add the connection to our connections dictionary
 		c.logger.Infof("Created connection with id: %s", message.ConnectionId)
 		c.updateConnectionsMap(message.ConnectionId, conn)
@@ -293,6 +301,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
 			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
+				c.connectionsClosed--
 				c.logger.Infof("Closing connection with id %s", cwRequest.ConnectionId)
 				conn.Close(fmt.Errorf("connection was closed through the control channel with reason: %s", cwRequest.Reason), 10*time.Second)
 			} else {
@@ -329,10 +338,12 @@ func (c *ControlChannel) reportHealth() error {
 	jsonProcessStat, _ := json.Marshal(pstats)
 
 	heartbeatMessage := HeartbeatMessage{
-		Alive:            true,
-		ProcessStats:     jsonProcessStat,
-		NumConnections:   len(c.connections),
-		ConnectionsStats: jsonConnStats,
+		Alive:             true,
+		ProcessStats:      jsonProcessStat,
+		ConnectionsOpened: c.connectionsOpened,
+		ConnectionsClosed: c.connectionsClosed,
+		NumConnections:    len(c.connections),
+		ConnectionsStats:  jsonConnStats,
 	}
 
 	err := c.send(am.HealthCheck, heartbeatMessage)
