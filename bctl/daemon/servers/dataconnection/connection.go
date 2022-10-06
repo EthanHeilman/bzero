@@ -130,8 +130,30 @@ func New(
 				// Close any listening datachannels
 				conn.broker.Close(fmt.Errorf("connection closed"))
 
+				// Sends a message to the agent that we are closing the data connection
+				// websocket so that the agent can also disconnect from the websocket
+				cawMessaged := CloseAgentWebsocketMessage{
+					Reason: conn.Err().Error(),
+				}
+				messagePayloadBytes, err := json.Marshal(cawMessaged)
+				if err != nil {
+					conn.logger.Errorf("Failed to marshal close agent websocket message %s", err)
+				} else {
+					cawMessage := am.AgentMessage{
+						MessageType:    string(am.CloseAgentWebsocket),
+						MessagePayload: messagePayloadBytes,
+						SchemaVersion:  am.CurrentVersion,
+						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
+					}
+					conn.Send(cawMessage)
+				}
+
+				// close the send queue and send all remaining messages before
+				// closing the websocket
+				conn.sendRemainingMessages()
+
 				// Close the underlying connection
-				conn.client.Close(conn.tmb.Err())
+				conn.client.Close(conn.Err())
 
 				return nil
 			case <-conn.client.Done():
@@ -152,6 +174,8 @@ func New(
 				}
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
+				} else {
+					conn.logger.Debugf("sent %s message", message.MessageType)
 				}
 			}
 		}
@@ -242,30 +266,6 @@ func (d *DataConnection) Err() error {
 func (d *DataConnection) Close(reason error, timeout time.Duration) {
 	if d.tmb.Alive() {
 		d.logger.Infof("Connection closing because: %s", reason)
-
-		// Sends a message to the agent that we are closing the data connection
-		// websocket so that the agent can also disconnect from the websocket
-		cawMessaged := CloseAgentWebsocketMessage{
-			Reason: reason.Error(),
-		}
-		messagePayloadBytes, err := json.Marshal(cawMessaged)
-		if err != nil {
-			d.logger.Errorf("Failed to marshal close agent websocket message %s", err)
-		} else {
-			// Send the message directly instead of adding to send queue to
-			// avoid race condition where tmb.Kill() will close the underlying
-			// websocket
-			cawMessage := am.AgentMessage{
-				MessageType:    string(am.CloseAgentWebsocket),
-				MessagePayload: messagePayloadBytes,
-				SchemaVersion:  am.CurrentVersion,
-				ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
-			}
-			if err := d.client.Send(cawMessage); err != nil {
-				d.logger.Errorf("failed to send close agent websocket message: %s", err)
-			}
-		}
-
 		d.tmb.Kill(reason)
 
 		select {
@@ -275,6 +275,24 @@ func (d *DataConnection) Close(reason error, timeout time.Duration) {
 		}
 	} else {
 		d.logger.Infof("Close was called while in a dying state")
+	}
+}
+
+func (d *DataConnection) sendRemainingMessages() {
+	// close the send queue and send all remaining messages
+	d.logger.Infof("sending remaining %d message(s) in send queue before closing websocket", len(d.sendQueue))
+	sendQueueLength := len(d.sendQueue)
+	for i := 0; i < sendQueueLength; i++ {
+		message := <-d.sendQueue
+		if err := d.client.Send(*message); err != nil {
+			d.logger.Errorf("failed to send message: %s", err)
+		} else {
+			d.logger.Debugf("sent %s message", message.MessageType)
+		}
+	}
+
+	if len(d.sendQueue) > 0 {
+		d.logger.Errorf("more messages were added to the send queue after the connection was in dying state")
 	}
 }
 

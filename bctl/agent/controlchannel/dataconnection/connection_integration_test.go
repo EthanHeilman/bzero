@@ -1,7 +1,6 @@
 package dataconnection
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -97,7 +96,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 			AfterEach(func() {
 				websocketServer.Close()
 				mockCN.Close()
-				conn.Close(fmt.Errorf("end of test"), time.Second)
+				conn.Close(tests.EndOfTest, time.Second)
 			})
 
 			It("retries to connect until it is able to successfully connect", func() {
@@ -123,7 +122,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 
 			AfterEach(func() {
 				mockCN.Close()
-				conn.Close(fmt.Errorf("end of test"), time.Second)
+				conn.Close(tests.EndOfTest, time.Second)
 			})
 
 			It("shuts down", func() {
@@ -145,9 +144,8 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 
 			AfterEach(func() {
 				mockCN.Close()
+				conn.Close(tests.EndOfTest, time.Second)
 			})
-
-			It("sends all remaining messages in the pipeline", func() {})
 
 			It("will try to reconnect", func() {
 				time.Sleep(time.Second)

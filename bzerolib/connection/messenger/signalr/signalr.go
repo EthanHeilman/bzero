@@ -131,7 +131,7 @@ func (s *SignalR) Connect(
 					s.logger.Error(err)
 				}
 
-				s.client.Close(err)
+				s.client.Close(s.Err())
 				return err
 			case <-s.client.Done():
 				return fmt.Errorf("closed websocket")

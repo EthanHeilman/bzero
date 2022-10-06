@@ -69,13 +69,14 @@ func (w *Websocket) Inbound() <-chan *[]byte {
 }
 
 func (w *Websocket) Send(message []byte) error {
-	return w.client.WriteMessage(gorilla.TextMessage, message)
+	if w.client != nil {
+		return w.client.WriteMessage(gorilla.TextMessage, message)
+	} else {
+		return fmt.Errorf("cannot send message because websocket is closed")
+	}
 }
 
 func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Context) (err error) {
-	// Reinitialize our variables in case this is post death
-	w.tmb = tomb.Tomb{}
-
 	// Make sure url scheme is correct
 	connUrl.Scheme = WebsocketUrlScheme
 
@@ -83,6 +84,9 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 	if w.client, _, err = gorilla.DefaultDialer.DialContext(ctx, connUrl.String(), headers); err != nil {
 		return fmt.Errorf("error dialing websocket: %w", err)
 	}
+
+	// Reinitialize our variables in case this is post death
+	w.tmb = tomb.Tomb{}
 
 	w.tmb.Go(w.receive)
 
