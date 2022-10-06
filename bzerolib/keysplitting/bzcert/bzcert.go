@@ -9,7 +9,7 @@ import (
 )
 
 type IBZCert interface {
-	Verify(idpProvider string, idpOrgId string) error
+	Verify(idpProvider string, idpOrgId string, serviceAccounts []string) error
 	Hash() string
 	Expired() bool
 }
@@ -34,16 +34,21 @@ func (b *BZCert) Expired() bool {
 	return time.Now().After(b.expiration)
 }
 
-func (b *BZCert) Verify(idpProvider string, idpOrgId string) error {
+func (b *BZCert) Verify(idpProvider string, idpOrgId string, serviceAccounts []string) error {
 	// initialize a new verifier for BastionZero certificates
 	if verifier, err := NewVerifier(idpProvider, idpOrgId); err != nil {
 		return fmt.Errorf("error initializing certificate verifier: %w", err)
-	} else if exp, err := verifier.Verify(b); err != nil {
-		return fmt.Errorf("failed to verify the certificate: %w", err)
-	} else if err := b.HashCert(); err != nil {
-		return err
 	} else {
-		b.expiration = exp
+		for i := range serviceAccounts {
+			verifier.AddServiceAccountJwksRootUrl(serviceAccounts[i])
+		}
+		if exp, err := verifier.Verify(b); err != nil {
+			return fmt.Errorf("failed to verify the certificate: %w", err)
+		} else if err := b.HashCert(); err != nil {
+			return err
+		} else {
+			b.expiration = exp
+		}
 	}
 
 	return nil

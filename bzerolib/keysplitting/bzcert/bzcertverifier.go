@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	ed "crypto/ed25519"
 
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/sha3"
+	"gopkg.in/square/go-jose.v2"
 )
 
 const (
@@ -23,10 +25,16 @@ const (
 	initialIdTokenLifetime = time.Hour * 24 * 365 * 5 // 5 years
 )
 
+type IBZCertVerifier interface {
+	Verify(bzcert *BZCert) (exp time.Time, err error)
+	AddServiceAccountJwksRootUrl(jwksrootUrl string)
+}
+
 type BZCertVerifier struct {
-	orgId        string
-	ssoProvider  *oidc.Provider
-	providerType ProviderType
+	orgId               string
+	ssoProvider         *oidc.Provider
+	providerType        ProviderType
+	allowedJwksUrlRoots map[string]bool // The allow list of JWKS URL roots configured for the agent. This is used for service accounts.
 }
 
 // the claims we care about checking
@@ -48,7 +56,7 @@ const (
 	None ProviderType = "None"
 )
 
-func NewVerifier(idpProvider string, idpOrgId string) (*BZCertVerifier, error) {
+func NewVerifier(idpProvider string, idpOrgId string) (IBZCertVerifier, error) {
 	// customIss := os.Getenv("CUSTOM_IDP")
 
 	var issuerUrl string
@@ -74,9 +82,10 @@ func NewVerifier(idpProvider string, idpOrgId string) (*BZCertVerifier, error) {
 	}
 
 	return &BZCertVerifier{
-		orgId:        idpOrgId,
-		ssoProvider:  provider,
-		providerType: ProviderType(idpProvider),
+		orgId:               idpOrgId,
+		ssoProvider:         provider,
+		providerType:        ProviderType(idpProvider),
+		allowedJwksUrlRoots: map[string]bool{},
 	}, nil
 }
 
@@ -94,7 +103,19 @@ func getMicrosoftIssUrl(orgId string) string {
 }
 
 func (v *BZCertVerifier) Verify(bzcert *BZCert) (exp time.Time, err error) {
-	if err = v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
+	idToken := bzcert.CurrentIdToken
+	// Check if JWKS Service Account
+	if IsJWKSServiceAccount(idToken) {
+		// First check if this verifies as a JWKS URL based service account,
+		//  if it verifies then short circuit and return verified, if verification
+		//  fails then continue and attempt to verify IDToken as an SSO user.
+		jwksVerified, err := v.VerifySericeAccountIdToken(bzcert)
+		if jwksVerified {
+			return time.Now().Add(initialIdTokenLifetime), nil //TODO: use expiry from SA Token
+		} else {
+			return time.Time{}, fmt.Errorf("invalid JWKS Service Account ID Token: %s", err)
+		}
+	} else if err = v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
 		return exp, &InitialIdTokenError{InnerError: err}
 	} else if exp, err = v.verifyCurrentIdToken(bzcert.CurrentIdToken); err != nil {
 		return exp, &CurrentIdTokenError{InnerError: err}
@@ -214,4 +235,114 @@ func (v *BZCertVerifier) verifyAuthNonce(bzcert *BZCert, authNonce string) error
 	} else {
 		return fmt.Errorf("failed to verify signature on rand")
 	}
+}
+
+// This method verifies and authenicates a supplied JWKS service account. It performs the following checks if any of the checks fail it returns false.
+//  1. Ensure that the supplied jku header in the idToken matches one of the allowed JWKS URL roots that have been configured for this agent.
+//  2. Ensure that idToken signature verifies under the pubkey at JWKS URL supplied in the jku header in the idToken.
+//  3. Ensure that idToken hasn't expired. Unlike standard idTokens service account idTokens can be "refreshed" and still contain the nonce. Thus, expiration is much simplier here. We reject an idToken that has expired according to its expiration value.
+//  4. Ensure that Org in the idToken HD claim is correct. This check isn't strictly neccessary since the token is signed by the service account allowing the service account to choose any value it wants for this field. It is benefital to check this anyways to catch misconfigurations.
+//  5. Ensure that the the MRZAP nonce verifies i.e., random value and signature committed to in nonce verifies under pubkey committed to in nonce
+func (u *BZCertVerifier) VerifySericeAccountIdToken(bzcert *BZCert) (bool, error) {
+	idtoken := bzcert.CurrentIdToken
+
+	ctx := context.TODO() // Gives us non-nil empty context
+	config := &oidc.Config{
+		SkipClientIDCheck: true,
+		SkipExpiryCheck:   false,
+	}
+
+	jws, err := jose.ParseSigned(idtoken)
+	if err != nil {
+		return false, err
+	}
+
+	jku := jws.Signatures[len(jws.Signatures)-1].Header.ExtraHeaders["jku"]
+	if jkuStr, ok := jku.(string); ok {
+		if len(jkuStr) > 0 {
+			if len(strings.Split(jkuStr, "@")) != 2 {
+				return false, fmt.Errorf("jku value in ID Token does not contain exactly one @. Supplied jku value %s", jkuStr)
+			}
+
+			tokJku := strings.Split(jkuStr, "/")
+			jwksEmail := tokJku[len(tokJku)-1]
+
+			if len(strings.Split(jwksEmail, "@")) != 2 {
+				return false, fmt.Errorf("jku value in ID Token does not contain exactly one @ in email address. Supplied jku value %s", jkuStr)
+			}
+
+			emailDomain := strings.Split(jwksEmail, "@")[1]
+			suppliedJwksURLPattern := strings.Join(tokJku[0:len(tokJku)-1], "/") + "/" + "*" + "@" + emailDomain
+
+			// 1. Ensure that supplied JWKS URL root exists in the configured allow list of JWKS URL roots
+			if !u.allowedJwksUrlRoots[suppliedJwksURLPattern] {
+				rootsStr := ""
+				for k := range u.allowedJwksUrlRoots {
+					rootsStr += k
+					rootsStr += ", "
+				}
+				return false, fmt.Errorf("jku value in ID Token is incorrect. Supplied jku value %s, Allowed set %s", jkuStr, rootsStr)
+			}
+
+			// 2. Ensure that the signature on the idToken verifies under the pubkeys at JWKS URL which was supplied in the jku header
+			jwks := oidc.NewRemoteKeySet(ctx, jkuStr)
+			if err != nil {
+				return false, err
+			}
+			verifier := oidc.NewVerifier(jwksEmail, jwks, config)
+
+			// This checks formatting and signature validity and
+			// 3. Ensures the idToken hasn't expired as SkipExpiryCheck is false
+			token, err := verifier.Verify(ctx, idtoken)
+			if err != nil {
+				return false, fmt.Errorf("ID Token verification error: %s", err)
+			}
+
+			var claims struct {
+				HD    string `json:"hd"`    // Google Org ID
+				Nonce string `json:"nonce"` // OIDC Nonce that commits to MRZAP values
+				Death int64  `json:"exp"`   // Unix datetime of token expiry
+			}
+			if err := token.Claims(&claims); err != nil {
+				return false, fmt.Errorf("error parsing the ID Token: %s", err)
+			}
+
+			// 4. Ensure the idToken matches the expected org id
+			if u.orgId != claims.HD {
+				return false, fmt.Errorf("user's OrgId does not match target's expected Google HD")
+			}
+
+			// 5. Ensure the MRZAP values in the nonce verify.
+			if err = u.verifyAuthNonce(bzcert, claims.Nonce); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (u *BZCertVerifier) AddServiceAccountJwksRootUrl(jwksUrlRoot string) {
+	// Trailing / isn't meaningful and should be not be recorded
+	jwksUrlRoot = strings.TrimRight(jwksUrlRoot, "/")
+	u.allowedJwksUrlRoots[jwksUrlRoot] = true
+}
+
+// Add comment
+func IsJWKSServiceAccount(idToken string) bool {
+	jws, err := jose.ParseSigned(idToken)
+	if err != nil {
+		return false
+	}
+	jku := jws.Signatures[len(jws.Signatures)-1].Header.ExtraHeaders["jku"]
+	if jku == nil {
+		return false
+	}
+	if jku, ok := jku.(string); ok {
+		if len(jku) > 0 {
+			return true
+		}
+	}
+	return false
 }

@@ -23,6 +23,7 @@ type Keysplitting struct {
 	privatekey       string
 	idpProvider      string
 	idpOrgId         string
+	serviceAccounts  []string
 
 	// define constraints based on schema version
 	shouldCheckTargetId *semver.Constraints
@@ -35,6 +36,7 @@ type IKeysplittingConfig interface {
 	GetPrivateKey() string
 	GetIdpProvider() string
 	GetIdpOrgId() string
+	GetServiceAccountJwksUrls() []string
 }
 
 func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, error) {
@@ -50,6 +52,7 @@ func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, erro
 		privatekey:          config.GetPrivateKey(),
 		idpProvider:         config.GetIdpProvider(),
 		idpOrgId:            config.GetIdpOrgId(),
+		serviceAccounts:     config.GetServiceAccountJwksUrls(),
 		shouldCheckTargetId: shouldCheckTargetIdConstraint,
 	}, nil
 }
@@ -61,7 +64,7 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		bzcert := synPayload.BZCert
 
 		// Verify the BZCert
-		if err := bzcert.Verify(k.idpProvider, k.idpOrgId); err != nil {
+		if err := bzcert.Verify(k.idpProvider, k.idpOrgId, k.serviceAccounts); err != nil {
 			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
 		}
 

@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -41,20 +42,21 @@ type Vault struct {
 }
 
 type SecretData struct {
-	PublicKey       string
-	PrivateKey      string
-	ServiceUrl      string
-	TargetName      string
-	Namespace       string
-	IdpProvider     string
-	IdpOrgId        string
-	TargetId        string
-	EnvironmentId   string
-	EnvironmentName string
-	AgentType       string
-	Version         string
-	ShutdownReason  string
-	ShutdownState   string
+	PublicKey          string
+	PrivateKey         string
+	ServiceUrl         string
+	TargetName         string
+	Namespace          string
+	IdpProvider        string
+	IdpOrgId           string
+	ServiceAccountUrls []string
+	TargetId           string
+	EnvironmentId      string
+	EnvironmentName    string
+	AgentType          string
+	Version            string
+	ShutdownReason     string
+	ShutdownState      string
 }
 
 func LoadVault() (*Vault, error) {
@@ -241,7 +243,8 @@ func clusterVault() (*Vault, error) {
 }
 
 func (v *Vault) IsEmpty() bool {
-	if v.Data == (SecretData{}) {
+	// This is required because Data includes a List
+	if reflect.ValueOf(v.Data).IsZero() {
 		return true
 	} else {
 		return false
@@ -269,6 +272,10 @@ func (v *Vault) GetIdpProvider() string {
 
 func (v *Vault) GetIdpOrgId() string {
 	return v.Data.IdpOrgId
+}
+
+func (v *Vault) GetServiceAccountJwksUrls() []string {
+	return v.Data.ServiceAccountUrls
 }
 
 // There is no selective saving, saving the vault will overwrite anything existing

@@ -84,8 +84,10 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	b.SignatureOnRand = b.config.CertConfig.CerRandSignature
 	b.privateKey = privateKey
 
+	serviceAccounts := []string{} // TODO: We need to add the service account we are using here. This may fail when validating using a service account.
+
 	// Finally also check the bzcert is valid
-	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId); err != nil {
+	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId, serviceAccounts); err != nil {
 		return err
 	}
 
