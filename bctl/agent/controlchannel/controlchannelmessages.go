@@ -1,21 +1,23 @@
 package controlchannel
 
-type AliveCheckAgentToBastionMessage struct {
-	Alive        bool     `json:"alive"`
+type HeartbeatMessage struct {
+	Alive           bool   `json:"alive"`
+	NumDataChannels uint32 `json:"numDataChannels"`
+}
+
+type ClusterUsersMessage struct {
 	ClusterUsers []string `json:"clusterUsers"`
 }
 
-// websocket and datachannel management payloads
+// connection and datachannel management payloads
 type OpenWebsocketMessage struct {
 	ConnectionId         string `json:"connectionId"`
-	ConnectionNodeId     string `json:"connectionNodeId"`
 	ConnectionServiceUrl string `json:"connectionServiceUrl"`
-	Token                string `json:"token"`
-	Type                 string `json:"type"`
 }
 
 type CloseWebsocketMessage struct {
 	ConnectionId string `json:"connectionId"`
+	Reason       string `json:"reason"`
 }
 
 type OpenDataChannelMessage struct {

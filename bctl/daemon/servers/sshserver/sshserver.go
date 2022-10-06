@@ -2,13 +2,21 @@ package sshserver
 
 import (
 	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+
+	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
+	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -16,9 +24,7 @@ import (
 )
 
 const (
-	// websocket connection parameters for all datachannels created by tcp server
-	autoReconnect = false
-	getChallenge  = false
+	connectionCloseTimeout = 10 * time.Second
 )
 
 type SshServer struct {
@@ -26,8 +32,8 @@ type SshServer struct {
 	errChan chan error
 	action  string
 
-	websocket *websocket.Websocket
-	dc        *datachannel.DataChannel
+	conn connection.Connection
+	dc   *datachannel.DataChannel
 
 	remoteHost string
 	remotePort int
@@ -41,6 +47,8 @@ type SshServer struct {
 	// fields for new datachannels
 	agentPubKey string
 	cert        *bzcert.DaemonBZCert
+
+	tmb tomb.Tomb
 }
 
 func New(
@@ -49,9 +57,9 @@ func New(
 	targetUser string,
 	dataChannelId string,
 	cert *bzcert.DaemonBZCert,
-	serviceUrl string,
-	params map[string]string,
-	headers map[string]string,
+	connUrl string,
+	params url.Values,
+	headers http.Header,
 	agentPubKey string,
 	identityFile string,
 	knownHostsFile string,
@@ -72,58 +80,66 @@ func New(
 		identityFile:   identityFile,
 		knownHostsFile: knownHostsFile,
 		hostNames:      hostNames,
+		localPort:      localPort,
 		remoteHost:     remoteHost,
 		remotePort:     remotePort,
-		localPort:      localPort,
 	}
 
-	// Create a new websocket and datachannel
-	if err := server.newWebsocket(uuid.New().String(), serviceUrl, params, headers); err != nil {
-		return nil, fmt.Errorf("failed to create websocket: %s", err)
+	// Create our one connection
+	subLogger := logger.GetConnectionLogger(uuid.New().String())
+	wsLogger := logger.GetComponentLogger("Websocket")
+	srLogger := logger.GetComponentLogger("SignalR")
+
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	if client, err := dataconnection.New(subLogger, connUrl, params, headers, client); err != nil {
+		return nil, fmt.Errorf("failed to create connection: %s", err)
+	} else {
+		server.conn = client
 	}
+
+	// Create a tmb that just waits until its killed via server.Close and pushes
+	// the error to the errChan. Using a tmb prevents any side-effects from
+	// server.Close from being called multiple times.
+	server.tmb.Go(func() error {
+		select {
+		case <-server.tmb.Dying():
+			err := server.tmb.Err()
+			if server.conn != nil {
+				server.conn.Close(err, connectionCloseTimeout)
+			}
+			server.errChan <- err
+			return err
+		}
+	})
 
 	return server, nil
 }
 
 func (s *SshServer) Start() error {
-	if err := s.newDataChannel(s.action, s.websocket); err != nil {
-		s.websocket.Close(err)
+	if err := s.newDataChannel(s.action); err != nil {
+		s.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to create datachannel: %s", err)
 	}
 	return nil
 }
 
 func (s *SshServer) Close(err error) {
-	if s.websocket != nil {
-		s.websocket.Close(err)
-	}
-	s.errChan <- err
-}
-
-// for creating new websockets
-func (s *SshServer) newWebsocket(wsId string, serviceUrl string, params map[string]string, headers map[string]string) error {
-	subLogger := s.logger.GetWebsocketLogger(wsId)
-	if wsClient, err := websocket.New(subLogger, serviceUrl, params, headers, autoReconnect, getChallenge, websocket.Ssh); err != nil {
-		return err
-	} else {
-		s.websocket = wsClient
-		return nil
-	}
+	s.tmb.Kill(err)
 }
 
 func (s *SshServer) listenForChildrenDone() {
 	// blocks until an underlying tomb is dead
 	// we do it this way to prevent s.Close() from being called twice in the event that dc dies first
 	select {
-	case <-s.websocket.Done():
-		s.Close(s.websocket.Err())
+	case <-s.conn.Done():
+		s.Close(s.conn.Err())
 	case <-s.dc.Done():
 		s.Close(s.dc.Err())
 	}
 }
 
 // for creating new datachannels
-func (s *SshServer) newDataChannel(action string, websocket *websocket.Websocket) error {
+func (s *SshServer) newDataChannel(action string) error {
 	dcId := uuid.New().String()
 	attach := false
 	subLogger := s.logger.GetDatachannelLogger(dcId)
@@ -154,7 +170,7 @@ func (s *SshServer) newDataChannel(action string, websocket *websocket.Websocket
 	}
 
 	action = "ssh/" + action
-	s.dc, err = datachannel.New(subLogger, dcId, websocket, keysplitter, plugin, action, synPayload, attach, false)
+	s.dc, err = datachannel.New(subLogger, dcId, s.conn, keysplitter, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}

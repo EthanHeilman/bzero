@@ -3,6 +3,9 @@ package bzcert
 import (
 	"encoding/base64"
 	"fmt"
+	"time"
+
+	"github.com/golang-jwt/jwt/v4"
 
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
@@ -19,8 +22,9 @@ type DaemonBZCert struct {
 	bzcert.BZCert
 
 	// unexported members
-	privateKey string
-	config     *zliconfig.ZLIConfig
+	privateKey               string
+	config                   *zliconfig.ZLIConfig
+	currentIdTokenExpiration int64
 }
 
 func New(
@@ -35,6 +39,7 @@ func New(
 	if err := cert.populateFromConfig(); err != nil {
 		return nil, fmt.Errorf("failed to initialize the BastionZero Certificate: %w", err)
 	}
+
 	return cert, nil
 }
 
@@ -47,6 +52,11 @@ func (b *DaemonBZCert) PrivateKey() string {
 }
 
 func (b *DaemonBZCert) Refresh() error {
+	// Only refresh if we have something expired
+	if b.currentIdTokenExpiration > time.Now().UTC().Unix() {
+		return nil
+	}
+
 	// Refresh our idp token values using the zli
 	if err := b.config.Refresh(); err != nil {
 		return err
@@ -89,6 +99,15 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	// Finally also check the bzcert is valid
 	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId, serviceAccounts); err != nil {
 		return err
+	}
+
+	// Track the expiration date for our current identity token
+	parser := jwt.Parser{SkipClaimsValidation: true}
+	claims := jwt.RegisteredClaims{}
+	if _, _, err := parser.ParseUnverified(b.CurrentIdToken, &claims); err != nil {
+		return fmt.Errorf("error trying to parse our jwt: %s", err)
+	} else {
+		b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
 	}
 
 	return b.HashCert()

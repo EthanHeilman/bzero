@@ -7,8 +7,8 @@ import (
 
 	tomb "gopkg.in/tomb.v2"
 
-	am "bastionzero.com/bctl/v1/bzerolib/channels/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	rrr "bastionzero.com/bctl/v1/bzerolib/error"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -55,7 +55,7 @@ type DataChannel struct {
 	logger *logger.Logger
 	id     string // DataChannel's ID
 
-	websocket   websocket.IWebsocket
+	conn        connection.Connection
 	keysplitter IKeysplitting
 	plugin      IPlugin
 
@@ -69,7 +69,7 @@ type DataChannel struct {
 func New(
 	logger *logger.Logger,
 	id string,
-	websocket websocket.IWebsocket,
+	conn connection.Connection,
 	keysplitter IKeysplitting,
 	plugin IPlugin,
 	action string,
@@ -81,44 +81,32 @@ func New(
 	dc := &DataChannel{
 		logger:                     logger,
 		id:                         id,
-		websocket:                  websocket,
+		conn:                       conn,
 		keysplitter:                keysplitter,
 		plugin:                     plugin,
 		inputChan:                  make(chan *am.AgentMessage, 50),
 		processInputChanBeforeExit: processInputChanBeforeExit,
 	}
 
-	// register with websocket so datachannel can send and receive messages
-	websocket.Subscribe(id, dc)
-
-	// if we're attaching to an existing datachannel vs if we are creating a new one
-	if !attach {
-		// tell Bastion we're opening a datachannel and send SYN to agent initiates an authenticated datachannel
-		logger.Info("Sending request to agent to open a new datachannel")
-		if err := dc.openDataChannel(action, synPayload); err != nil {
-			return nil, err
-		}
-	} else if _, err := keysplitter.BuildSyn(action, synPayload, true); err != nil {
-		return nil, fmt.Errorf("failed to build and send syn for attachment flow")
-	} else {
-		logger.Infof("Sending SYN on existing datachannel %s with actions %s.", dc.id, action)
-	}
+	// register with connection so datachannel can send and receive messages
+	conn.Subscribe(id, dc)
 
 	dc.tmb.Go(func() error {
 		var err error
 		defer func() {
 			dc.logger.Infof("sending CloseDataChannel message to the agent")
-			websocket.Send(am.AgentMessage{
+			conn.Send(am.AgentMessage{
 				ChannelId:   dc.id,
 				MessageType: string(am.CloseDataChannel),
 			})
-
-			websocket.Unsubscribe(id) // causes decoupling from websocket
 			dc.logger.Info("Datachannel done")
 		}()
 
+		go dc.sendKeysplitting()
+		go dc.zapPluginOutput()
+
 		// wait for the syn/ack to our intial syn message or an error
-		if err = dc.handshakeOrTimeout(); err != nil {
+		if err = dc.handshakeOrTimeout(attach, action, synPayload); err != nil {
 			dc.logger.Error(err)
 			return err
 		}
@@ -127,7 +115,7 @@ func New(
 		for {
 			select {
 			case <-dc.tmb.Dying():
-				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err().Error())
+				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err())
 				dc.plugin.Kill()
 				return nil
 			case <-dc.plugin.Done():
@@ -148,36 +136,61 @@ func New(
 		}
 	})
 
-	go dc.sendKeysplitting()
-	go dc.zapPluginOutput()
-
 	return dc, nil
 }
 
-func (d *DataChannel) handshakeOrTimeout() error {
-	start := time.Now()
-	select {
-	case <-d.tmb.Dying():
-		return nil
-	case agentMessage := <-d.inputChan:
-		// log the time it took to complete the handshake
-		diff := time.Since(start)
-		d.logger.Infof("It took %s to complete handshake", diff.Round(time.Millisecond).String())
+func (d *DataChannel) handshakeOrTimeout(attach bool, action string, synPayload interface{}) error {
+	maxRetry := 3
+	retryCount := 0
 
-		switch am.MessageType(agentMessage.MessageType) {
-		case am.Error:
-			return d.handleError(agentMessage)
-		case am.Keysplitting:
-			if err := d.handleKeysplitting(agentMessage); err != nil {
-				return err
-			} else {
-				return nil
+	// This will initialize our handshake by either attaching to an existing
+	// datachannel (and sending a lone syn) OR by creating a new datachannel on the
+	// agent by sending the syn as part of a OpenDataChannel request
+	if err := d.start(attach, action, synPayload); err != nil {
+		return err
+	}
+
+	d.logger.Info("Waiting for handshake to complete")
+	start := time.Now()
+	for {
+		select {
+		case <-d.tmb.Dying():
+			return nil
+
+		case agentMessage := <-d.inputChan:
+			switch am.MessageType(agentMessage.MessageType) {
+			case am.Error:
+				d.logger.Errorf("Received error message on initial syn: %s", string(agentMessage.MessagePayload))
+
+				// Limit the number of times we retry to initiate handshake it is very likely
+				// this error will be unrecoverable
+				if retryCount >= maxRetry {
+					err := fmt.Errorf("retried %d times to recover from error on initial syn without success", maxRetry)
+					d.logger.Error(err)
+					return err
+				}
+				retryCount++
+
+				// If we get an error on that first syn, we have to restart the flow
+				if err := d.start(attach, action, synPayload); err != nil {
+					return err
+				}
+			case am.Keysplitting:
+				// log the time it took to complete the handshake
+				diff := time.Since(start)
+				d.logger.Infof("It took %s to complete handshake", diff.Round(time.Millisecond).String())
+
+				if err := d.handleKeysplitting(agentMessage); err != nil {
+					return err
+				} else {
+					return nil
+				}
+			default:
+				return fmt.Errorf("datachannel must start with a mrzap or error message, received: %s", agentMessage.MessageType)
 			}
-		default:
-			return fmt.Errorf("datachannel must start with a mrzap or error message, recieved: %s", agentMessage.MessageType)
+		case <-time.After(handshakeTimeout):
+			return fmt.Errorf("handshake timed out")
 		}
-	case <-time.After(handshakeTimeout):
-		return fmt.Errorf("handshake timed out")
 	}
 }
 
@@ -193,6 +206,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 				d.logger.Error(err)
 			}
 		case <-time.After(checkOutboxInterval):
+			d.logger.Infof("checking outbox interval: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.keysplitter.IsPipelineEmpty())
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.keysplitter.IsPipelineEmpty() {
 				return
@@ -215,6 +229,7 @@ func (d *DataChannel) sendKeysplitting() error {
 			return nil
 		case ksMessage := <-d.keysplitter.Outbox():
 			if ksMessage.Type == ksmsg.Syn || !d.keysplitter.Recovering() {
+				d.logger.Infof("Sending a keysplitting %s message", ksMessage.Type)
 				d.send(am.Keysplitting, ksMessage)
 			}
 		}
@@ -251,6 +266,22 @@ func (d *DataChannel) Close(reason error) {
 	d.tmb.Wait()
 }
 
+func (d *DataChannel) start(attach bool, action string, synPayload interface{}) error {
+	// if we're attaching to an existing datachannel vs if we are creating a new one
+	if !attach {
+		// tell Bastion we're opening a datachannel and send SYN to agent initiates an authenticated datachannel
+		d.logger.Info("Sending request to agent to open a new datachannel")
+		return d.openDataChannel(action, synPayload)
+	}
+
+	if _, err := d.keysplitter.BuildSyn(action, synPayload, true); err != nil {
+		return fmt.Errorf("failed to build and send syn for attachment flow")
+	} else {
+		d.logger.Infof("Sending SYN on existing datachannel %s with action %s", d.id, action)
+		return nil
+	}
+}
+
 func (d *DataChannel) openDataChannel(action string, synPayload interface{}) error {
 	synMessage, err := d.keysplitter.BuildSyn(action, synPayload, false)
 	if err != nil {
@@ -280,7 +311,7 @@ func (d *DataChannel) openDataChannel(action string, synPayload interface{}) err
 		MessagePayload: messagePayloadBytes,
 		MessageType:    string(am.OpenDataChannel),
 	}
-	d.websocket.Send(odMessage)
+	d.conn.Send(odMessage)
 
 	return nil
 }
@@ -297,8 +328,8 @@ func (d *DataChannel) send(messageType am.MessageType, messagePayload interface{
 			MessagePayload: messageBytes,
 		}
 
-		// Push message to websocket channel output
-		d.websocket.Send(agentMessage)
+		// Push message to connection channel output
+		d.conn.Send(agentMessage)
 		return nil
 	}
 }

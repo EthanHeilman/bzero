@@ -17,3 +17,6 @@ bzerolib/bzerolibcov.out
 bzerolib/bzerolibcoverage.xml
 
 .vscode/
+
+# Ginkgo
+**/*.test

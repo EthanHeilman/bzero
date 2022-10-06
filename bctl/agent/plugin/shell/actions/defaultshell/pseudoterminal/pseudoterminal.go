@@ -58,8 +58,7 @@ func New(logger *logger.Logger, runAsUser *unixuser.UnixUser, commandstr string)
 
 	logger.Debugf("Using default shell %s", shellCommand)
 
-	shellCommandArgs := []string{"-c"}
-	if cmd, err := buildCommand(runAsUser, commandstr, shellCommand, shellCommandArgs); err != nil {
+	if cmd, err := buildCommand(runAsUser, commandstr, shellCommand); err != nil {
 		return nil, err
 	} else if ptyFile, err := pty.Start(cmd); err != nil {
 		return nil, fmt.Errorf("failed to start pty: %s", err)
@@ -89,12 +88,19 @@ func New(logger *logger.Logger, runAsUser *unixuser.UnixUser, commandstr string)
 	}
 }
 
-func buildCommand(runAsUser *unixuser.UnixUser, commandstr string, shellCommand string, shellCommandArgs []string) (*exec.Cmd, error) {
+func buildCommand(runAsUser *unixuser.UnixUser, customCommand string, shellCommand string) (*exec.Cmd, error) {
 	var cmd *exec.Cmd
-	if strings.TrimSpace(commandstr) == "" {
-		cmd = exec.Command(shellCommand)
+
+	if strings.TrimSpace(customCommand) == "" {
+		// if customCommand not provided then default to launching an interactive login shell
+
+		// Add --login option to shell command so that this is a login shell and
+		// will source shell profile dot files automatically
+		// https://unix.stackexchange.com/a/46856
+		cmd = exec.Command(shellCommand, "-l")
 	} else {
-		commandArgs := append(shellCommandArgs, commandstr)
+		// else if customCommand is provided then run the command in a shell with the -c option
+		commandArgs := []string{"-c", customCommand}
 		cmd = exec.Command(shellCommand, commandArgs...)
 	}
 

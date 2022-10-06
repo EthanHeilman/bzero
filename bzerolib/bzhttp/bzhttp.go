@@ -68,10 +68,6 @@ func GetHeaders(headers http.Header) map[string][]string {
 	return toReturn
 }
 
-func PostContent(logger *logger.Logger, endpoint string, contentType string, body []byte) (*http.Response, error) {
-	return Post(logger, endpoint, contentType, body, make(map[string]string), make(map[string]string))
-}
-
 func Post(logger *logger.Logger, endpoint string, contentType string, body []byte, headers map[string]string, params map[string]string) (*http.Response, error) {
 	req := createBzhttp(logger, endpoint, contentType, headers, params, body, defaultBackoffParams())
 	return req.post()
@@ -80,11 +76,6 @@ func Post(logger *logger.Logger, endpoint string, contentType string, body []byt
 func Get(logger *logger.Logger, endpoint string, headers map[string]string, params map[string]string) (*http.Response, error) {
 	req := createBzhttp(logger, endpoint, "", headers, params, []byte{}, defaultBackoffParams())
 	return req.get()
-}
-
-func Patch(logger *logger.Logger, endpoint string, headers map[string]string, params map[string]string) (*http.Response, error) {
-	req := createBzhttp(logger, endpoint, "application/json", headers, params, []byte{}, defaultBackoffParams())
-	return req.patch()
 }
 
 func createBzhttp(logger *logger.Logger, endpoint string, contentType string, headers map[string]string, params map[string]string, body []byte, backoffParams *backoff.ExponentialBackOff) bzhttp {
@@ -97,78 +88,6 @@ func createBzhttp(logger *logger.Logger, endpoint string, contentType string, he
 		params:        params,
 		backoffParams: backoffParams,
 	}
-}
-
-func PostRegister(logger *logger.Logger, endpoint string, contentType string, body []byte) (*http.Response, error) {
-	// For the registration post request, we set different parameters for our exponential backoff
-
-	// Define our exponential backoff params
-	params := backoff.NewExponentialBackOff()
-	params.MaxElapsedTime = time.Hour * 4 // Wait in total at most 4 hours
-	params.MaxInterval = time.Hour        // At most 1 hour in between requests
-
-	req := &bzhttp{
-		logger:        logger,
-		endpoint:      endpoint,
-		contentType:   contentType,
-		body:          body,
-		headers:       make(map[string]string),
-		params:        make(map[string]string),
-		backoffParams: params,
-	}
-
-	return req.post()
-}
-
-// minimal backoff for negotiate requests since they are wrapped in their own backoff logic
-func PostNegotiate(logger *logger.Logger, endpoint string, contentType string, body []byte, headers map[string]string, params map[string]string) (*http.Response, error) {
-	// Define our exponential backoff params
-	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = time.Second * 10 // Wait in total at most 10 seconds
-
-	req := createBzhttp(logger, endpoint, contentType, headers, params, body, backoffParams)
-
-	return req.post()
-}
-
-func (b *bzhttp) patch() (*http.Response, error) {
-	// Default params
-	// Ref: https://github.com/cenkalti/backoff/blob/a78d3804c2c84f0a3178648138442c9b07665bda/exponential.go#L76
-	// DefaultInitialInterval     = 500 * time.Millisecond
-	// DefaultRandomizationFactor = 0.5
-	// DefaultMultiplier          = 1.5
-	// DefaultMaxInterval         = 60 * time.Second
-	// DefaultMaxElapsedTime      = 15 * time.Minute
-
-	// Make our ticker
-	ticker := backoff.NewTicker(b.backoffParams)
-
-	// Keep looping through our ticker, waiting for it to tell us when to retry
-	for range ticker.C {
-		// Make our Client
-		var httpClient = getHttpClient()
-
-		// Make our Request
-		req, _ := http.NewRequest("PATCH", b.endpoint, bytes.NewBuffer(b.body))
-		req = addHeaders(req, b.headers, b.contentType)
-		req = addQueryParams(req, b.params)
-
-		if response, err := httpClient.Do(req); err != nil {
-			b.logger.Errorf("error making PATCH request: %s", err)
-			continue
-		} else if err := checkBadStatusCode(response); err != nil {
-			ticker.Stop()
-			return response, err
-		} else if response.StatusCode >= 200 && response.StatusCode < 300 {
-			ticker.Stop()
-			return response, nil
-		} else {
-			b.logger.Errorf("Received status code %d making PATCH request, will retry in %s", response.StatusCode, b.backoffParams.NextBackOff().Round(time.Second))
-			continue
-		}
-	}
-
-	return nil, errors.New("unable to make post request")
 }
 
 func (b *bzhttp) post() (*http.Response, error) {
@@ -263,7 +182,7 @@ func (b *bzhttp) get() (*http.Response, error) {
 			ticker.Stop()
 			return response, nil
 		} else {
-			b.logger.Errorf("Received status code %d making GET request, will retry in %s", response.StatusCode, b.backoffParams.NextBackOff().Round(time.Second))
+			b.logger.Errorf("Received status code %d making GET request to %s, will retry in %s", response.StatusCode, b.endpoint, b.backoffParams.NextBackOff().Round(time.Second))
 			continue
 		}
 	}

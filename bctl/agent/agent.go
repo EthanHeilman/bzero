@@ -4,21 +4,28 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
+	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/channels/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
+	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 )
@@ -42,13 +49,12 @@ const (
 
 	prodServiceUrl = "https://cloud.bastionzero.com/"
 
-	// we replace "bzero-agent" at build with process name
 	bzeroLogFilePath = "/var/log/bzero/bzero-agent.log"
 
-	// based on convention from backend -- there's nothing magical about the number 6 but we need to guarantee
+	// there's nothing magical about the number 3 but we need to guarantee
 	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
-	// as of this writing, this means an expected pong every six seconds, with a "disconnect" reported after 2 minutes
-	bastionDisconnectTimeout  = 6 * controlchannel.HeartRate
+	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
+	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
 	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
 )
 
@@ -129,7 +135,7 @@ type Agent struct {
 	config         *vault.Vault
 	logger         *logger.Logger
 	fileIo         bzio.BzFileIo
-	websocket      *websocket.Websocket
+	conn           connection.Connection
 	controlChannel *controlchannel.ControlChannel
 
 	agentShutdownChan chan error
@@ -190,7 +196,7 @@ func (a *Agent) Run() {
 		// recover in case the agent panics
 		if msg := recover(); msg != nil {
 			reportError(a.logger, fmt.Errorf("bzero agent crashed with panic: %+v", msg))
-			err = fmt.Errorf("crashed with panic: %+v", msg)
+			err = fmt.Errorf("crashed with panic: %+v. stack trace: %s", msg, debug.Stack())
 		}
 
 		a.Close(err)
@@ -224,38 +230,47 @@ func (a *Agent) Run() {
 }
 
 func (a *Agent) startControlChannel() error {
-	var err error
-
-	// Create our headers and params, headers are empty
-	headers := make(map[string]string)
-
-	// Make and add our params
-	params := map[string]string{
-		"public_key": a.config.Data.PublicKey,
-		"version":    a.config.Data.Version,
-		"target_id":  a.config.Data.TargetId,
-		"agent_type": agentType,
+	headers := http.Header{}
+	params := url.Values{
+		"public_key": {a.config.Data.PublicKey},
+		"version":    {a.config.Data.Version},
+		"target_id":  {a.config.Data.TargetId},
+		"agent_type": {agentType},
 	}
 
-	// create a websocket
-	wsId := uuid.New().String()
-	wsLogger := a.logger.GetWebsocketLogger(wsId) // TODO: replace with actual connectionId
-	a.websocket, err = websocket.New(wsLogger, serviceUrl, params, headers, true, true, websocket.AgentControl)
+	// Setup our loggers
+	ccId := uuid.New().String()
+	ccLogger := a.logger.GetControlChannelLogger(ccId)
+	connId := uuid.New().String()
+	connLogger := ccLogger.GetConnectionLogger(connId)
+	aipLogger := ccLogger.GetComponentLogger("AgentIdentityProvider")
+	wsLogger := ccLogger.GetComponentLogger("Websocket")
+	srLogger := ccLogger.GetComponentLogger("SignalR")
+
+	// Make our connection
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	ms, err := a.config.GetMessageSigner()
+	agentIdentityProvider := agentidentity.New(
+		aipLogger,
+		a.config.Data.ServiceUrl,
+		a.config.Data.TargetId,
+		a.config,
+		ms,
+	)
+
+	conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client, agentIdentityProvider, ms)
 	if err != nil {
 		return err
 	}
 
 	// create logger for control channel
-	ccId := uuid.New().String()
-	ccLogger := a.logger.GetControlChannelLogger(ccId)
-
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, a.websocket, serviceUrl, agentType, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, agentIdentityProvider, ms, a.config)
 
 	return err
 }
 
 func (a *Agent) monitorControlChannel() {
-	maximumMissedPongSets := int(websocket.MaximumReconnectWaitTime / bastionDisconnectTimeout)
+	maximumMissedPongSets := int(controlconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
 	missedPongSets := 0
 
 	for {
@@ -292,8 +307,8 @@ func (a *Agent) Close(reason error) {
 		a.controlChannel.Close(reason)
 	}
 
-	if a.websocket != nil {
-		a.websocket.Close(reason)
+	if a.conn != nil {
+		a.conn.Close(reason, 10*time.Second)
 	}
 
 	a.config.Data.ShutdownState = fmt.Sprintf("%+v", getState())
@@ -312,6 +327,54 @@ func (a *Agent) Close(reason error) {
 	} else {
 		os.Exit(1)
 	}
+}
+
+func setupLogger() (*logger.Logger, error) {
+	config := logger.Config{
+		ConsoleWriters: []io.Writer{os.Stdout},
+	}
+
+	// if this is systemd, output log to file
+	if agentType == Bzero {
+		config.FilePath = bzeroLogFilePath
+	}
+
+	log, err := logger.New(&config)
+	if err == nil {
+		log.AddAgentVersion(getAgentVersion())
+	}
+
+	return log, err
+}
+
+// report early errors to the bastion so we have greater visibility
+func reportError(logger *logger.Logger, errorReport error) {
+	if logger != nil {
+		logger.Error(errorReport)
+	} else {
+		fmt.Println(errorReport.Error())
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+
+	errReport := report.ErrorReport{
+		Reporter:  "agent-" + getAgentVersion(),
+		Timestamp: fmt.Sprint(time.Now().Unix()),
+		Message:   errorReport.Error(),
+		State: map[string]string{
+			"activationToken":       activationToken,
+			"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
+			"targetName":            targetName,
+			"targetHostName":        hostname,
+			"goos":                  runtime.GOOS,
+			"goarch":                runtime.GOARCH,
+		},
+	}
+
+	report.ReportError(logger, serviceUrl, errReport)
 }
 
 func parseFlags() error {
@@ -447,47 +510,7 @@ func isRegistered() (bool, error) {
 }
 
 func getAgentVersion() string {
-	if os.Getenv("DEV") == "true" {
-		return "6.7.0"
-	} else {
-		return "$AGENT_VERSION"
-	}
-}
-
-func setupLogger() (*logger.Logger, error) {
-	config := logger.Config{
-		ConsoleWriters: []io.Writer{os.Stdout},
-	}
-
-	// if this is systemd, output log to file
-	if agentType == Bzero {
-		config.FilePath = bzeroLogFilePath
-	}
-
-	log, err := logger.New(&config)
-	if err != nil {
-		log.AddAgentVersion(getAgentVersion())
-	}
-
-	return log, err
-}
-
-// report early errors to the bastion so we have greater visibility
-func reportError(logger *logger.Logger, err error) {
-	if logger != nil {
-		logger.Error(err)
-	} else {
-		fmt.Println(err.Error())
-	}
-
-	errReport := report.ErrorReport{
-		Reporter:  "agent-" + getAgentVersion(),
-		Timestamp: fmt.Sprint(time.Now().Unix()),
-		Message:   err.Error(),
-		State:     getState(),
-	}
-
-	report.ReportError(logger, serviceUrl, errReport)
+	return "$AGENT_VERSION"
 }
 
 func getState() map[string]string {

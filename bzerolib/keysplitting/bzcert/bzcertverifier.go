@@ -192,11 +192,11 @@ func (v *BZCertVerifier) getTokenClaims(idtoken string, config *oidc.Config) (*i
 	switch v.providerType {
 	case Google:
 		if v.orgId != claims.HD {
-			return nil, fmt.Errorf("user's OrgId does not match target's expected Google HD")
+			return nil, fmt.Errorf("user's OrgId %s does not match target's expected Google HD %s", claims.HD, v.orgId)
 		}
 	case Microsoft:
 		if v.orgId != claims.TID {
-			return nil, fmt.Errorf("user's OrgId does not match target's expected Microsoft tid")
+			return nil, fmt.Errorf("user's OrgId %s does not match target's expected Microsoft tid %s", claims.TID, v.orgId)
 		}
 	}
 
