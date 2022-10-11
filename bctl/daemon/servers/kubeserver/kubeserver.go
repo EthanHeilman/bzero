@@ -128,11 +128,11 @@ func (k *KubeServer) Start() error {
 			k.statusCallback(w, r)
 		})
 
-		k.logger.Debugf("listening for connections at %s:%s", k.localHost, k.localHost)
+		k.logger.Debugf("listening for connections at %s:%s", k.localHost, k.localPort)
 		if err := http.ListenAndServeTLS(k.localHost+":"+k.localPort, k.certPath, k.keyPath, nil); err != nil {
 			k.logger.Error(err)
 		}
-		k.logger.Debugf("successfully began listening")
+		k.logger.Debugf("finished listening")
 	}()
 
 	return nil
