@@ -15,7 +15,6 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	gorilla "github.com/gorilla/websocket"
 	"gopkg.in/tomb.v2"
 )
@@ -27,28 +26,28 @@ const (
 
 var WebsocketUrlScheme = HttpsOnlyWebsocketScheme
 
+type websocketStats interface {
+	ObserveInboundBytes(n int)
+	ObserveOutboundBytes(n int)
+}
+
 type Websocket struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 	client *gorilla.Conn
 
-	stats *throughputstats.ThroughputStats
+	stats websocketStats
 
 	// Received messages
 	inbound chan *[]byte
 }
 
-func New(logger *logger.Logger) transporter.Transporter {
+func New(logger *logger.Logger, stats websocketStats) transporter.Transporter {
 	return &Websocket{
 		logger:  logger,
+		stats:   stats,
 		inbound: make(chan *[]byte, 200),
 	}
-}
-
-func (w *Websocket) Stats() throughputstats.Digest {
-	stat := w.stats.Digest()
-	w.stats.Reset()
-	return stat
 }
 
 func (w *Websocket) Close(reason error) {
@@ -79,7 +78,9 @@ func (w *Websocket) Inbound() <-chan *[]byte {
 
 func (w *Websocket) Send(message []byte) error {
 	if w.client != nil {
-		w.stats.CountOutbound(len(message))
+		if w.stats != nil {
+			w.stats.ObserveOutboundBytes(len(message))
+		}
 		return w.client.WriteMessage(gorilla.TextMessage, message)
 	} else {
 		return fmt.Errorf("cannot send message because websocket is closed")
@@ -95,10 +96,8 @@ func (w *Websocket) Dial(connUrl *url.URL, headers http.Header, ctx context.Cont
 		return fmt.Errorf("error dialing websocket: %w", err)
 	}
 
-	// Reinitialize our variables in case this is post death
+	// Reinitialize our tomb in case this is post death
 	w.tmb = tomb.Tomb{}
-	w.stats = throughputstats.New("bytes", w.tmb.Dead())
-
 	w.tmb.Go(w.receive)
 
 	return nil
@@ -121,7 +120,9 @@ func (w *Websocket) receive() error {
 			}
 			return err
 		} else {
-			w.stats.CountInbound(n)
+			if w.stats != nil {
+				w.stats.ObserveInboundBytes(n)
+			}
 
 			w.inbound <- &rawMessage
 		}

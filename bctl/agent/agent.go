@@ -248,7 +248,7 @@ func (a *Agent) startControlChannel() error {
 	srLogger := ccLogger.GetComponentLogger("SignalR")
 
 	// Make our connection
-	client := signalr.New(srLogger, websocket.New(wsLogger))
+	client := signalr.New(srLogger, nil, websocket.New(wsLogger, nil))
 	ms, err := a.config.GetMessageSigner()
 	agentIdentityProvider := agentidentity.New(
 		aipLogger,

@@ -74,7 +74,7 @@ func New(logger *logger.Logger,
 	wsLogger := logger.GetComponentLogger("Websocket")
 	srLogger := logger.GetComponentLogger("SignalR")
 
-	client := signalr.New(srLogger, websocket.New(wsLogger))
+	client := signalr.New(srLogger, nil, websocket.New(wsLogger, nil))
 	if client, err := dataconnection.New(subLogger, connUrl, params, headers, client); err != nil {
 		return nil, fmt.Errorf("failed to create connection: %s", err)
 	} else {

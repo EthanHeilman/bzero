@@ -8,13 +8,13 @@ import (
 	"net/url"
 	"reflect"
 	"regexp"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
@@ -43,6 +43,8 @@ type ControlChannel struct {
 	logger *logger.Logger
 	tmb    tomb.Tomb
 	id     string
+
+	stats *monitor.StatsMonitor
 
 	ksConfig              keysplitting.IKeysplittingConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
@@ -73,8 +75,8 @@ type ControlChannel struct {
 	ClusterUserCache []string
 
 	// used for collecting stats and sending in heartbeats
-	connectionsOpened int
-	connectionsClosed int
+	openedConnections int
+	closedConnections int
 	start             time.Time
 }
 
@@ -105,6 +107,7 @@ func Start(logger *logger.Logger,
 		ClusterUserCache:      []string{},
 		start:                 time.Now(),
 	}
+	control.stats = monitor.New(control.tmb.Dead())
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
 	// subscribing to the connection with a unique id. As long as we use the same one when we unsubscribe
@@ -253,13 +256,24 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	wsLogger := subLogger.GetComponentLogger("Websocket")
 	srLogger := subLogger.GetComponentLogger("SignalR")
 
-	client := signalr.New(srLogger, websocket.New(wsLogger))
+	client := signalr.New(srLogger, c.stats, websocket.New(wsLogger, c.stats))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.messageSigner, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(
+		subLogger,
+		message.ConnectionServiceUrl,
+		message.ConnectionId,
+		c.ksConfig,
+		c.agentIdentityProvider,
+		c.messageSigner,
+		params,
+		headers,
+		client,
+		c.stats,
+	); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
-		c.connectionsOpened++
+		c.openedConnections++
 
 		// add the connection to our connections dictionary
 		c.logger.Infof("Created connection with id: %s", message.ConnectionId)
@@ -301,7 +315,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
 			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
-				c.connectionsClosed--
+				c.closedConnections--
 				c.logger.Infof("Closing connection with id %s", cwRequest.ConnectionId)
 				conn.Close(fmt.Errorf("connection was closed through the control channel with reason: %s", cwRequest.Reason), 10*time.Second)
 			} else {
@@ -316,37 +330,30 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 }
 
 func (c *ControlChannel) reportHealth() error {
-	connStats := map[string]json.RawMessage{}
-	for _, conn := range c.connections {
-		connStats[conn.Id()] = conn.Stats()
-	}
-	jsonConnStats, _ := json.Marshal(connStats)
-
-	// Read our current memory statistics
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-
-	pstats := telemetry.ProcessStats{
-		Alloc:         mem.Alloc,
-		TotalAlloc:    mem.TotalAlloc,
-		Sys:           mem.Sys,
-		Mallocs:       mem.Mallocs,
-		Frees:         mem.Frees,
-		LiveObjects:   mem.Mallocs - mem.Frees,
-		NumGoRoutines: runtime.NumGoroutine(),
-	}
-	jsonProcessStat, _ := json.Marshal(pstats)
-
 	heartbeatMessage := HeartbeatMessage{
-		Alive:             true,
-		ProcessStats:      jsonProcessStat,
-		ConnectionsOpened: c.connectionsOpened,
-		ConnectionsClosed: c.connectionsClosed,
-		NumConnections:    len(c.connections),
-		ConnectionsStats:  jsonConnStats,
+		Alive:              true,
+		ProcessStats:       telemetry.GetProcessStats(),
+		OpenedConnections:  c.openedConnections,
+		ClosedConnections:  c.closedConnections,
+		OpenedDataChannels: (*c.stats).OpenedDataChannels,
+		ClosedDataChannels: (*c.stats).ClosedDataChannels,
+		Throughput: ThroughputSummary{
+			InboundAgentMessage:  *(*c.stats).InboundAgentMessage,
+			OutboundAgentMessage: *(*c.stats).OutboundAgentMessage,
+			InboundSignalR:       *(*c.stats).InboundSignalR,
+			OutboundSignalR:      *(*c.stats).OutboundSignalR,
+			InboundBytes:         *(*c.stats).InboundBytes,
+			OutboundBytes:        *(*c.stats).OutboundBytes,
+		},
 	}
 
-	err := c.send(am.HealthCheck, heartbeatMessage)
+	m, err := json.Marshal(heartbeatMessage)
+	c.logger.Infof("HeartbeatMessage: %s", string(m))
+	if err != nil {
+		return fmt.Errorf("failed to marshal heartbeat message: %w", err)
+	}
+
+	err = c.send(am.HealthCheck, heartbeatMessage)
 	if err != nil {
 		return err
 	}

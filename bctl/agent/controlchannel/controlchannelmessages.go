@@ -1,14 +1,31 @@
 package controlchannel
 
-import "encoding/json"
+import (
+	"bastionzero.com/bctl/v1/bzerolib/telemetry"
+	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughput"
+)
 
 type HeartbeatMessage struct {
-	Alive             bool            `json:"alive"`
-	ProcessStats      json.RawMessage `json:"processStats"`
-	ConnectionsOpened int             `json:"connectionsOpened"`
-	ConnectionsClosed int             `json:"connectionsClosed"`
-	NumConnections    int             `json:"numConnections"`
-	ConnectionsStats  json.RawMessage `json:"connectionsStats"`
+	Alive              bool `json:"alive"`
+	OpenedConnections  int  `json:"openedConnections"`
+	ClosedConnections  int  `json:"closedConnections"`
+	OpenedDataChannels int  `json:"openedDataChannels"`
+	ClosedDataChannels int  `json:"closedDataChannels"`
+
+	// the longer, less readable objects go at the bottom
+	ProcessStats telemetry.ProcessStats `json:"processStats"`
+	Throughput   ThroughputSummary      `json:"throughput"`
+}
+
+type ThroughputSummary struct {
+	InboundAgentMessage  throughput.Throughput `json:"inboundAgentMessage"`
+	OutboundAgentMessage throughput.Throughput `json:"outboundAgentMessage"`
+
+	InboundBytes  throughput.Throughput `json:"inboundBytes"`
+	OutboundBytes throughput.Throughput `json:"outboundBytes"`
+
+	InboundSignalR  throughput.Throughput `json:"inboundSignalR"`
+	OutboundSignalR throughput.Throughput `json:"outboundSignalR"`
 }
 
 type ClusterUsersMessage struct {

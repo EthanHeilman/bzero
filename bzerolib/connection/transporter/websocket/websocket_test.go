@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
@@ -27,12 +28,13 @@ var _ = Describe("Websocket", Ordered, func() {
 
 	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
+	stats := monitor.New(make(<-chan struct{}))
 
 	testSendData := []byte("whooopie")
 	WebsocketUrlScheme = HttpWebsocketScheme
 
 	BeforeEach(func() {
-		websocket = New(logger)
+		websocket = New(logger, stats)
 	})
 
 	Context("Making connections", func() {

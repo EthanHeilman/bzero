@@ -32,7 +32,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
-	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 )
@@ -53,6 +52,13 @@ const (
 	closeConnection         = "CloseConnection"
 )
 
+type Stats interface {
+	ObserveInboundAgentMessage()
+	ObserveOutboundAgentMessage()
+	ObserveOpenDatachannel()
+	ObserveCloseDatachannel()
+}
+
 type DataConnection struct {
 	tmb          tomb.Tomb
 	logger       *logger.Logger
@@ -60,8 +66,7 @@ type DataConnection struct {
 	connectionId string
 
 	// Telemtry object to keep track of stats
-	stats *throughputstats.ThroughputStats
-	start time.Time
+	stats Stats
 
 	// This is our underlying connection
 	client messenger.Messenger
@@ -93,6 +98,7 @@ func New(
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
+	stats Stats,
 ) (connection.Connection, error) {
 
 	// Check if the connection url is a validly formatted url
@@ -105,6 +111,7 @@ func New(
 	conn := DataConnection{
 		logger:                logger,
 		connectionId:          connectionId,
+		stats:                 stats,
 		client:                client,
 		broker:                broker.New(),
 		sendQueue:             make(chan *am.AgentMessage, 50),
@@ -112,9 +119,7 @@ func New(
 		agentIdentityProvider: agentIdentityProvider,
 		messageSigner:         messageSigner,
 		daemonReadyChan:       make(chan bool),
-		start:                 time.Now(),
 	}
-	conn.stats = throughputstats.New("AgentMessages", conn.tmb.Dead())
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
 		return nil, err
@@ -172,7 +177,7 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.stats.CountOutbound(1)
+					conn.stats.ObserveOutboundAgentMessage()
 
 					conn.logger.Debugf("sent %s message", message.MessageType)
 				}
@@ -187,32 +192,13 @@ func (d *DataConnection) Id() string {
 	return d.connectionId
 }
 
-func (d *DataConnection) Stats() json.RawMessage {
-	s := append(d.client.Stats(), d.stats.Digest())
-	d.stats.Reset()
-
-	m := map[string]any{
-		"connected":       d.ready,
-		"throughput":      s,
-		"lifetime":        time.Since(d.start).Round(time.Second).String(),
-		"numDatachannels": d.broker.NumChannels(),
-	}
-
-	if mBytes, err := json.Marshal(m); err != nil {
-		d.logger.Errorf("failed to marshal stats object: %s", err)
-		return []byte{}
-	} else {
-		return mBytes
-	}
-}
-
 func (d *DataConnection) receive() {
 	for {
 		select {
 		case <-d.tmb.Dead():
 			return
 		case message := <-d.client.Inbound():
-			d.stats.CountInbound(1)
+			d.stats.ObserveInboundAgentMessage()
 
 			switch message.Target {
 			case closeConnection:
@@ -240,6 +226,7 @@ func (d *DataConnection) receive() {
 				if err := d.openDataChannel(odMessage); err != nil {
 					d.logger.Errorf("error handling open data channel control message: %s", err)
 				}
+				d.stats.ObserveOpenDatachannel()
 			case closeDataChannel:
 				var cdMessage CloseDataChannelMessage
 				err := json.Unmarshal(message.Arguments[0], &cdMessage)
@@ -249,6 +236,7 @@ func (d *DataConnection) receive() {
 				if err := d.closeDataChannel(cdMessage); err != nil {
 					d.logger.Errorf("error handling close data channel control message: %s", err)
 				}
+				d.stats.ObserveCloseDatachannel()
 			case requestBastionToAgentV1:
 				// Assume that the invocation contains a single AgentMessage argument
 				if len(message.Arguments) != 1 {

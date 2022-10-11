@@ -1,34 +1,32 @@
 package throughput
 
 import (
-	"encoding/json"
-	"fmt"
 	"time"
 )
 
 const interval time.Duration = time.Second
 
 type Throughput struct {
-	unit string
-
+	unit      string
+	count     int
 	workQueue chan int
 	resetChan chan bool
 
-	count int
-
-	min      int
-	max      int
-	avg      float64
-	total    int
-	duration time.Duration
+	Total    int           `json:"total"`
+	Duration time.Duration `json:"duration"`
+	Start    time.Time     `json:"start"`
+	Stop     time.Time     `json:"stop"`
+	Data     []int         `json:"data"`
 }
 
 func New(unit string, done <-chan struct{}) *Throughput {
 	t := Throughput{
 		unit:      unit,
-		workQueue: make(chan int, 100),
+		workQueue: make(chan int, 15),
 		resetChan: make(chan bool),
-		min:       100000,
+		Start:     time.Now(),
+		Stop:      time.Now(),
+		Data:      []int{},
 	}
 
 	go func() {
@@ -40,22 +38,12 @@ func New(unit string, done <-chan struct{}) *Throughput {
 			case <-done:
 				return
 			case <-ticker.C:
-				if t.count < t.min {
-					t.min = t.count
-				}
+				t.Stop = time.Now()
 
-				if t.count > t.max {
-					t.max = t.count
-				}
+				t.Duration += interval
+				t.Total += t.count
 
-				prevDenominator := t.duration.Seconds() / interval.Seconds()
-				t.duration += interval
-				newDenominator := t.duration.Seconds() / interval.Seconds()
-
-				t.avg = ((t.avg * prevDenominator) + float64(t.count)) / newDenominator
-
-				t.total += t.count
-				t.duration += interval
+				t.Data = append(t.Data, t.count)
 
 				// empty out our current window
 				t.count = 0
@@ -63,11 +51,10 @@ func New(unit string, done <-chan struct{}) *Throughput {
 				t.count += e
 			case <-t.resetChan:
 				t.count = 0
-				t.min = 100000
-				t.max = 0
-				t.avg = 0
-				t.total = 0
-				t.duration = 0
+				t.Total = 0
+				t.Duration = 0
+				t.Start = time.Now().UTC()
+				t.Stop = time.Now().UTC()
 			}
 		}
 	}()
@@ -75,23 +62,10 @@ func New(unit string, done <-chan struct{}) *Throughput {
 	return &t
 }
 
-func (t *Throughput) Count(n int) {
+func (t *Throughput) Observe(n int) {
 	t.workQueue <- n
 }
 
 func (t *Throughput) Reset() {
 	t.resetChan <- true
-}
-
-func (t *Throughput) String() string {
-	m := map[string]string{
-		"Min":      fmt.Sprintf("%d %s/s", t.min, t.unit),
-		"Max":      fmt.Sprintf("%d %s/s", t.max, t.unit),
-		"Avg":      fmt.Sprintf("%0.2f %s/s", t.avg, t.unit),
-		"Total":    fmt.Sprintf("%d %s", t.total, t.unit),
-		"Duration": fmt.Sprintf("%d seconds", int(t.duration.Seconds())),
-	}
-
-	r, _ := json.Marshal(m)
-	return string(r)
 }

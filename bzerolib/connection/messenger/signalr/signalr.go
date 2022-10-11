@@ -17,18 +17,22 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	"gopkg.in/tomb.v2"
 )
 
 // Byte to indicate the end of a SignalR message
 const TerminatorByte = 0x1E
 
+type signalRStats interface {
+	ObserveInboundSignalR()
+	ObserveOutboundSignalR()
+}
+
 type SignalR struct {
 	tmb      tomb.Tomb
 	logger   *logger.Logger
 	doneChan chan struct{}
-	stats    *throughputstats.ThroughputStats
+	stats    signalRStats
 
 	client  transporter.Transporter
 	inbound chan *SignalRMessage
@@ -43,21 +47,17 @@ type SignalR struct {
 
 func New(
 	logger *logger.Logger,
+	stats signalRStats,
 	client transporter.Transporter,
 ) *SignalR {
 	return &SignalR{
 		logger:    logger,
 		client:    client,
 		doneChan:  make(chan struct{}),
+		stats:     stats,
 		inbound:   make(chan *SignalRMessage, 200),
 		invocator: NewInvocationTracker(),
 	}
-}
-
-func (s *SignalR) Stats() []throughputstats.Digest {
-	list := []throughputstats.Digest{s.stats.Digest(), s.client.Stats()}
-	s.stats.Reset()
-	return list
 }
 
 func (s *SignalR) Close(reason error) {
@@ -123,7 +123,6 @@ func (s *SignalR) Connect(
 		s.tmb = tomb.Tomb{}
 		s.doneChan = make(chan struct{})
 	}
-	s.stats = throughputstats.New("SignalR Messages", s.tmb.Dead())
 
 	// If the handshake was successful, then we've made our connection and we can
 	// start listening and sending on it
@@ -190,7 +189,9 @@ func (s *SignalR) unwrap(raw []byte) error {
 			return fmt.Errorf("error unmarshalling SignalR message: %s", string(rawMessage))
 		}
 
-		s.stats.CountInbound(1)
+		if s.stats != nil {
+			s.stats.ObserveInboundSignalR()
+		}
 
 		switch SignalRMessageType(signalRMessageType.Type) {
 
@@ -286,7 +287,9 @@ func (s *SignalR) Send(message am.AgentMessage) error {
 	// that it has received the entire message and can start processing it
 	terminatedMessageBytes := append(trackedMessageBytes, TerminatorByte)
 
-	s.stats.CountOutbound(1)
+	if s.stats != nil {
+		s.stats.ObserveOutboundSignalR()
+	}
 
 	// Write our message to our connection
 	err = s.client.Send(terminatedMessageBytes)

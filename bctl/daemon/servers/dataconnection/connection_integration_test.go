@@ -35,7 +35,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 		wsLogger := logger.GetComponentLogger("Websocket")
 		srLogger := logger.GetComponentLogger("SignalR")
 
-		client := signalr.New(srLogger, websocket.New(wsLogger))
+		client := signalr.New(srLogger, nil, websocket.New(wsLogger, nil))
 		conn, _ := New(logger, cnUrl, params, headers, client)
 
 		return conn

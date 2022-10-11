@@ -7,6 +7,7 @@ replace bastionzero.com/bctl/v1/bctl => ../bctl
 replace bastionzero.com/bctl/v1/bzerolib => ./
 
 require (
+	bastionzero.com/bctl/v1/bctl v0.0.0-00010101000000-000000000000
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/cenkalti/backoff/v4 v4.1.3
 	github.com/coreos/go-oidc/v3 v3.4.0
@@ -33,7 +34,7 @@ require (
 	github.com/stretchr/objx v0.4.0 // indirect
 	golang.org/x/net v0.0.0-20220826154423-83b083e8dc8b // indirect
 	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094 // indirect
-	golang.org/x/sys v0.0.0-20220728004956-3c1f35247d10 // indirect
+	golang.org/x/sys v0.0.0-20220928140112-f11e5e49a4ec // indirect
 	golang.org/x/text v0.3.7 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.28.0 // indirect

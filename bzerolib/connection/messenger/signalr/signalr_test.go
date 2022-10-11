@@ -50,7 +50,7 @@ var _ = Describe("SignalR", Ordered, func() {
 		inboundChan = make(chan *[]byte, 1)
 		mockTransport.On("Inbound").Return(inboundChan)
 
-		signalR = New(logger, mockTransport)
+		signalR = New(logger, nil, mockTransport)
 		signalR.Connect(ctx, fakeUrl, http.Header{}, url.Values{}, testTargetFunc)
 	}
 
@@ -62,7 +62,7 @@ var _ = Describe("SignalR", Ordered, func() {
 				mockTransport = &transporter.MockTransporter{}
 				mockTransport.On("Dial").Return(fmt.Errorf("failure"))
 
-				signalR = New(logger, mockTransport)
+				signalR = New(logger, nil, mockTransport)
 				err = signalR.Connect(ctx, fakeUrl, http.Header{}, url.Values{}, testTargetFunc)
 			})
 

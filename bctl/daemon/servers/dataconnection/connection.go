@@ -32,7 +32,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughputstats"
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 )
@@ -68,14 +67,9 @@ const (
 )
 
 type DataConnection struct {
-	tmb          tomb.Tomb
-	logger       *logger.Logger
-	ready        bool
-	connectionId string
-
-	// Telemtry object to keep track of stats
-	stats *throughputstats.ThroughputStats
-	start time.Time
+	tmb    tomb.Tomb
+	logger *logger.Logger
+	ready  bool
 
 	// This is our underlying connection
 	client messenger.Messenger
@@ -112,13 +106,11 @@ func New(
 		client:    client,
 		broker:    broker.New(),
 		sendQueue: make(chan *am.AgentMessage, 50),
-		start:     time.Now(),
 
 		// We used a buffered channel of size 1 so we dont block receive if the
 		// send queue is empty and we have not yet called waitForAgentReady()
 		agentReadyChan: make(chan bool, 1),
 	}
-	conn.stats = throughputstats.New("AgentMessages", conn.tmb.Dead())
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
 		return nil, err
@@ -183,7 +175,6 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.stats.CountOutbound(1)
 					conn.logger.Debugf("sent %s message", message.MessageType)
 				}
 			}
@@ -199,8 +190,6 @@ func (d *DataConnection) receive() {
 		case <-d.tmb.Dead():
 			return
 		case message := <-d.client.Inbound():
-			d.stats.CountInbound(1)
-
 			if err := d.processInbound(*message); err != nil {
 				d.logger.Error(err)
 			}
@@ -230,7 +219,6 @@ func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
 		}
 
 		d.logger.Infof("Agent is connected and ready to receive for connection: %s", agentConnectedMessage.ConnectionId)
-		d.connectionId = agentConnectedMessage.ConnectionId
 
 		if !d.ready {
 			d.ready = true
@@ -252,28 +240,6 @@ func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
 		}
 	}
 	return nil
-}
-
-func (d *DataConnection) Id() string {
-	return d.connectionId
-}
-
-func (d *DataConnection) Stats() json.RawMessage {
-	s := append(d.client.Stats(), d.stats.Digest())
-	d.stats.Reset()
-
-	m := map[string]any{
-		"connected":  d.ready,
-		"throughput": s,
-		"lifetime":   time.Since(d.start).Round(time.Second).String(),
-	}
-
-	if mBytes, err := json.Marshal(m); err != nil {
-		d.logger.Errorf("failed to marshal stats object: %s", err)
-		return []byte{}
-	} else {
-		return mBytes
-	}
 }
 
 func (d *DataConnection) Send(agentMessage am.AgentMessage) {

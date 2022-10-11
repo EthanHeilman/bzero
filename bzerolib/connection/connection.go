@@ -22,7 +22,6 @@ isolate tricky locks.
 package connection
 
 import (
-	"encoding/json"
 	"time"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
@@ -30,8 +29,6 @@ import (
 )
 
 type Connection interface {
-	Id() string
-	Stats() json.RawMessage
 	Subscribe(id string, channel broker.IChannel)
 	Close(reason error, timeout time.Duration)
 	Send(agentMessage agentmessage.AgentMessage)

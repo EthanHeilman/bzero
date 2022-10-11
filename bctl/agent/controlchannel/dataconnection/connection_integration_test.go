@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
+	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
@@ -31,6 +32,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	fakeKeyPair, _ := tests.GenerateEd25519Key()
 	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
 	connectionId := uuid.New().String()
+	stats := monitor.New(make(<-chan struct{}))
 
 	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
 	mockKeysplittingConfig.On("GetPrivateKey").Return(fakeKeyPair.Base64EncodedPrivateKey)
@@ -44,8 +46,8 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		wsLogger := logger.GetComponentLogger("Websocket")
 		srLogger := logger.GetComponentLogger("SignalR")
 
-		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, client)
+		client := signalr.New(srLogger, stats, websocket.New(wsLogger, stats))
+		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, client, stats)
 
 		return conn
 	}
