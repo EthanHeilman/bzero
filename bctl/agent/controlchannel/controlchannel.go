@@ -315,7 +315,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			return fmt.Errorf("malformed close websocket request")
 		} else {
 			if conn, ok := c.getConnectionMap(cwRequest.ConnectionId); ok {
-				c.closedConnections--
+				c.closedConnections++
 				c.logger.Infof("Closing connection with id %s", cwRequest.ConnectionId)
 				conn.Close(fmt.Errorf("connection was closed through the control channel with reason: %s", cwRequest.Reason), 10*time.Second)
 			} else {
@@ -332,7 +332,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 func (c *ControlChannel) reportHealth() error {
 	heartbeatMessage := HeartbeatMessage{
 		Alive:              true,
-		ProcessStats:       telemetry.GetProcessStats(),
+		MemoryStats:        telemetry.GetMemoryStats(),
 		OpenedConnections:  c.openedConnections,
 		ClosedConnections:  c.closedConnections,
 		OpenedDataChannels: (*c.stats).OpenedDataChannels,
@@ -346,6 +346,8 @@ func (c *ControlChannel) reportHealth() error {
 			OutboundBytes:        *(*c.stats).OutboundBytes,
 		},
 	}
+
+	c.stats.ResetThroughputWindow()
 
 	m, err := json.Marshal(heartbeatMessage)
 	c.logger.Infof("HeartbeatMessage: %s", string(m))

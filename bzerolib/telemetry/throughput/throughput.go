@@ -12,11 +12,10 @@ type Throughput struct {
 	workQueue chan int
 	resetChan chan bool
 
-	Total    int           `json:"total"`
-	Duration time.Duration `json:"duration"`
-	Start    time.Time     `json:"start"`
-	Stop     time.Time     `json:"stop"`
-	Data     []int         `json:"data"`
+	Total int       `json:"total"`
+	Start time.Time `json:"start"`
+	Stop  time.Time `json:"stop"`
+	Data  []int     `json:"data"`
 }
 
 func New(unit string, done <-chan struct{}) *Throughput {
@@ -26,7 +25,6 @@ func New(unit string, done <-chan struct{}) *Throughput {
 		resetChan: make(chan bool),
 		Start:     time.Now(),
 		Stop:      time.Now(),
-		Data:      []int{},
 	}
 
 	go func() {
@@ -38,11 +36,8 @@ func New(unit string, done <-chan struct{}) *Throughput {
 			case <-done:
 				return
 			case <-ticker.C:
-				t.Stop = time.Now()
-
-				t.Duration += interval
+				t.Stop = time.Now().UTC()
 				t.Total += t.count
-
 				t.Data = append(t.Data, t.count)
 
 				// empty out our current window
@@ -52,9 +47,9 @@ func New(unit string, done <-chan struct{}) *Throughput {
 			case <-t.resetChan:
 				t.count = 0
 				t.Total = 0
-				t.Duration = 0
 				t.Start = time.Now().UTC()
 				t.Stop = time.Now().UTC()
+				t.Data = []int{}
 			}
 		}
 	}()

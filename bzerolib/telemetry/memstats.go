@@ -2,7 +2,7 @@ package telemetry
 
 import "runtime"
 
-type ProcessStats struct {
+type MemoryStats struct {
 	// ref: https://pkg.go.dev/runtime#MemStats
 	// Alloc is bytes of allocated heap objects.
 	//
@@ -43,12 +43,12 @@ type ProcessStats struct {
 	NumGoRoutines int `json:"numGoRoutines"`
 }
 
-func GetProcessStats() ProcessStats {
+func GetMemoryStats() MemoryStats {
 	// Read our current memory statistics
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
 
-	return ProcessStats{
+	return MemoryStats{
 		Alloc:         mem.Alloc,
 		TotalAlloc:    mem.TotalAlloc,
 		Sys:           mem.Sys,

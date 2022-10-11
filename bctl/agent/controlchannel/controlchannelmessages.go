@@ -13,8 +13,8 @@ type HeartbeatMessage struct {
 	ClosedDataChannels int  `json:"closedDataChannels"`
 
 	// the longer, less readable objects go at the bottom
-	ProcessStats telemetry.ProcessStats `json:"processStats"`
-	Throughput   ThroughputSummary      `json:"throughput"`
+	MemoryStats telemetry.MemoryStats `json:"memoryStats"`
+	Throughput  ThroughputSummary     `json:"throughput"`
 }
 
 type ThroughputSummary struct {
