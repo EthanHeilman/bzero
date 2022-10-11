@@ -46,14 +46,16 @@ func New(logger *logger.Logger, doneChan chan struct{}, ch chan smsg.StreamMessa
 }
 
 func (t *TransparentSsh) Kill() {
-	if t.session != nil {
-		t.session.Close()
-	}
-	if t.conn != nil {
-		t.conn.Close()
-	}
 	if t.tmb.Alive() {
-		t.tmb.Kill(nil)
+		t.tmb.Kill(fmt.Errorf("sent from above"))
+
+		if t.session != nil {
+			t.session.Close()
+		}
+		if t.conn != nil {
+			t.conn.Close()
+		}
+
 		t.tmb.Wait()
 	}
 }
@@ -170,7 +172,7 @@ func (t *TransparentSsh) start(openRequest bzssh.SshOpenMessage, action string) 
 				if err != nil {
 					if err == io.EOF {
 						t.logger.Infof("Finished writing to stdin")
-						return nil
+						return err
 					}
 					t.logger.Errorf("error writing to stdin: %s", err)
 					return err
@@ -211,7 +213,7 @@ func (t *TransparentSsh) readPipe(pipe io.Reader, messageType smsg.StreamType, p
 				if err == io.EOF {
 					t.logger.Infof("Finished reading from %s", pipeName)
 					t.sendStreamMessage(messageType, false, b[:n])
-					return nil
+					return err
 				}
 				t.logger.Errorf("error reading from %s: %s", pipeName, err)
 				return err

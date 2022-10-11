@@ -110,60 +110,86 @@ func TestDefaultSsh(t *testing.T) {
 }
 
 var _ = Describe("Daemon TransparentSsh action", func() {
-
 	openBytes, _ := json.Marshal(bzssh.SshOpenMessage{})
-	var t *TransparentSsh
 
-	AfterEach(func() {
-		t.Kill()
-	})
-
-	Context("rejects unauthorized requests", func() {
-		It("rejects an invalid exec request", func() {
+	Context("unauthorized requests", func() {
+		When("receiving an invalid exec request", func() {
+			var t *TransparentSsh
+			var result []byte
+			var err error
 			port := "22230"
 			badScp := "scpfake"
 
-			startServer(port)
-			t, _, _ = newClient(port)
+			BeforeEach(func() {
+				startServer(port)
+				t, _, _ = newClient(port)
 
-			// we can chck this explicitly in a different test
-			t.Receive(string(bzssh.SshOpen), openBytes)
+				// we can chck this explicitly in a different test
+				t.Receive(string(bzssh.SshOpen), openBytes)
 
-			By("returning an unauthorized command error")
-			execBytes, _ := json.Marshal(bzssh.SshExecMessage{Command: badScp})
-			result, err := t.Receive(string(bzssh.SshExec), execBytes)
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal(bzssh.UnauthorizedCommandError(fmt.Sprintf("'%s'", badScp))))
+				execBytes, _ := json.Marshal(bzssh.SshExecMessage{Command: badScp})
+				result, err = t.Receive(string(bzssh.SshExec), execBytes)
+			})
+
+			AfterEach(func() {
+				t.Kill()
+			})
+
+			It("rejects it", func() {
+				By("returning an unauthorized command error")
+				Expect(result).To(BeNil())
+				Expect(err.Error()).To(Equal(bzssh.UnauthorizedCommandError(fmt.Sprintf("'%s'", badScp))))
+			})
 		})
 
-		It("rejects an invalid sftp request", func() {
+		When("receiving an invalid sftp request", func() {
+			var t *TransparentSsh
+			var result []byte
+			var err error
 			port := "22231"
 			badSftp := "sftpfake"
 
-			startServer(port)
-			t, _, _ = newClient(port)
+			BeforeEach(func() {
+				startServer(port)
+				t, _, _ = newClient(port)
 
-			// we can chck this explicitly in a different test
-			t.Receive(string(bzssh.SshOpen), openBytes)
+				// we can check this explicitly in a different test
+				t.Receive(string(bzssh.SshOpen), openBytes)
 
-			By("returning an unauthorized command error")
-			execBytes, _ := json.Marshal(bzssh.SshExecMessage{Command: badSftp, Sftp: true})
-			result, err := t.Receive(string(bzssh.SshExec), execBytes)
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal(bzssh.UnauthorizedCommandError(fmt.Sprintf("'%s'", badSftp))))
+				By("returning an unauthorized command error")
+				execBytes, _ := json.Marshal(bzssh.SshExecMessage{Command: badSftp, Sftp: true})
+				result, err = t.Receive(string(bzssh.SshExec), execBytes)
+			})
+
+			AfterEach(func() {
+				t.Kill()
+			})
+
+			It("rejects it", func() {
+				By("returning an unauthorized command error")
+				Expect(result).To(BeNil())
+				Expect(err.Error()).To(Equal(bzssh.UnauthorizedCommandError(fmt.Sprintf("'%s'", badSftp))))
+			})
 		})
 	})
 
-	Context("Happy path I: scp - stderr - download ", func() {
-		It("handles the request from start to finish", func() {
-			port := "22232"
-			scp := "scp -f testFile.txt"
-			sshReply := "sshReply"
-			daemonReply := "daemonReply"
+	When("Happy path I: scp - stderr - download", func() {
+		var t *TransparentSsh
+		var channelChan chan gossh.Channel
+		var dataChan chan []byte
+		var outboxQueue chan smsg.StreamMessage
 
-			channelChan, dataChan := startServer(port)
-			t, _, outboxQueue := newClient(port)
+		port := "22232"
+		scp := "scp -f testFile.txt"
+		sshReply := "sshReply"
+		daemonReply := "daemonReply"
 
+		BeforeEach(func() {
+			channelChan, dataChan = startServer(port)
+			t, _, outboxQueue = newClient(port)
+		})
+
+		It("handles it from start to finish", func() {
 			By("starting without error")
 			openBytes, _ := json.Marshal(bzssh.SshOpenMessage{})
 			result, err := t.Receive(string(bzssh.SshOpen), openBytes)
@@ -205,19 +231,26 @@ var _ = Describe("Daemon TransparentSsh action", func() {
 		})
 	})
 
-	Context("Happy path II: sftp - stdout - upload ", func() {
-		It("handles the request from start to finish", func() {
-			port := "22233"
-			sftp := "sftp"
-			sshReply := "sshReply"
+	When("Happy path II: sftp - stdout - upload ", func() {
+		var t *TransparentSsh
+		var channelChan chan gossh.Channel
+		var dataChan chan []byte
+		var outboxQueue chan smsg.StreamMessage
 
-			channelChan, dataChan := startServer(port)
-			t, _, outboxQueue := newClient(port)
+		port := "22233"
+		sftp := "sftp"
+		sshReply := "sshReply"
+
+		BeforeEach(func() {
+			channelChan, dataChan = startServer(port)
+			t, _, outboxQueue = newClient(port)
 
 			// take for granted because tested elsewhere
 			openBytes, _ := json.Marshal(bzssh.SshOpenMessage{})
 			t.Receive(string(bzssh.SshOpen), openBytes)
+		})
 
+		It("handles the request from start to finish", func() {
 			By("forwarding a valid subsystem request to the remote ssh process")
 			execBytes, _ := json.Marshal(bzssh.SshExecMessage{Command: sftp, Sftp: true})
 			// need to do this in a goroutine so we can monitor it in realtime
