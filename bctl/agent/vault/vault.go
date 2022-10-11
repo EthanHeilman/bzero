@@ -279,9 +279,9 @@ func (v *Vault) GetIdpOrgId() string {
 	return v.Data.IdpOrgId
 }
 
-
 func (v *Vault) GetServiceAccountJwksUrls() []string {
 	return v.Data.ServiceAccountUrls
+}
 
 func (v *Vault) GetAgentIdentityToken() string {
 	return v.Data.AgentIdentityToken
