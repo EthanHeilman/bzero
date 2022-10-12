@@ -3,6 +3,7 @@ package bzcert
 import (
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -94,7 +95,37 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	b.SignatureOnRand = b.config.CertConfig.CerRandSignature
 	b.privateKey = privateKey
 
-	serviceAccounts := []string{} // TODO: We need to add the service account we are using here. This may fail when validating using a service account.
+	serviceAccounts := []string{}
+
+	// Track the expiration date for our current identity token
+	parser := jwt.Parser{SkipClaimsValidation: true}
+	claims := jwt.RegisteredClaims{}
+	var jwt, _, err = parser.ParseUnverified(b.CurrentIdToken, &claims)
+	if err != nil {
+		return fmt.Errorf("error trying to parse our jwt: %s", err)
+	}
+
+	jku := jwt.Header["jku"]
+
+	if jku != nil {
+		//TODO: THis should be moved into a common function
+		jkuStr := fmt.Sprintf("%v", jku)
+
+		if len(strings.Split(jkuStr, "@")) != 2 {
+			return fmt.Errorf("jku value in ID Token does not contain exactly one @. Supplied jku value %s", jkuStr)
+		}
+
+		tokJku := strings.Split(jkuStr, "/")
+		jwksEmail := tokJku[len(tokJku)-1]
+
+		if len(strings.Split(jwksEmail, "@")) != 2 {
+			return fmt.Errorf("jku value in ID Token does not contain exactly one @ in email address. Supplied jku value %s", jkuStr)
+		}
+
+		emailDomain := strings.Split(jwksEmail, "@")[1]
+		jwksURLPattern := strings.Join(tokJku[0:len(tokJku)-1], "/") + "/" + "*" + "@" + emailDomain
+		serviceAccounts = append(serviceAccounts, jwksURLPattern)
+	}
 
 	// Finally also check the bzcert is valid
 	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId, serviceAccounts); err != nil {
@@ -102,13 +133,7 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	}
 
 	// Track the expiration date for our current identity token
-	parser := jwt.Parser{SkipClaimsValidation: true}
-	claims := jwt.RegisteredClaims{}
-	if _, _, err := parser.ParseUnverified(b.CurrentIdToken, &claims); err != nil {
-		return fmt.Errorf("error trying to parse our jwt: %s", err)
-	} else {
-		b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
-	}
+	b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
 
 	return b.HashCert()
 }
