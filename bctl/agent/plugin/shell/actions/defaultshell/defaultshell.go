@@ -13,6 +13,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/ringbuffer"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
 	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"gopkg.in/tomb.v2"
 )
 
 // DefaultShell - Allows launching an interactive shell on the host which the agent is running on. Implements IShellAction.
@@ -57,6 +58,7 @@ type IPseudoTerminal interface {
 }
 
 type DefaultShell struct {
+	tmb    tomb.Tomb
 	logger *logger.Logger
 
 	runAsUser            string
@@ -88,12 +90,10 @@ func New(
 }
 
 func (d *DefaultShell) Kill() {
-	if d.terminal != nil {
+	if d.tmb.Alive() {
+		d.tmb.Kill(fmt.Errorf("killed from above"))
 		d.terminal.Kill()
-		d.terminal = nil
-
-		// Wait for done channel to be closed by writePump
-		<-d.doneChan
+		d.tmb.Wait()
 	}
 }
 
@@ -173,7 +173,7 @@ func (d *DefaultShell) open() error {
 		d.terminal = terminal
 	}
 
-	go d.writePump()
+	d.tmb.Go(d.writePump)
 
 	return nil
 }
@@ -195,7 +195,7 @@ func (d *DefaultShell) setSize(cols, rows uint32) error {
 	d.logger.Debugf("default shell received resize: {cols: %d, rows: %d}", cols, rows)
 
 	if d.terminal == nil {
-		return fmt.Errorf("can't set size of non-existant terminal")
+		return fmt.Errorf("can't set size of non-existent terminal")
 	} else if err := d.terminal.SetSize(cols, rows); err != nil {
 		return err
 	} else {
@@ -204,8 +204,7 @@ func (d *DefaultShell) setSize(cols, rows uint32) error {
 }
 
 // writePump reads from pty stdout and writes to datachannel.
-func (d *DefaultShell) writePump() {
-	defer d.Kill()
+func (d *DefaultShell) writePump() error {
 	defer close(d.doneChan)
 	defer func() {
 		if err := recover(); err != nil {
@@ -219,16 +218,23 @@ func (d *DefaultShell) writePump() {
 
 	for {
 		select {
+		case <-d.tmb.Dying():
+			fmt.Println("Recognized the tomb is dying")
+			return nil
 		case <-d.terminal.Done():
+			fmt.Println("the terminal is done")
 			d.logger.Infof("pty command exited sending stop stream message")
 			d.sendStreamMessage(smsg.Stop, []byte{})
-			return
+			return fmt.Errorf("pseudo terminal is done")
 		default:
+			fmt.Println("Before Read")
 			if stdoutBytesLen, err := stdOut.Read(stdoutBuff); err != nil {
+				fmt.Println("Got an error after read")
 				d.sendStreamMessage(smsg.Stop, stdoutBuff[:stdoutBytesLen])
 				d.logger.Errorf("error reading from stdout: %s", err)
-				return
+				return err
 			} else {
+				fmt.Println("Done with read")
 				d.ringBuffer.Write(stdoutBuff[:stdoutBytesLen])
 				d.sendStreamMessage(smsg.StdOut, stdoutBuff[:stdoutBytesLen])
 			}

@@ -27,17 +27,20 @@ var _ = Describe("Default Shell", Ordered, func() {
 	testContent := "BastionZero"
 
 	logger := logger.MockLogger(GinkgoWriter)
-	// need to buffer this to avoid a deadlock because the test is run in series
-	streamMessageChan := make(chan smsg.StreamMessage, 2)
-	doneChan := make(chan struct{})
 
-	mockPT := createPseudoTerminal()
+	When("Following the happy path", func() {
+		var mockPT pseudoterminal.MockPseudoTerminal
+		var shell *DefaultShell
+		var streamMessageChan chan smsg.StreamMessage
 
-	shell := New(logger, streamMessageChan, doneChan, runAsUser)
+		BeforeEach(func() {
+			mockPT = createPseudoTerminal()
 
-	Context("Happy Path", func() {
+			// need to buffer this to avoid a deadlock because the test is run in series
+			streamMessageChan = make(chan smsg.StreamMessage, 2)
+			doneChan := make(chan struct{})
+			shell = New(logger, streamMessageChan, doneChan, runAsUser)
 
-		It("relays messages between the Daemon and a local pseudo terminal", func() {
 			By("starting without error")
 			action := string(bzshell.ShellOpen)
 			actionPayload, _ := json.Marshal(bzshell.ShellOpenMessage{})
@@ -45,15 +48,17 @@ var _ = Describe("Default Shell", Ordered, func() {
 			retActionPayload, err := shell.Receive(action, actionPayload)
 			Expect(err).To(BeNil())
 			Expect(retActionPayload).To(Equal([]byte{}))
+		})
 
+		It("works", func() {
 			By("passing Daemon input to pseudo terminal")
-			action = string(bzshell.ShellInput)
+			action := string(bzshell.ShellInput)
 			inputMessage := bzshell.ShellInputMessage{
 				Data: []byte(testContent),
 			}
 
-			actionPayload, _ = json.Marshal(inputMessage)
-			retActionPayload, err = shell.Receive(action, actionPayload)
+			actionPayload, _ := json.Marshal(inputMessage)
+			retActionPayload, err := shell.Receive(action, actionPayload)
 			Expect(err).To(BeNil())
 			Expect(retActionPayload).To(Equal([]byte{}))
 
@@ -118,6 +123,8 @@ func createPseudoTerminal() pseudoterminal.MockPseudoTerminal {
 	mockPT.On("Done").Return(doneChan)
 
 	mockPT.On("Kill").Return().Run(func(args mock.Arguments) {
+		reader.Close()
+		writer.Close()
 		close(doneChan)
 	})
 
