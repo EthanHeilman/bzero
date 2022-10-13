@@ -2,6 +2,7 @@ package controlchannel
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -15,13 +16,11 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 
 	"gopkg.in/tomb.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +48,7 @@ type ControlChannel struct {
 
 	ksConfig              keysplitting.IKeysplittingConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            ed25519.PrivateKey
 
 	// variables for opening connections
 	serviceUrl string
@@ -82,7 +81,7 @@ func Start(logger *logger.Logger,
 	serviceUrl string,
 	targetType string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey ed25519.PrivateKey,
 	ksConfig keysplitting.IKeysplittingConfig,
 ) (*ControlChannel, error) {
 
@@ -93,7 +92,7 @@ func Start(logger *logger.Logger,
 		serviceUrl:            serviceUrl,
 		targetType:            targetType,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		ksConfig:              ksConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
@@ -328,8 +327,9 @@ func (c *ControlChannel) reportHealth() error {
 		return err
 	}
 
+	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
-	if vault.InCluster() {
+	if c.targetType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}

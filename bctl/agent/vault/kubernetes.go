@@ -30,7 +30,7 @@ type KubernetesVault struct {
 	secret *coreV1.Secret
 }
 
-func LoadKubernetesVault(ctx context.Context, namespace string, targetName string) (Config, error) {
+func LoadKubernetesVault(ctx context.Context, namespace string, targetName string) (*KubernetesVault, error) {
 	// Create our api object
 	config, err := rest.InClusterConfig()
 	if err != nil {

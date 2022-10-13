@@ -15,6 +15,7 @@ package controlconnection
 
 import (
 	"context"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -33,7 +34,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 )
 
 var (
@@ -61,9 +61,11 @@ type ControlConnection struct {
 	// A connection broker, allows us to narrowcast to one subscribed datachannel
 	broker *broker.Broker
 
-	// provider of agent identity token and message signer for authenticating messages to the backend
+	// Provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+
+	// signing key
+	privateKey ed25519.PrivateKey
 
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
@@ -72,12 +74,11 @@ type ControlConnection struct {
 func New(
 	logger *logger.Logger,
 	bastionUrl string,
-	privateKey string,
+	privateKey ed25519.PrivateKey,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
 ) (connection.Connection, error) {
 
 	conn := ControlConnection{
@@ -85,7 +86,7 @@ func New(
 		client:                client,
 		broker:                broker.New(),
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		sendQueue:             make(chan *am.AgentMessage, 50),
 	}
 

@@ -1,8 +1,6 @@
 package vault
 
 import (
-	"bytes"
-	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -11,6 +9,8 @@ import (
 	"sync"
 
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"github.com/fsnotify/fsnotify"
 	"github.com/gofrs/flock"
 )
 
@@ -27,7 +27,7 @@ type SystemDVault struct {
 	fileLock  *flock.Flock
 }
 
-func LoadSystemDVault(vaultDir string) (Config, error) {
+func LoadSystemDVault(vaultDir string) (*SystemDVault, error) {
 	vaultPath := path.Join(vaultDir, vaultFileName)
 	fileLock := filelock.NewFileLock(path.Join(vaultDir, vaultFileLockName))
 
@@ -115,18 +115,27 @@ func (s *SystemDVault) fetchVault() (vault, error) {
 	}
 }
 
-func (s *SystemDVault) GetPublicKey() string {
-	s.vaultLock.RLock()
-	defer s.vaultLock.RUnlock()
-
-	return s.data.PublicKey
+func (s *SystemDVault) Reload() error {
+	if vault, err := s.fetchVault(); err != nil {
+		return err
+	} else {
+		s.data = vault
+		return nil
+	}
 }
 
-func (s *SystemDVault) GetPrivateKey() ed25519.PrivateKey {
+func (s *SystemDVault) GetPublicKey() *keypair.PublicKey {
 	s.vaultLock.RLock()
 	defer s.vaultLock.RUnlock()
 
-	return s.data.PrivateKey
+	return &s.data.PublicKey
+}
+
+func (s *SystemDVault) GetPrivateKey() *keypair.PrivateKey {
+	s.vaultLock.RLock()
+	defer s.vaultLock.RUnlock()
+
+	return &s.data.PrivateKey
 }
 
 func (s *SystemDVault) GetIdpOrgId() string {
@@ -150,6 +159,20 @@ func (s *SystemDVault) GetAgentIdentityToken() string {
 	return s.data.AgentIdentityToken
 }
 
+func (s *SystemDVault) GetShutdownInfo() (string, map[string]string) {
+	s.vaultLock.RLock()
+	defer s.vaultLock.RUnlock()
+
+	return s.data.ShutdownReason, s.data.ShutdownState
+}
+
+func (s *SystemDVault) GetTargetId() string {
+	s.vaultLock.RLock()
+	defer s.vaultLock.RUnlock()
+
+	return s.data.TargetId
+}
+
 func (s *SystemDVault) SetVersion(version string) error {
 	s.vaultLock.Lock()
 	defer s.vaultLock.Unlock()
@@ -161,7 +184,7 @@ func (s *SystemDVault) SetVersion(version string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !bytes.Equal(s.data.PrivateKey, currentVault.PrivateKey) {
+	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
 		return fmt.Errorf("new registration detected, reload vault")
 	}
 
@@ -171,7 +194,7 @@ func (s *SystemDVault) SetVersion(version string) error {
 	return s.save()
 }
 
-func (s *SystemDVault) SetShutdown(reason string, state map[string]string) error {
+func (s *SystemDVault) SetShutdownInfo(reason string, state map[string]string) error {
 	s.vaultLock.Lock()
 	defer s.vaultLock.Unlock()
 
@@ -198,8 +221,8 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !bytes.Equal(s.data.PrivateKey, currentVault.PrivateKey) {
-		return nil
+	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
+		return fmt.Errorf("new registration detected, reload vault")
 	}
 
 	currentVault.AgentIdentityToken = token
@@ -237,4 +260,55 @@ func (s *SystemDVault) save() error {
 	}
 
 	return nil
+}
+
+func (s *SystemDVault) WaitForRegistration(cancel <-chan struct{}) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("error starting new file watcher: %w", err)
+	}
+	defer watcher.Close()
+
+	done := make(chan error)
+	go func() {
+		for {
+			select {
+			case <-cancel:
+				done <- nil
+				return
+			case event, ok := <-watcher.Events:
+				if !ok {
+					done <- fmt.Errorf("file watcher closed events channel")
+				}
+
+				if event.Op&fsnotify.Write == fsnotify.Write {
+					var config vault
+					if file, err := ioutil.ReadFile(s.vaultPath); err != nil {
+						continue
+					} else if err := json.Unmarshal([]byte(file), &config); err != nil {
+						continue
+					} else {
+						// if we haven't completed registration yet, continue waiting
+						if (&config.PublicKey).IsEmpty() {
+							continue
+						} else {
+							done <- nil
+							return
+						}
+					}
+				}
+			case err, ok := <-watcher.Errors:
+				if !ok {
+					done <- fmt.Errorf("file watcher closed errors channel")
+				}
+				done <- fmt.Errorf("file watcher caught error: %s", err)
+			}
+		}
+	}()
+
+	if err := watcher.Add(s.vaultPath); err != nil {
+		return fmt.Errorf("unable to watch vault file %s: %w", s.vaultPath, err)
+	}
+
+	return <-done
 }

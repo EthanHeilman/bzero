@@ -1,6 +1,7 @@
 package keysplitting
 
 import (
+	"crypto/ed25519"
 	"fmt"
 
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
@@ -32,7 +33,7 @@ type Keysplitting struct {
 
 type IKeysplittingConfig interface {
 	GetPublicKey() string
-	GetPrivateKey() string
+	GetPrivateKey() ed25519.PrivateKey
 	GetIdpProvider() string
 	GetIdpOrgId() string
 }
