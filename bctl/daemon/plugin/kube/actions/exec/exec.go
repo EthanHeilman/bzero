@@ -14,6 +14,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/exec"
 	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ExecAction struct {
@@ -89,9 +90,6 @@ func (e *ExecAction) Start(writer http.ResponseWriter, request *http.Request) er
 	// Set up a go function for stdout
 	e.tmb.Go(func() error {
 		defer close(e.doneChan)
-
-		streamQueue := make(map[int]smsg.StreamMessage)
-		seqNumber := 0
 		closeChan := spdy.conn.CloseChan()
 
 		for {
@@ -99,31 +97,42 @@ func (e *ExecAction) Start(writer http.ResponseWriter, request *http.Request) er
 			case <-e.tmb.Dying():
 				return nil
 			case streamMessage := <-e.streamInputChan:
-				// check if received message is out of order
-				if streamMessage.SequenceNumber != seqNumber {
-					streamQueue[streamMessage.SequenceNumber] = streamMessage
-				} else {
-					// process in-order message + any next messages that we already received
-					msg := streamMessage
-					ok := true
-					for ok {
+				// check for end of stream
+				contentBytes, _ := base64.StdEncoding.DecodeString(streamMessage.Content)
 
-						// check for end of stream
-						contentBytes, _ := base64.StdEncoding.DecodeString(msg.Content)
-						if string(contentBytes) == exec.EscChar {
-							e.logger.Info("exec stream ended")
-							spdy.conn.Close()
-							return nil
-						}
-
-						// write message to output
-						spdy.stdoutStream.Write(contentBytes)
-
-						// delete processed message, increment sequence number and grab next (if there is one)
-						delete(streamQueue, seqNumber)
-						seqNumber++
-						msg, ok = streamQueue[seqNumber]
+				// write message to output
+				switch streamMessage.Type {
+				case smsg.StdOut:
+					// For backwards compatibility check for stdout message with
+					// EscChar but for newer agents we should always be sending
+					// an empty StreamMessage with more = false to indicate the
+					// stream ended
+					if string(contentBytes) == exec.EscChar || !streamMessage.More {
+						e.logger.Info("exec stream ended")
+						spdy.conn.Close()
+						return nil
 					}
+					if n, err := spdy.stdoutStream.Write(contentBytes); err != nil {
+						e.logger.Errorf("error writing stdout bytes to spdy stream: %s", err)
+					} else if n != len(contentBytes) {
+						e.logger.Errorf("error writing %d stdout bytes to spdy stream - only wrote %d instead", len(contentBytes), n)
+					}
+				case smsg.StdErr:
+					if n, err := spdy.stderrStream.Write(contentBytes); err != nil {
+						e.logger.Errorf("error writing stderr bytes to spdy stream: %s", err)
+					} else if n != len(contentBytes) {
+						e.logger.Errorf("error writing %d stderr bytes to spdy stream - only wrote %d instead", len(contentBytes), n)
+					}
+				case smsg.Error:
+					errMsg := string(contentBytes)
+					spdy.writeStatus(&StatusError{ErrStatus: metav1.Status{
+						Status:  metav1.StatusFailure,
+						Message: errMsg,
+					}})
+					spdy.conn.Close()
+					return fmt.Errorf("error in kube exec on agent: %s", errMsg)
+				default:
+					e.logger.Errorf("unrecognized stream type: %s", streamMessage.Type)
 				}
 			case <-closeChan:
 				// Send message to agent to close the stream
@@ -155,12 +164,22 @@ func (e *ExecAction) Start(writer http.ResponseWriter, request *http.Request) er
 					for {
 						if n, err := spdy.stdinStream.Read(chunkSizeBuffer); !e.tmb.Alive() {
 							return
-						} else if err == io.EOF {
-							buffer = append(buffer, chunkSizeBuffer[:n]...)
-							// Always return if we see a EOF
-							break
 						} else if err != nil {
-							e.logger.Errorf("failed reading stdin: %s", err)
+							if err == io.EOF {
+								e.logger.Infof("finished reading from stdin")
+							} else {
+								e.logger.Errorf("failed reading from stdin stream: %s", err)
+							}
+
+							// Send final stdin message if non-empty
+							buffer = append(buffer, chunkSizeBuffer[:n]...)
+							if len(buffer) > 0 {
+								e.sendStdinMessage(buffer)
+							}
+
+							// Send ExecStop message to close the stdin stream on the agent
+							e.outbox(exec.ExecStop, exec.KubeExecStopActionPayload{})
+							return
 						} else {
 							// Append the new chunk to our buffer
 							buffer = append(buffer, chunkSizeBuffer[:n]...)

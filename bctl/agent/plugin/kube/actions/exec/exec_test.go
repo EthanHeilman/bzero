@@ -106,7 +106,7 @@ var _ = Describe("Agent Exec action", Ordered, func() {
 			readyMessage := <-outputChan
 			readyContent, _ := base64.StdEncoding.DecodeString(readyMessage.Content)
 			By("by alerting that it has started the exec interaction with the kube server")
-			Expect(readyContent).To(Equal([]byte(bzexec.EscChar)))
+			Expect(readyContent).To(Equal([]byte{}))
 
 			By("expecting input from stdin")
 			stdinPayloadBytes := buildStdinActionPayload(requestId, []byte(testString))
