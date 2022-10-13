@@ -50,6 +50,8 @@ type Keysplitting struct {
 	isHandshakeComplete bool
 	// not the last ack we've received but the last ack we've received
 	lastAck *ksmsg.KeysplittingMessage
+	// Data msg that was last acked by the agent
+	lastAckedData *ksmsg.KeysplittingMessage
 	// bool variable for letting the datachannel know when to start processing
 	// incoming messages again
 	recovering bool
@@ -80,6 +82,7 @@ func New(
 		errorRecoveryAttempt: 0,
 		isHandshakeComplete:  false,
 		lastAck:              nil,
+		lastAckedData:        nil,
 		pipelineLimit:        maxPipelineLimit,
 	}
 	keysplitter.pipelineOpen = sync.NewCond(&keysplitter.stateLock)
@@ -138,21 +141,58 @@ func (k *Keysplitting) Recover(errMessage rrr.ErrorMessage) error {
 	return nil
 }
 
-func (k *Keysplitting) resend(hpointer string) {
+func (k *Keysplitting) resend(nonce string) {
 	recoveryMap := *k.pipelineMap
 	k.pipelineMap = orderedmap.New()
 
-	// figure out where we need to start resending from
-	if pair := (&recoveryMap).GetPair(hpointer); pair == nil {
+	// Check to see if we're talking with an agent that doesn't set SynAck's
+	// nonce correctly
+	//
+	// TODO: CWC-2093: Remove this once all agents update
+	synAckNonceConstraint, err := semver.NewConstraint("> 2.0")
+	if err != nil {
+		k.logger.Errorf("Not resending any messages in pipeline because unable to create SynAck nonce versioning constraint")
+		return
+	}
 
-		// if the referenced message was acked, we won't have it in our map so we assume we
-		// have to resend everything
+	shouldCheckNonce := synAckNonceConstraint.Check(k.schemaVersion)
+
+	// figure out where we need to start resending from
+	if pair := (&recoveryMap).GetPair(nonce); pair == nil {
+		if shouldCheckNonce {
+			// Get hash of last acked Data msg
+			if k.lastAckedData == nil {
+				k.logger.Info("Not resending any messages in pipeline because lastAckedData msg is nil")
+				return
+			}
+			lastAckedDataHash := k.lastAckedData.Hash()
+			if lastAckedDataHash == "" {
+				k.logger.Errorf("Not resending any messages in pipeline because failed to hash lastAckedData msg")
+				return
+			}
+
+			// Extra check to prevent a replay attack where adversary replays
+			// messages in pipelineMap against another DC. See CWC-1940 for more
+			// details.
+			//
+			// We can't always check this condition because old agents did not
+			// set nonce correctly in SynAck.
+			//
+			// TODO: CWC-2093: Remove this check once all agents update, and
+			// update code to always check the nonce.
+			if nonce != lastAckedDataHash {
+				k.logger.Errorf("Not resending any messages in pipeline because nonce not equal to lastAckedDataHash")
+				return
+			}
+		}
+
+		// if the referenced message was acked, we won't have it in our map so
+		// we assume we have to resend everything
 		for lostPair := (&recoveryMap).Oldest(); lostPair != nil; lostPair = lostPair.Next() {
 			ksMessage := lostPair.Value.(ksmsg.KeysplittingMessage)
 			k.pipeline(ksMessage.GetAction(), ksMessage.GetActionPayload())
 		}
 	} else {
-
 		// if the hpointer references a message that hasn't been acked, we assume the ack
 		// dropped and resend all messages starting with the one immediately AFTER the one
 		// referenced by the hpointer
@@ -186,7 +226,7 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 	defer k.stateLock.Unlock()
 
 	// Check this messages is in response to one we've sent
-	if _, ok := k.pipelineMap.Get(hpointer); ok {
+	if ackedMsg, ok := k.pipelineMap.Get(hpointer); ok {
 		switch ksMessage.Type {
 		case ksmsg.SynAck:
 			if msg, ok := ksMessage.KeysplittingPayload.(ksmsg.SynAckPayload); ok {
@@ -233,6 +273,10 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		case ksmsg.DataAck:
 			k.lastAck = ksMessage
 			k.pipelineMap.Delete(hpointer)
+
+			// Store reference to last acked Data msg
+			ackedDataMsg := ackedMsg.(ksmsg.KeysplittingMessage)
+			k.lastAckedData = &ackedDataMsg
 
 			// If we're here, it means that the previous data message that
 			// caused the error was accepted

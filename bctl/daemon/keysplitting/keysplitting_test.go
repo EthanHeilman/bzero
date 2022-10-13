@@ -12,7 +12,7 @@ import (
 	commonbzcert "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	log "bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 
 	"github.com/Masterminds/semver"
@@ -26,30 +26,27 @@ func TestDaemonKeysplitting(t *testing.T) {
 }
 
 var _ = Describe("Daemon keysplitting", func() {
-	logger := logger.MockLogger(GinkgoWriter)
-
-	// Set schema version to use when building agent messages
-	agentSchemaVersion := ksmsg.SchemaVersion
+	var logger *log.Logger
+	var daemonKeypair *tests.Ed25519KeyPair
+	var agentKeypair *tests.Ed25519KeyPair
+	emptyPayload := []byte{}
 
 	const testAction string = "test/action"
 	const prePipeliningVersion string = "1.9"
-	emptyPayload := []byte{}
+	const preSynAckNonceChangeVersion string = "2.0"
 
-	// Setup keypairs to use for agent and daemon
-	agentKeypair, _ := tests.GenerateEd25519Key()
-	GinkgoWriter.Printf("Agent keypair: Private key: %s; Public key: %s\n", agentKeypair.Base64EncodedPrivateKey, agentKeypair.Base64EncodedPublicKey)
-	daemonKeypair, _ := tests.GenerateEd25519Key()
-	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonKeypair.Base64EncodedPrivateKey, daemonKeypair.Base64EncodedPublicKey)
-
-	fakeBZCert := commonbzcert.BZCert{
-		Rand:            "dummyCerRand",
-		SignatureOnRand: "dummyCerRandSignature",
-		InitialIdToken:  "dummyInitialIdToken",
-		CurrentIdToken:  "dummyCurrentIdToken",
-		ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
+	createFakeBzCert := func() commonbzcert.BZCert {
+		return commonbzcert.BZCert{
+			Rand:            "dummyCerRand",
+			SignatureOnRand: "dummyCerRandSignature",
+			InitialIdToken:  "dummyInitialIdToken",
+			CurrentIdToken:  "dummyCurrentIdToken",
+			ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
+		}
 	}
 
-	createMockKeysplitter := func() (*Keysplitting, error) {
+	createSUT := func() (*Keysplitting, error) {
+		fakeBZCert := createFakeBzCert()
 		// Reset MockDaemonBZCert and set default mock returns
 		mockBZCert := &bzcert.MockDaemonBZCert{}
 		mockBZCert.On("PrivateKey").Return(daemonKeypair.Base64EncodedPrivateKey)
@@ -62,38 +59,56 @@ var _ = Describe("Daemon keysplitting", func() {
 		return New(logger, agentKeypair.Base64EncodedPublicKey, mockBZCert)
 	}
 
-	getAgentSchemaVersionAsSemVer := func() *semver.Version {
+	getSchemaVersionAsSemVer := func(agentSchemaVersion string) *semver.Version {
 		parsedSchemaVersion, _ := semver.NewVersion(agentSchemaVersion)
 		return parsedSchemaVersion
 	}
 
-	buildSynAck := func(syn *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
+	buildSynAckWithNonce := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string, nonce string) *ksmsg.KeysplittingMessage {
 		synAck, _ := syn.BuildUnsignedSynAck(
 			emptyPayload,
 			agentKeypair.Base64EncodedPublicKey,
-			util.Nonce(),
-			getAgentSchemaVersionAsSemVer().String(),
+			nonce,
+			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
 		synAck.Sign(agentKeypair.Base64EncodedPrivateKey)
 		return &synAck
 	}
+	buildSynAckWithVersion := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
+		return buildSynAckWithNonce(syn, agentSchemaVersion, util.Nonce())
+	}
+	buildSynAck := func(syn *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
+		return buildSynAckWithVersion(syn, ksmsg.SchemaVersion)
+	}
 
-	buildDataAck := func(data *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
+	buildDataAckWithVersion := func(data *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
 		dataAck, _ := data.BuildUnsignedDataAck(
 			emptyPayload,
 			agentKeypair.Base64EncodedPublicKey,
-			getAgentSchemaVersionAsSemVer().String(),
+			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
 		dataAck.Sign(agentKeypair.Base64EncodedPrivateKey)
 		return &dataAck
 	}
+	buildDataAck := func(data *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
+		return buildDataAckWithVersion(data, ksmsg.SchemaVersion)
+	}
+
+	// SUT's logger
+	logger = log.MockLogger(GinkgoWriter)
+
+	// Setup keypairs to use for agent and daemon
+	agentKeypair, _ = tests.GenerateEd25519Key()
+	GinkgoWriter.Printf("Agent keypair: Private key: %s; Public key: %s\n", agentKeypair.Base64EncodedPrivateKey, agentKeypair.Base64EncodedPublicKey)
+	daemonKeypair, _ = tests.GenerateEd25519Key()
+	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonKeypair.Base64EncodedPrivateKey, daemonKeypair.Base64EncodedPublicKey)
 
 	Context("Creation", func() {
 		When("creating a new keysplitter", func() {
 			var err error
 
 			BeforeEach(func() {
-				_, err = createMockKeysplitter()
+				_, err = createSUT()
 			})
 
 			It("creates without error", func() {
@@ -111,7 +126,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			testPayload := []byte("butt")
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				syn, synErr = sut.BuildSyn(testAction, testPayload, true)
@@ -152,6 +167,8 @@ var _ = Describe("Daemon keysplitting", func() {
 			var synError error
 
 			BeforeEach(func() {
+				fakeBZCert := createFakeBzCert()
+
 				badBZCert := &bzcert.MockDaemonBZCert{}
 				badBZCert.On("Refresh").Return(nil)
 				badBZCert.On("Cert").Return(&fakeBZCert)
@@ -196,7 +213,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 			BeforeEach(func() {
 				var err error
-				sut, err = createMockKeysplitter()
+				sut, err = createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				syn, err = sut.BuildSyn(testAction, emptyPayload, true)
@@ -204,21 +221,31 @@ var _ = Describe("Daemon keysplitting", func() {
 
 				// clear our outbox
 				sut.outboxQueue = make(chan *ksmsg.KeysplittingMessage, maxPipelineLimit)
-
-				go func() {
-					sut.Inbox(testAction, emptyPayload)
-				}()
-			})
-
-			AfterEach(func() {
-				// complete the handshake to release the above Inbox call
-				synAck := buildSynAck(syn)
-				sut.Validate(synAck)
 			})
 
 			It("does not send the data message", func() {
-				// Check that nothing is received on Outbox for some fixed duration
+				done := make(chan interface{})
+				go func() {
+					defer GinkgoRecover()
+
+					By("Sending a message that causes Inbox() to block because handshake is not complete")
+					err := sut.Inbox(testAction, emptyPayload)
+					Expect(err).ShouldNot(HaveOccurred(), "sending Data should not error")
+					var dataMsg *ksmsg.KeysplittingMessage
+					Expect(sut.Outbox()).Should(Receive(&dataMsg), "outbox should receive the Data message sent by Inbox()")
+
+					close(done)
+				}()
+
+				// Check that nothing is received on Outbox for some fixed
+				// duration
 				Consistently(sut.Outbox(), 500*time.Millisecond).ShouldNot(Receive(), "no message should be sent to outbox because the handshake never completed")
+
+				// complete the handshake to release the above Inbox call
+				synAck := buildSynAck(syn)
+				sut.Validate(synAck)
+
+				Eventually(done).Should(BeClosed(), "done should eventually be closed because agent sent a SynAck, which completes the handshake, and should unblock Inbox()")
 			})
 		})
 
@@ -231,7 +258,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 			BeforeEach(func() {
 				var err error
-				sut, err = createMockKeysplitter()
+				sut, err = createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// handshake
@@ -271,7 +298,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(dataPayload.Type).To(BeEquivalentTo(ksmsg.Data))
 
 				By("Setting the correct schema version")
-				Expect(dataPayload.SchemaVersion).To(Equal(getAgentSchemaVersionAsSemVer().String()), "The schema version should match the agreed upon version found in the agent's SynAck")
+				Expect(dataPayload.SchemaVersion).To(Equal(getSchemaVersionAsSemVer(ksmsg.SchemaVersion).String()), "The schema version should match the agreed upon version found in the agent's SynAck")
 
 				By("Setting the hpointer equal to the hash of the previous message")
 				Expect(dataPayload.HPointer).Should(Equal(synAck.Hash()), "This Data message's HPointer should point to the syn ack")
@@ -293,7 +320,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 				synAck := buildValidSynAck(sut)
 
@@ -316,7 +343,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 				synAck := buildValidSynAck(sut)
 
@@ -339,7 +366,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 				synAck := buildValidSynAck(sut)
 
@@ -357,7 +384,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				synAck := buildValidSynAck(sut)
@@ -374,7 +401,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				diffAgentKeypair, _ := tests.GenerateEd25519Key()
@@ -413,7 +440,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				dataAck := buildValidDataAck(sut)
@@ -430,7 +457,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				dataAck := buildValidDataAck(sut)
@@ -453,7 +480,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			var validateErr error
 
 			BeforeEach(func() {
-				sut, err := createMockKeysplitter()
+				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
 				dataAck := buildValidDataAck(sut)
@@ -480,28 +507,32 @@ var _ = Describe("Daemon keysplitting", func() {
 			return data
 		}
 
-		// performHandshake completes the keysplitting handshake by sending a Syn
-		// and receiving a valid SynAck. Returns the synAck message received.
-		performHandshake := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
+		performHandshakeWithVersion := func(sut *Keysplitting, agentVersion string) *ksmsg.KeysplittingMessage {
 			_, err := sut.BuildSyn(testAction, emptyPayload, true)
 			Expect(err).ShouldNot(HaveOccurred())
 
 			var syn *ksmsg.KeysplittingMessage
 			Expect(sut.Outbox()).Should(Receive(&syn))
 
-			synAck := buildSynAck(syn)
+			synAck := buildSynAckWithVersion(syn, agentVersion)
 
 			err = sut.Validate(synAck)
 			Expect(err).ShouldNot(HaveOccurred())
 			return synAck
 		}
 
-		assertDataMsgIsCorrect := func(dataMsg *ksmsg.KeysplittingMessage, expectedPayload []byte, expectedPrevMessage *ksmsg.KeysplittingMessage) {
+		// performHandshake completes the keysplitting handshake by sending a Syn
+		// and receiving a valid SynAck. Returns the synAck message received.
+		performHandshake := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
+			return performHandshakeWithVersion(sut, ksmsg.SchemaVersion)
+		}
+
+		assertDataMsgIsCorrect := func(dataMsg *ksmsg.KeysplittingMessage, expectedPayload []byte, expectedPrevMessage *ksmsg.KeysplittingMessage, expectedSchemaVersion string) {
 			dataPayload, ok := dataMsg.KeysplittingPayload.(ksmsg.DataPayload)
 			Expect(ok).To(BeTrue(), "passed in message must be a Data msg")
 			Expect(dataPayload.HPointer).Should(Equal(expectedPrevMessage.Hash()), fmt.Sprintf("This Data msg's HPointer should point to the previously received message: %#v", expectedPrevMessage))
 			Expect(dataPayload.ActionPayload).To(Equal(expectedPayload), "The Data's payload should match the expected payload")
-			Expect(dataPayload.SchemaVersion).To(Equal(getAgentSchemaVersionAsSemVer().String()), "The schema version should match the agreed upon version found in the agent's SynAck")
+			Expect(dataPayload.SchemaVersion).To(Equal(getSchemaVersionAsSemVer(expectedSchemaVersion).String()), "The schema version should match the agreed upon version found in the agent's SynAck")
 		}
 
 		// Remove this context when CWC-1820 is resolved
@@ -514,22 +545,16 @@ var _ = Describe("Daemon keysplitting", func() {
 
 				BeforeEach(func() {
 					var err error
-					sut, err = createMockKeysplitter()
+					sut, err = createSUT()
 					Expect(err).ShouldNot(HaveOccurred())
 
-					agentSchemaVersion = prePipeliningVersion
-
-					synAck = performHandshake(sut)
+					synAck = performHandshakeWithVersion(sut, prePipeliningVersion)
 					dataMsg = sendData(sut, emptyPayload)
-				})
-
-				AfterEach(func() {
-					agentSchemaVersion = ksmsg.SchemaVersion
 				})
 
 				It("creates a valid data message", func() {
 					// Payload contains extra quotes because this is pre-pipelining
-					assertDataMsgIsCorrect(dataMsg, []byte("\"\""), synAck)
+					assertDataMsgIsCorrect(dataMsg, []byte("\"\""), synAck, prePipeliningVersion)
 				})
 
 				It("doesn't send a new Data message until the DataAck is received", func() {
@@ -543,7 +568,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 						// dataAck is initialized after unblocking
 						By("Asserting Data is correct after being unblocked")
-						assertDataMsgIsCorrect(dataSentAfterUnblocking, []byte("\"\""), dataAck)
+						assertDataMsgIsCorrect(dataSentAfterUnblocking, []byte("\"\""), dataAck, prePipeliningVersion)
 
 						close(done)
 					}()
@@ -554,7 +579,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 					// Validate the DataAck so the goroutine spawned above can
 					// unblock and terminate
-					dataAck = buildDataAck(dataMsg)
+					dataAck = buildDataAckWithVersion(dataMsg, prePipeliningVersion)
 					err := sut.Validate(dataAck)
 					Expect(err).ShouldNot(HaveOccurred())
 
@@ -563,12 +588,12 @@ var _ = Describe("Daemon keysplitting", func() {
 			})
 		})
 
-		When("pipelining is enabled", func() {
+		Context("pipelining is enabled", func() {
 			var sut *Keysplitting
 
 			BeforeEach(func() {
 				var err error
-				sut, err = createMockKeysplitter()
+				sut, err = createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 				performHandshake(sut)
 			})
@@ -599,7 +624,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 				BeforeEach(func() {
 					var err error
-					sut, err = createMockKeysplitter()
+					sut, err = createSUT()
 					Expect(err).ShouldNot(HaveOccurred())
 					performHandshake(sut)
 
@@ -642,7 +667,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				})
 			})
 
-			Context("when recovery handshake completes", func() {
+			When("recovery handshake completes", func() {
 				type sentKeysplittingData struct {
 					sentPayload []byte
 					sentMsg     *ksmsg.KeysplittingMessage
@@ -659,7 +684,7 @@ var _ = Describe("Daemon keysplitting", func() {
 					return sentPayloads
 				}
 
-				assertRecoveryResendsData := func(sut *Keysplitting, sliceFromIndex int, recoverySynAck *ksmsg.KeysplittingMessage) {
+				assertRecoveryResendsData := func(sut *Keysplitting, sliceFromIndex int, recoverySynAck *ksmsg.KeysplittingMessage, agentSchemaVersion string) {
 					// prevMsg is set after first iteration of for loop below
 					var prevMsg *ksmsg.KeysplittingMessage
 					for i, payload := range getSentPayloads()[sliceFromIndex:] {
@@ -671,12 +696,12 @@ var _ = Describe("Daemon keysplitting", func() {
 						if i == 0 {
 							// The first data message points to the recovery
 							// syn ack
-							assertDataMsgIsCorrect(dataMsg, payload, recoverySynAck)
+							assertDataMsgIsCorrect(dataMsg, payload, recoverySynAck, agentSchemaVersion)
 						} else {
 							// All other data messages point to predicted
 							// DataAck for prevMsg
-							predictedDataAck := buildDataAck(prevMsg)
-							assertDataMsgIsCorrect(dataMsg, payload, predictedDataAck)
+							predictedDataAck := buildDataAckWithVersion(prevMsg, agentSchemaVersion)
+							assertDataMsgIsCorrect(dataMsg, payload, predictedDataAck, agentSchemaVersion)
 						}
 
 						// Update pointer
@@ -731,84 +756,130 @@ var _ = Describe("Daemon keysplitting", func() {
 					return recoverySyn
 				}
 
-				When("recovery SynAck's schema version is different than the one agreed upon in initial handshake", func() {
+				When("recovery SynAck's nonce references message not known by daemon's pipelineMap", func() {
 					var sut *Keysplitting
 					var recoverySynAck *ksmsg.KeysplittingMessage
+					var recoverySyn *ksmsg.KeysplittingMessage
+
+					validateDataAckForFirstMsg := func() {
+						// This sets hashLastAckedDataMsg, and removes first
+						// message from pipeline. Required otherwise, we will
+						// hit "Not resending any messages in pipeline because
+						// lastAckedData msg is nil" error
+						By("Validating DataAck for first message sent")
+						dataAck := buildDataAck(sentData[0].sentMsg)
+						By("Validating agent's recovery SynAck")
+						err := sut.Validate(dataAck)
+						Expect(err).ShouldNot(HaveOccurred())
+					}
 
 					BeforeEach(func() {
 						var err error
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 
 						performHandshake(sut)
-						recoverySyn := triggerRecovery(sut)
-
-						By("Building agent's recovery SynAck with a different schema version than before")
-						agentSchemaVersion = agentSchemaVersion + "-different"
-						// The default SynAck created by BuildSynAck() uses a random nonce
-						recoverySynAck = buildSynAck(recoverySyn)
-
-						By("Validating agent's recovery SynAck")
-						err = sut.Validate(recoverySynAck)
-						Expect(err).ShouldNot(HaveOccurred())
+						recoverySyn = triggerRecovery(sut)
 					})
 
-					// Completes the recovery procedure by triggering
-					// resend() of all previously sent Data messages
-					It("Resends all previously pipelined data messages", func() {
-						assertRecoveryResendsData(sut, 0, recoverySynAck)
+					When("nonce is unknown and new agent", func() {
+						BeforeEach(func() {
+							validateDataAckForFirstMsg()
+
+							By("Building agent's recovery SynAck without error")
+							// The default SynAck created by BuildSynAck()
+							// uses a random nonce
+							recoverySynAck = buildSynAck(recoverySyn)
+						})
+
+						It("no Data is resent", func() {
+							By("Validating agent's recovery SynAck")
+							err := sut.Validate(recoverySynAck)
+							Expect(err).ShouldNot(HaveOccurred())
+
+							Consistently(sut.Outbox(), timeToPollNothingReceivedOnOutbox).ShouldNot(Receive(), "because if nonce does not equal hash of last acked Data msg, nothing should be resent")
+							Expect(sut.IsPipelineEmpty()).Should(BeTrue(), "because pipeline should be empty as nothing was resent")
+						})
+					})
+
+					When("nonce is unknown and old agent (CWC-2093)", func() {
+						BeforeEach(func() {
+							By("Building agent's recovery SynAck with old agent version")
+							// The default SynAck created by BuildSynAck()
+							// uses a random nonce
+							recoverySynAck = buildSynAckWithVersion(recoverySyn, preSynAckNonceChangeVersion)
+						})
+
+						// We still resend everything for old agents to
+						// preserve backwards compatablity
+						//
+						// TODO: CWC-2093
+						It("Resends all previously pipelined data messages", func() {
+							By("Validating agent's recovery SynAck")
+							err := sut.Validate(recoverySynAck)
+							Expect(err).ShouldNot(HaveOccurred())
+
+							assertRecoveryResendsData(sut, 0, recoverySynAck, preSynAckNonceChangeVersion)
+						})
+					})
+
+					When("nonce is equal to last valid Data msg", func() {
+						BeforeEach(func() {
+							validateDataAckForFirstMsg()
+						})
+
+						When("agent's recovery SynAck's schema version is the same as the one during handshake", func() {
+							BeforeEach(func() {
+								By("Building agent's recovery SynAck with nonce equal to last valid Data msg")
+								recoverySynAck = buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[0].sentMsg.Hash())
+							})
+
+							// We already received ack for first message.
+							// Therefore, we should see all messages after the
+							// first one resent
+							It("Resends every except the first previously pipelined data messages", func() {
+								By("Validating agent's recovery SynAck")
+								err := sut.Validate(recoverySynAck)
+								Expect(err).ShouldNot(HaveOccurred())
+
+								assertRecoveryResendsData(sut, 1, recoverySynAck, ksmsg.SchemaVersion)
+							})
+						})
+
+						When("agent's recovery SynAck has a different schema version than before", func() {
+							var agentSchemaVersion string
+
+							BeforeEach(func() {
+								By("Building agent's recovery SynAck with a different schema version than before and nonce equal to last valid Data msg")
+								agentSchemaVersion = ksmsg.SchemaVersion + "-different"
+								recoverySynAck = buildSynAckWithNonce(recoverySyn, agentSchemaVersion, sentData[0].sentMsg.Hash())
+							})
+
+							It("Resends every except the first previously pipelined data messages", func() {
+								By("Validating agent's recovery SynAck")
+								err := sut.Validate(recoverySynAck)
+								Expect(err).ShouldNot(HaveOccurred())
+
+								assertRecoveryResendsData(sut, 1, recoverySynAck, agentSchemaVersion)
+							})
+						})
 					})
 				})
 
-				When("recovery SynAck's nonce references message not known by daemon", func() {
+				When("referenced message is first Data sent", func() {
 					var sut *Keysplitting
 					var recoverySynAck *ksmsg.KeysplittingMessage
 
 					BeforeEach(func() {
 						var err error
-						sut, err = createMockKeysplitter()
-						Expect(err).ShouldNot(HaveOccurred())
-
-						performHandshake(sut)
-						recoverySyn := triggerRecovery(sut)
-
-						By("Building agent's recovery SynAck")
-						// The default SynAck created by BuildSynAck() uses
-						// a random nonce
-						recoverySynAck = buildSynAck(recoverySyn)
-
-						By("Validating agent's recovery SynAck")
-						err = sut.Validate(recoverySynAck)
-						Expect(err).ShouldNot(HaveOccurred())
-					})
-
-					// Pass index 0 because all payloads should be resent
-					It("Resends all previously pipelined data messages", func() {
-						assertRecoveryResendsData(sut, 0, recoverySynAck)
-					})
-				})
-
-				Context("when referenced message is first Data sent", func() {
-					var sut *Keysplitting
-					var recoverySynAck *ksmsg.KeysplittingMessage
-
-					BeforeEach(func() {
-						var err error
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 						performHandshake(sut)
 
 						recoverySyn := triggerRecovery(sut)
 
-						By("Building agent's recovery SynAck without error")
-						recoverySynAck = buildSynAck(recoverySyn)
-
-						By("Modifying recovery SynAck's nonce to refer to first Data message sent")
-						recoverySynAckPayload, _ := recoverySynAck.KeysplittingPayload.(ksmsg.SynAckPayload)
-						recoverySynAckPayload.Nonce = sentData[0].sentMsg.Hash()
-						recoverySynAck.KeysplittingPayload = recoverySynAckPayload
-						// sign again since we just changed a value
-						recoverySynAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+						By("Building agent's recovery SynAck with nonce equal to first Data message sent")
+						recoverySynAck = buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[0].sentMsg.Hash())
 
 						By("Validating agent's recovery SynAck")
 						err = sut.Validate(recoverySynAck)
@@ -818,38 +889,37 @@ var _ = Describe("Daemon keysplitting", func() {
 					// Pass index 1 because the first payload (index 0)
 					// sent should not be resent
 					It("Resends every except the first previously pipelined data messages", func() {
-						assertRecoveryResendsData(sut, 1, recoverySynAck)
+						assertRecoveryResendsData(sut, 1, recoverySynAck, ksmsg.SchemaVersion)
 					})
 				})
 
-				Context("when referenced message is last Data sent", func() {
+				When("referenced message is last Data sent", func() {
 					var sut *Keysplitting
-					var recoverySynAck *ksmsg.KeysplittingMessage
 
 					BeforeEach(func() {
 						var err error
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 						performHandshake(sut)
 
 						recoverySyn := triggerRecovery(sut)
 
-						By("Building agent's recovery SynAck without error")
-						recoverySynAck = buildSynAck(recoverySyn)
+						By("Building agent's recovery SynAck with nonce equal to last Data message sent")
+						recoverySynAck := buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[len(sentData)-1].sentMsg.Hash())
 
-						By("Modifying recovery SynAck's nonce to refer to last Data message sent")
-						recoverySynAckPayload, _ := recoverySynAck.KeysplittingPayload.(ksmsg.SynAckPayload)
-						recoverySynAckPayload.Nonce = sentData[len(sentData)-1].sentMsg.Hash()
-						recoverySynAck.KeysplittingPayload = recoverySynAckPayload
+						By("Validating agent's recovery SynAck")
+						err = sut.Validate(recoverySynAck)
+						Expect(err).ShouldNot(HaveOccurred())
 					})
 
 					It("no Data is resent", func() {
 						Consistently(sut.Outbox(), timeToPollNothingReceivedOnOutbox).ShouldNot(Receive(), "because we resend messages starting with the one immediately after the referenced one")
+						Expect(sut.IsPipelineEmpty()).Should(BeTrue(), "because pipeline should be empty as nothing was resent")
 					})
 				})
 			})
 
-			Context("recovery failure modes", func() {
+			When("recovery fails", func() {
 				sendDataAndBuildErrorMessage := func(sut *Keysplitting) rrr.ErrorMessage {
 					By("Sending data and building an agent error message")
 					dataMsg := sendData(sut, []byte("agent fail on this data message"))
@@ -861,7 +931,7 @@ var _ = Describe("Daemon keysplitting", func() {
 					var err error
 
 					BeforeEach(func() {
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 
 						performHandshake(sut)
@@ -888,7 +958,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 					BeforeEach(func() {
 						var err error
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 
 						performHandshake(sut)
@@ -912,7 +982,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 					BeforeEach(func() {
 						var err error
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 
 						performHandshake(sut)
@@ -948,7 +1018,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 					BeforeEach(func() {
 						By("Performing handshake")
-						sut, err = createMockKeysplitter()
+						sut, err = createSUT()
 						Expect(err).ShouldNot(HaveOccurred())
 						performHandshake(sut)
 
@@ -969,17 +1039,6 @@ var _ = Describe("Daemon keysplitting", func() {
 							synAck := buildSynAck(synMsg)
 							err = sut.Validate(synAck)
 							Expect(err).ShouldNot(HaveOccurred())
-
-							// Each time we valiate a SynAck, resend() is
-							// called and all Data in pipeline map will be
-							// resent. Read from the Outbox() the correct
-							// number of times, so that the output channel
-							// is empty for the next Recover() iteration.
-							for j := 0; j <= i; j++ {
-								var dataMsg *ksmsg.KeysplittingMessage
-								Expect(sut.Outbox()).Should(Receive(&dataMsg))
-								Expect(dataMsg.Type).Should(Equal(ksmsg.Data))
-							}
 						}
 
 						agentErrorMessage := sendDataAndBuildErrorMessage(sut)

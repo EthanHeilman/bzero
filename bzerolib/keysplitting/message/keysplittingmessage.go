@@ -20,7 +20,7 @@ const (
 )
 
 const (
-	SchemaVersion = "2.0"
+	SchemaVersion = "2.1"
 )
 
 type KeysplittingMessage struct {
