@@ -71,7 +71,7 @@ func (r *Registration) generateKeys() error {
 	// Generate public, secret key pair and convert to strings
 	publicKey, privateKey, err := ed.GenerateKey(nil)
 	if err != nil {
-		return fmt.Errorf("error generating key pair: %v", err.Error())
+		return fmt.Errorf("error generating key pair: %w", err)
 	}
 	r.config.Data.PublicKey = base64.StdEncoding.EncodeToString([]byte(publicKey))
 	r.config.Data.PrivateKey = base64.StdEncoding.EncodeToString([]byte(privateKey))

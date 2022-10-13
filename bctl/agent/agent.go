@@ -35,7 +35,7 @@ var (
 	environmentId, environmentName   string
 	activationToken, registrationKey string
 	idpProvider, namespace, idpOrgId string
-	targetId, targetName, agentType  string
+	targetId, targetName             string
 	logLevel                         string
 	forceReRegistration              bool
 	wait                             bool
@@ -56,6 +56,9 @@ const (
 	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
 	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
 	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
+
+	// Env var to flag if we are in a kube cluster
+	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
 )
 
 func main() {
@@ -63,7 +66,7 @@ func main() {
 	var logger *logger.Logger
 	fileIo := bzio.OsFileIo{}
 
-	setAgentType()
+	agentType := getAgentType()
 	parseErr := parseFlags()
 
 	if logger, err = setupLogger(); err != nil {
@@ -102,7 +105,7 @@ func main() {
 				if registered, err = isRegistered(); err != nil {
 					logger.Error(err)
 				} else if registered {
-					if agent, err = New(logger, fileIo); err != nil {
+					if agent, err = New(logger, agentType, fileIo); err != nil {
 						reportError(logger, fmt.Errorf("failed to start agent: %s", err))
 					} else {
 						agent.Run()
@@ -110,7 +113,7 @@ func main() {
 				}
 			}
 		} else {
-			if agent, err = New(logger, fileIo); err != nil {
+			if agent, err = New(logger, agentType, fileIo); err != nil {
 				reportError(logger, fmt.Errorf("failed to start agent: %s", err))
 			} else {
 				agent.Run()
@@ -138,36 +141,39 @@ type Agent struct {
 	conn           connection.Connection
 	controlChannel *controlchannel.ControlChannel
 
+	agentType string
+
 	agentShutdownChan chan error
 
 	// prevents us from trying to close the CC after it has told us it's done
 	isControlChannelAlive bool
 }
 
-func New(logger *logger.Logger, fileIo bzio.BzFileIo) (*Agent, error) {
-	if config, err := vault.LoadVault(); err != nil {
+func New(logger *logger.Logger, agentType string, fileIo bzio.BzFileIo) (*Agent, error) {
+	config, err := vault.LoadVault()
+	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve vault: %s", err)
-	} else {
-
-		// Check if the agent version has changed since the last time we saved
-		// to the vault and update it if necessary
-		currentVersion := getAgentVersion()
-		if config.Data.Version != currentVersion {
-			config.Data.Version = currentVersion
-
-			if err := config.Save(); err != nil {
-				return nil, fmt.Errorf("error saving updated version to vault: %w", err)
-			}
-		}
-
-		agent := &Agent{
-			config:            config,
-			logger:            logger,
-			fileIo:            fileIo,
-			agentShutdownChan: make(chan error),
-		}
-		return agent, nil
 	}
+
+	// Check if the agent version has changed since the last time we saved
+	// to the vault and update it if necessary
+	currentVersion := getAgentVersion()
+	if config.Data.Version != currentVersion {
+		config.Data.Version = currentVersion
+
+		if err := config.Save(); err != nil {
+			return nil, fmt.Errorf("error saving updated version to vault: %w", err)
+		}
+	}
+
+	agent := &Agent{
+		config:            config,
+		logger:            logger,
+		fileIo:            fileIo,
+		agentType:         agentType,
+		agentShutdownChan: make(chan error),
+	}
+	return agent, nil
 }
 
 // check whether we're restarting after a qualifying event, and thus need to tell Bastion about it
@@ -230,14 +236,6 @@ func (a *Agent) Run() {
 }
 
 func (a *Agent) startControlChannel() error {
-	headers := http.Header{}
-	params := url.Values{
-		"public_key": {a.config.Data.PublicKey},
-		"version":    {a.config.Data.Version},
-		"target_id":  {a.config.Data.TargetId},
-		"agent_type": {agentType},
-	}
-
 	// Setup our loggers
 	ccId := uuid.New().String()
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
@@ -258,15 +256,22 @@ func (a *Agent) startControlChannel() error {
 		ms,
 	)
 
-	conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client, agentIdentityProvider, ms)
-	if err != nil {
-		return err
+	headers := http.Header{}
+	params := url.Values{
+		"public_key": {a.config.Data.PublicKey},
+		"version":    {a.config.Data.Version},
+		"target_id":  {a.config.Data.TargetId},
+		"agent_type": {a.agentType},
 	}
 
-	// create logger for control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, agentType, agentIdentityProvider, ms, a.config)
-
-	return err
+	// Create our control channel's connection to BastionZero
+	if conn, err := controlconnection.New(connLogger, serviceUrl, a.config.GetPrivateKey(), params, headers, client, agentIdentityProvider, ms); err != nil {
+		return err
+	} else {
+		// Start up our control channel
+		a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, a.agentType, agentIdentityProvider, ms, a.config)
+		return err
+	}
 }
 
 func (a *Agent) monitorControlChannel() {
@@ -529,11 +534,11 @@ func getState() map[string]string {
 	}
 }
 
-func setAgentType() {
+func getAgentType() string {
 	// determine agent type
-	if vault.InCluster() {
-		agentType = Cluster
+	if val := os.Getenv(inClusterEnvVar); val == "bzero" {
+		return Cluster
 	} else {
-		agentType = Bzero
+		return Bzero
 	}
 }
