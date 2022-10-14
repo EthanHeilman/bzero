@@ -6,8 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	ed "crypto/ed25519"
-
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/sha3"
 )
@@ -201,17 +200,10 @@ func (v *BZCertVerifier) verifyAuthNonce(bzcert *BZCert, authNonce string) error
 	}
 
 	randHashBits := sha3.Sum256([]byte(decodedRand))
-	sigBits, _ := base64.StdEncoding.DecodeString(bzcert.SignatureOnRand)
 
-	pubKeyBits, _ := base64.StdEncoding.DecodeString(bzcert.ClientPublicKey)
-	if len(pubKeyBits) != 32 {
-		return fmt.Errorf("public key has invalid length %v", len(pubKeyBits))
+	pubkey, err := keypair.PublicKeyFromString(bzcert.ClientPublicKey)
+	if err != nil {
+		return err
 	}
-	pubkey := ed.PublicKey(pubKeyBits)
-
-	if ok := ed.Verify(pubkey, randHashBits[:], sigBits); ok {
-		return nil
-	} else {
-		return fmt.Errorf("failed to verify signature on rand")
-	}
+	return pubkey.Verify(randHashBits[:], bzcert.SignatureOnRand)
 }

@@ -69,7 +69,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				conn, err = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -87,7 +87,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				_, err = New(logger, malformedUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -105,7 +105,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -137,7 +137,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -159,7 +159,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -174,7 +174,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

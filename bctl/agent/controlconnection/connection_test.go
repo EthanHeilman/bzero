@@ -65,7 +65,7 @@ func mockGetConnectionServiceUrlHandler(connectionOrchestratorUrl string) http.H
 	}
 }
 
-var _ = Describe("Agent Control Channel Connection", Ordered, func() {
+var _ = Describe("Agent Control Channel Connection", func() {
 	var conn connection.Connection
 	var mockClient *messenger.MockMessenger
 	var mockBastion *tests.MockServer
@@ -112,7 +112,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, err = New(logger, mockBastion.Url, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, err = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 			})
 
 			It("instantiates without error", func() {
@@ -130,7 +130,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				_, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 			})
 
 			It("fails to establish a connection", func() {
@@ -149,7 +149,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 				conn.Send(testAgentMessage)
 			})
 
@@ -182,7 +182,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -205,7 +205,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 
 				doneChan <- struct{}{}
 			})
@@ -221,7 +221,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, &privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

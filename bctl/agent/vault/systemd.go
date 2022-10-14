@@ -128,14 +128,14 @@ func (s *SystemDVault) GetPublicKey() *keypair.PublicKey {
 	s.vaultLock.RLock()
 	defer s.vaultLock.RUnlock()
 
-	return &s.data.PublicKey
+	return s.data.PublicKey
 }
 
 func (s *SystemDVault) GetPrivateKey() *keypair.PrivateKey {
 	s.vaultLock.RLock()
 	defer s.vaultLock.RUnlock()
 
-	return &s.data.PrivateKey
+	return s.data.PrivateKey
 }
 
 func (s *SystemDVault) GetIdpOrgId() string {
@@ -173,6 +173,13 @@ func (s *SystemDVault) GetTargetId() string {
 	return s.data.TargetId
 }
 
+func (s *SystemDVault) GetServiceUrl() string {
+	s.vaultLock.RLock()
+	defer s.vaultLock.RUnlock()
+
+	return s.data.ServiceUrl
+}
+
 func (s *SystemDVault) SetVersion(version string) error {
 	s.vaultLock.Lock()
 	defer s.vaultLock.Unlock()
@@ -184,9 +191,9 @@ func (s *SystemDVault) SetVersion(version string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
-		return fmt.Errorf("new registration detected, reload vault")
-	}
+	// if s.data.PrivateKey != currentVault.PrivateKey {
+	// 	return fmt.Errorf("new registration detected, reload vault")
+	// }
 
 	currentVault.Version = version
 
@@ -221,9 +228,9 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
-		return fmt.Errorf("new registration detected, reload vault")
-	}
+	// if s.data.PrivateKey != currentVault.PrivateKey {
+	// 	return fmt.Errorf("new registration detected, reload vault")
+	// }
 
 	currentVault.AgentIdentityToken = token
 
@@ -233,8 +240,8 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 
 func (s *SystemDVault) SetRegistrationData(
 	serviceUrl string,
-	publickey keypair.PublicKey,
-	privateKey keypair.PrivateKey,
+	publickey *keypair.PublicKey,
+	privateKey *keypair.PrivateKey,
 	idpProvider string,
 	idpOrgId string,
 	targetId string,
@@ -250,9 +257,9 @@ func (s *SystemDVault) SetRegistrationData(
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
-		return fmt.Errorf("new registration detected, reload vault")
-	}
+	// if s.data.PrivateKey != currentVault.PrivateKey {
+	// 	return fmt.Errorf("new registration detected, reload vault")
+	// }
 
 	currentVault.ServiceUrl = serviceUrl
 	currentVault.PublicKey = publickey
@@ -269,7 +276,7 @@ func (s *SystemDVault) save() error {
 	// grab our file lock so we're not accidentally writing at the same time
 	// as other processes which is possible during registration
 	for {
-		if acquiredLock, err := s.fileLock.TryLock(); err == nil {
+		if acquiredLock, err := s.fileLock.TryLock(); err != nil {
 			return fmt.Errorf("error acquiring lock: %w", err)
 		} else if acquiredLock {
 			break
@@ -323,7 +330,7 @@ func (s *SystemDVault) WaitForRegistration(cancel <-chan os.Signal) error {
 						continue
 					} else {
 						// if we haven't completed registration yet, continue waiting
-						if (&config.PublicKey).IsEmpty() {
+						if config.PublicKey.IsEmpty() {
 							continue
 						} else {
 							done <- nil

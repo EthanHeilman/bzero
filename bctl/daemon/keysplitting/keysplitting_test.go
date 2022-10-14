@@ -61,7 +61,7 @@ var _ = Describe("Daemon keysplitting", func() {
 		mockBZCert.On("Cert").Return(&fakeBZCert)
 
 		// Init the SUT
-		return New(logger, &agentPublicKey, mockBZCert)
+		return New(logger, agentPublicKey, mockBZCert)
 	}
 
 	getSchemaVersionAsSemVer := func(agentSchemaVersion string) *semver.Version {
@@ -76,7 +76,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			nonce,
 			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
-		synAck.Sign(&agentPrivateKey)
+		synAck.Sign(agentPrivateKey)
 		return &synAck
 	}
 	buildSynAckWithVersion := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
@@ -92,7 +92,7 @@ var _ = Describe("Daemon keysplitting", func() {
 agentPublicKey.String(),
 			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
-		dataAck.Sign(&agentPrivateKey)
+		dataAck.Sign(agentPrivateKey)
 		return &dataAck
 	}
 	buildDataAck := func(data *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
@@ -148,7 +148,7 @@ agentPublicKey.String(),
 				Expect(syn.Type).To(Equal(ksmsg.Syn))
 
 				By("Validly signing the message")
-				Expect(syn.VerifySignature(&daemonPublicKey)).ShouldNot(HaveOccurred())
+				Expect(syn.VerifySignature(daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating a SYN payload")
 				synPayload, ok := syn.KeysplittingPayload.(ksmsg.SynPayload)
@@ -199,7 +199,7 @@ agentPublicKey.String(),
 				refreshError := errors.New("refresh error")
 				badBZCert.On("Refresh").Return(refreshError)
 
-				sut, err := New(logger, &agentPublicKey, badBZCert)
+				sut, err := New(logger, agentPublicKey, badBZCert)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, synError = sut.BuildSyn(testAction, emptyPayload, true)
@@ -295,7 +295,7 @@ agentPublicKey.String(),
 				Expect(data.Type).To(Equal(ksmsg.Data))
 
 				By("Signing with a valid signature")
-				Expect(data.VerifySignature(&daemonPublicKey)).ShouldNot(HaveOccurred())
+				Expect(data.VerifySignature(daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating the appropriate type of payload")
 				dataPayload, ok := data.KeysplittingPayload.(ksmsg.DataPayload)
@@ -334,7 +334,7 @@ agentPublicKey.String(),
 				synAck.KeysplittingPayload = synAckPayload
 
 				// sign again since we just changed a value
-				synAck.Sign(&agentPrivateKey)
+				synAck.Sign(agentPrivateKey)
 
 				validateErr = sut.Validate(synAck)
 			})
@@ -357,7 +357,7 @@ agentPublicKey.String(),
 				synAck.KeysplittingPayload = synAckPayload
 
 				// sign again since we just changed a value
-				synAck.Sign(&agentPrivateKey)
+				synAck.Sign(agentPrivateKey)
 
 				validateErr = sut.Validate(synAck)
 			})
@@ -410,7 +410,7 @@ agentPublicKey.String(),
 				Expect(err).ShouldNot(HaveOccurred())
 
 				diffPublicKey, _, _ := keypair.GenerateKeyPair()
-				sut.agentPubKey = &diffPublicKey
+				sut.agentPubKey = diffPublicKey
 
 				synAck := buildValidSynAck(sut)
 				validateErr = sut.Validate(synAck)
@@ -471,7 +471,7 @@ agentPublicKey.String(),
 				dataAck.KeysplittingPayload = dataAckPayload
 
 				// sign again since we just changed a value
-				dataAck.Sign(&agentPrivateKey)
+				dataAck.Sign(agentPrivateKey)
 
 				validateErr = sut.Validate(dataAck)
 			})

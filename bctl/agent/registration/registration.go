@@ -20,12 +20,8 @@ const (
 	getConnectionServiceEndpoint = "/api/v2/connection-service/url"
 )
 
-type IRegistration interface {
-	Register(logger *logger.Logger, config RegistrationConfig) error
-}
-
 type RegistrationConfig interface {
-	SetRegistrationData(serviceUrl string, publickey keypair.PublicKey, privateKey keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
+	SetRegistrationData(serviceUrl string, publickey *keypair.PublicKey, privateKey *keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
 }
 
 type Registration struct {
@@ -54,7 +50,7 @@ func New(
 	targetName string,
 	idpProvider string,
 	idpOrgId string,
-) IRegistration {
+) *Registration {
 	return &Registration{
 		serviceUrl:      serviceUrl,
 		activationToken: activationToken,
@@ -86,7 +82,7 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 
 	r.logger.Info("Phoning home to BastionZero...")
 	// Complete registration with the Bastion
-	if err := r.phoneHome(&publicKey); err != nil {
+	if err := r.phoneHome(publicKey); err != nil {
 		return err
 	}
 
@@ -277,7 +273,7 @@ func (r *Registration) getConnectionServiceUrlFromServiceUrl() (string, error) {
 	// make our request
 	resp, err := bzhttp.Get(r.logger, endpointToHit, map[string]string{}, map[string]string{})
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making get request to get connection service url: %s", err)
 	}
 
 	// read the response

@@ -1,7 +1,6 @@
 package httpclient
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -20,7 +19,7 @@ const (
 
 type HTTPOptions struct {
 	Endpoint string
-	Body     []byte
+	Body     io.Reader
 	Headers  http.Header
 	Params   url.Values
 }
@@ -62,7 +61,7 @@ func New(
 	return &HttpClient{
 		logger:    logger,
 		targetUrl: serviceUrl,
-		body:      bytes.NewBuffer(options.Body),
+		body:      options.Body,
 		headers:   options.Headers,
 		params:    options.Params,
 	}, nil
@@ -149,7 +148,7 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 
 	// Check if request was successful
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response, fmt.Errorf("%s request failed with status code %d", string(method), response.StatusCode)
+		return response, fmt.Errorf("%s request failed with status %s", string(method), response.Status)
 	}
 
 	return response, err

@@ -113,14 +113,14 @@ func (k *KubernetesVault) GetPublicKey() *keypair.PublicKey {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
-	return &k.data.PublicKey
+	return k.data.PublicKey
 }
 
 func (k *KubernetesVault) GetPrivateKey() *keypair.PrivateKey {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
-	return &k.data.PrivateKey
+	return k.data.PrivateKey
 }
 
 func (k *KubernetesVault) GetIdpOrgId() string {
@@ -158,6 +158,13 @@ func (k *KubernetesVault) GetShutdownInfo() (string, map[string]string) {
 	return k.data.ShutdownReason, k.data.ShutdownState
 }
 
+func (k *KubernetesVault) GetServiceUrl() string {
+	k.vaultLock.RLock()
+	defer k.vaultLock.RUnlock()
+
+	return k.data.ServiceUrl
+}
+
 func (k *KubernetesVault) SetVersion(version string) error {
 	k.vaultLock.Lock()
 	defer k.vaultLock.Unlock()
@@ -170,9 +177,9 @@ func (k *KubernetesVault) SetVersion(version string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !(&k.data.PrivateKey).Equals(currentVault.PrivateKey) {
-		return fmt.Errorf("new registration detected, reload vault")
-	}
+	// if k.data.PrivateKey != currentVault.PrivateKey {
+	// 	return fmt.Errorf("new registration detected, reload vault")
+	// }
 
 	currentVault.Version = version
 
@@ -208,8 +215,8 @@ func (k *KubernetesVault) SetAgentIdentityToken(token string) error {
 
 func (k *KubernetesVault) SetRegistrationData(
 	serviceUrl string,
-	publickey keypair.PublicKey,
-	privateKey keypair.PrivateKey,
+	publickey *keypair.PublicKey,
+	privateKey *keypair.PrivateKey,
 	idpProvider string,
 	idpOrgId string,
 	targetId string,
@@ -226,9 +233,9 @@ func (k *KubernetesVault) SetRegistrationData(
 	// TODO: think through this
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !(&k.data.PrivateKey).Equals(currentVault.PrivateKey) {
-		return fmt.Errorf("new registration detected, reload vault")
-	}
+	// if k.data.PrivateKey != currentVault.PrivateKey {
+	// 	return fmt.Errorf("new registration detected, reload vault")
+	// }
 
 	currentVault.ServiceUrl = serviceUrl
 	currentVault.PublicKey = publickey

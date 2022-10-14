@@ -1,9 +1,12 @@
 package report
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"net/http"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
+	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -12,35 +15,34 @@ const (
 )
 
 type ErrorReport struct {
-	Reporter  string      `json:"reporter"`
-	Timestamp string      `json:"timestamp"`
-	State     interface{} `json:"state"`
-	Message   string      `json:"message"`
-	Logs      string      `json:"logs"`
+	Reporter  string            `json:"reporter"`
+	Timestamp string            `json:"timestamp"`
+	State     map[string]string `json:"state"`
+	Message   string            `json:"message"`
+	Logs      string            `json:"logs"`
 }
 
-func ReportError(logger *logger.Logger, serviceUrl string, errReport ErrorReport) {
-	// make our state a string
-	stateBytes, err := json.Marshal(errReport.State)
-	if err != nil {
-		logger.Errorf("error marshalling error report: %+v", errReport)
-		return
-	}
-	errReport.State = string(stateBytes)
-
-	endpoint, err := bzhttp.BuildEndpoint(serviceUrl, errorEndpoint)
-	if err != nil {
-		logger.Errorf("failed to build error report endpoint: %+v", err)
-	}
-
+func ReportError(logger *logger.Logger, ctx context.Context, serviceUrl string, errReport ErrorReport) {
 	// Marshall the request
 	errBytes, err := json.Marshal(errReport)
 	if err != nil {
 		logger.Errorf("error marshalling error report: %+v", errReport)
 		return
 	}
+	body := bytes.NewBuffer(errBytes)
 
-	if resp, err := bzhttp.Post(logger, endpoint, "application/json", errBytes, map[string]string{}, map[string]string{}); err != nil {
-		logger.Errorf("failed to report error: %s, Endpoint: %s, Request: %+v, Response: %+v", err, endpoint, errReport, resp)
+	client, err := httpclient.NewWithBackoff(logger, serviceUrl, httpclient.HTTPOptions{
+		Endpoint: errorEndpoint,
+		Body:     body,
+		Headers: http.Header{
+			"Content-Type": {"application/json"},
+		},
+	})
+	if err != nil {
+		logger.Errorf("failed to create our http client: %s", err)
+	}
+
+	if _, err := client.Post(ctx); err != nil {
+		logger.Errorf("failed to report restart: %s, Request: %+v, Response Status: %s", err, errReport)
 	}
 }

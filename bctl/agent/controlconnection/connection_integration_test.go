@@ -71,7 +71,7 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, &privateKey, params, headers, client, mockAgentIdentityProvider)
+		conn, _ := New(logger, cnUrl, privateKey, params, headers, client, mockAgentIdentityProvider)
 
 		return conn
 	}

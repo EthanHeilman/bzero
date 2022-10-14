@@ -90,15 +90,15 @@ func New(
 		sendQueue:             make(chan *am.AgentMessage, 50),
 	}
 
-	if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
-		return nil, err
-	}
-
 	go conn.receive()
 
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
 		defer conn.logger.Infof("Connection has stopped")
+
+		if err := conn.connect(bastionUrl, headers, params); err != nil {
+			return err
+		}
 
 		for {
 			select {
@@ -116,7 +116,7 @@ func New(
 				conn.ready = false
 
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
+				if err := conn.connect(bastionUrl, headers, params); err != nil {
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
@@ -192,7 +192,7 @@ func (c *ControlConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values, privateKey *keypair.PrivateKey) error {
+func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values) error {
 	// Make sure bastionUrl is valid
 	if _, err := url.ParseRequestURI(bastionUrl); err != nil {
 		return err
@@ -301,7 +301,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	// make our request
 	resp, err := client.Get(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making get request to get connection service: %s", err)
 	}
 
 	// Decode and return response

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -12,74 +13,94 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
+	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 	"github.com/google/uuid"
 	"gopkg.in/tomb.v2"
 )
 
+const (
+	// there's nothing magical about the number 3 but we need to guarantee
+	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
+	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
+	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
+	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
+)
+
+type IRegistration interface {
+	Register(logger *logger.Logger, config registration.RegistrationConfig) error
+}
+
 type Config interface {
+	keysplitting.IKeysplittingConfig
+	registration.RegistrationConfig
+	agentidentity.IAgentIdentityTokenStore
+
 	GetTargetId() string
-	GetPrivateKey() *keypair.PrivateKey
-	GetPublicKey() *keypair.PublicKey
-	GetIdpOrgId() string
-	GetIdpProvider() string
 	GetShutdownInfo() (string, map[string]string)
-	GetAgentIdentityToken() string
+	GetServiceUrl() string
 
 	SetVersion(version string) error
 	SetShutdownInfo(reason string, state map[string]string) error
-	SetAgentIdentityToken(string) error
-	SetRegistrationData(serviceUrl string, publickey keypair.PublicKey, privateKey keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
 }
 
 type Agent struct {
 	tmb    tomb.Tomb
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	logger *logger.Logger
 	config Config
 
 	agentType string
 
-	signalChan   <-chan os.Signal
-	registration registration.IRegistration
+	osSignalChan <-chan os.Signal
+	registration IRegistration
 
 	controlConn    connection.Connection
 	controlChannel *controlchannel.ControlChannel
-	serviceUrl     string
 	version        string
 }
 
-func (a *Agent) Run(forceReRegistration bool) error {
+func (a *Agent) Run(forceReRegistration bool) (err error) {
+	defer func() {
+		if err != nil {
+			// TODO: Check if I need to actually be reporting this error
+			a.logger.Error(err)
+		}
+	}()
+
+	a.logger.Info("Agent initialization complete")
+
 	// Report any qualified restarts
 	go a.reportQualifiedShutdown()
-
-	// Make sure our agent version is correct
-	if err := a.config.SetVersion(a.version); err != nil {
-		return err
-	}
 
 	// Register if we aren't already
 	isRegistered := !a.config.GetPublicKey().IsEmpty()
 	if !isRegistered || forceReRegistration {
-		if err := a.registration.Register(a.logger, a.config); err != nil {
-			return err
-		}
+		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
 
-		// If we registered, then we're done here. Registration is designed to
-		// be essentially a command and not fully start up the agent
-		return nil
+		// Regardless of the response, we're done here. Registration is designed to
+		// essentially be a cli command and not fully start up the agent
+		err = a.registration.Register(a.logger, a.config)
+		return err
 	} else {
-		a.logger.Infof("BastionZero Agent is already registered with %s", serviceUrl)
+		a.logger.Infof("BastionZero Agent is already registered with %s", a.config.GetServiceUrl())
+	}
+
+	// Make sure our agent version is correct
+	if err = a.config.SetVersion(a.version); err != nil {
+		return err
 	}
 
 	// Connect the control channel to BastionZero
 	a.logger.Info("Creating connection to BastionZero...")
-	if err := a.startControlChannel(); err != nil {
+	if err = a.startControlChannel(); err != nil {
 		return err
 	}
 
@@ -89,9 +110,11 @@ func (a *Agent) Run(forceReRegistration bool) error {
 		select {
 		case <-a.tmb.Dead():
 			return a.tmb.Err()
+
 		// wait until we recieve a kill signal or other runtime shutdown
-		case signal := <-a.signalChan:
+		case signal := <-a.osSignalChan:
 			return fmt.Errorf("received shutdown signal: %s", signal.String())
+
 		// we should report significant-but-non-fatal errors to bastion.
 		// this action must be separated from monitorControlChannel so that persistent runtime errors do not
 		// prevent the agent from restarting when it stops detecting pings from bastion
@@ -104,15 +127,25 @@ func (a *Agent) Run(forceReRegistration bool) error {
 func (a *Agent) startControlChannel() error {
 	targetId := a.config.GetTargetId()
 	privateKey := a.config.GetPrivateKey()
+	serviceUrl := a.config.GetServiceUrl()
 
 	aipLogger := a.logger.GetComponentLogger("AgentIdentityProvider")
 	agentIdentityProvider := agentidentity.New(
 		aipLogger,
-		a.serviceUrl,
+		serviceUrl,
 		targetId,
 		a.config,
 		privateKey,
 	)
+
+	// TODO: remove this dumb ccId concept
+	ccId := uuid.New().String()
+	ccLogger := a.logger.GetControlChannelLogger(ccId)
+	wsLogger := ccLogger.GetComponentLogger("Websocket")
+	srLogger := ccLogger.GetComponentLogger("SignalR")
+
+	// Make our connection
+	client := signalr.New(srLogger, websocket.New(wsLogger))
 
 	headers := http.Header{}
 	params := url.Values{
@@ -122,17 +155,9 @@ func (a *Agent) startControlChannel() error {
 		"agent_type": {Bzero},
 	}
 
-	// Setup our loggers
-	ccId := uuid.New().String()
-	ccLogger := a.logger.GetControlChannelLogger(ccId)
-	connLogger := ccLogger.GetConnectionLogger("controlchannel")
-	wsLogger := ccLogger.GetComponentLogger("Websocket")
-	srLogger := ccLogger.GetComponentLogger("SignalR")
-
-	// Make our connection
-	client := signalr.New(srLogger, websocket.New(wsLogger))
-
 	// Create our control channel's connection to BastionZero
+	// TODO: we can't interrupt the connection if our agent dies before the initial connection is established
+	connLogger := ccLogger.GetConnectionLogger("controlchannel")
 	if conn, err := controlconnection.New(connLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider); err != nil {
 		return err
 	} else {
@@ -149,6 +174,7 @@ func (a *Agent) Close(reason error) {
 
 	if a.tmb.Alive() {
 		a.tmb.Kill(reason)
+		a.tmb.Wait()
 	}
 
 	if a.controlConn != nil {
@@ -175,7 +201,7 @@ func (a *Agent) reportError(errorReport error) {
 		State:     a.state(),
 	}
 
-	report.ReportError(a.logger, serviceUrl, errReport)
+	report.ReportError(a.logger, a.ctx, a.config.GetServiceUrl(), errReport)
 }
 
 // check whether we're restarting after a qualifying event, and thus need to tell Bastion about it
@@ -184,9 +210,11 @@ func (a *Agent) reportQualifiedShutdown() {
 
 	if shutdownReason == stoppedProcessingPongsMsg || strings.Contains(shutdownReason, controlchannel.ManualRestartMsg) {
 		a.logger.Infof("Notifying Bastion that we restarted because: %s", shutdownReason)
+
 		report.ReportRestart(
 			a.logger,
-			serviceUrl,
+			a.ctx,
+			a.config.GetServiceUrl(),
 			report.RestartReport{
 				TargetId:       a.config.GetTargetId(),
 				AgentPublicKey: a.config.GetPublicKey().String(),

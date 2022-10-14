@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -108,7 +109,9 @@ func reportError(logger *bzlogger.Logger, err error) {
 		},
 	}
 
-	report.ReportError(logger, config[SERVICE_URL].Value, errReport)
+	ctx, cancel := context.WithTimeout(context.TODO(), 30*time.Second)
+	defer cancel()
+	report.ReportError(logger, ctx, config[SERVICE_URL].Value, errReport)
 }
 
 func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {

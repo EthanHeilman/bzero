@@ -5,15 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"runtime/debug"
 	"strings"
-	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bctl/agent/vault"
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
@@ -37,12 +36,6 @@ const (
 
 	prodServiceUrl     = "https://cloud.bastionzero.com/"
 	defaultLogFilePath = "/var/log/bzero/bzero-agent.log"
-
-	// there's nothing magical about the number 3 but we need to guarantee
-	// that the timeout is significantly larger than than the heartrate to avoid a race between receiving and reporting a pong
-	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
-	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
-	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
 
 	// Env var to flag if we are in a kube cluster
 	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
@@ -72,33 +65,37 @@ func main() {
 
 	// Make sure our service url is correctly formatted
 	// This is just a kindness to our devs so that the agent can be more forgiving to malformatted urls
-	if !strings.HasPrefix(serviceUrl, "http") {
-		if url, err := bzhttp.BuildEndpoint("https://", serviceUrl); err == nil {
+	if !strings.HasPrefix(serviceUrl, "https") {
+		combo, err := url.Parse(serviceUrl)
+		if err != nil {
 			fmt.Printf("error adding scheme to serviceUrl %s: %s\n", serviceUrl, err)
-		} else {
-			serviceUrl = url
 		}
+		combo.Scheme = "https"
+		serviceUrl = combo.String()
 	}
 
 	// This sets up our registration object with all relevant information in case we need to register
 	reg := registration.New(serviceUrl, activationToken, registrationKey, targetId, version, environmentId, environmentName, targetName, idpProvider, idpOrgId)
 
+	fmt.Println("starting agent setup")
 	var agent *Agent
 	var err error
 	switch agentType {
 	case Bzero:
-		agent, err = NewSystemDAgent(vault.DefaultVaultDirectory, version, serviceUrl, reg, bzos.OsShutdownChan())
+		agent, err = NewSystemDAgent(vault.DefaultVaultDirectory, version, reg, bzos.OsShutdownChan())
 	case Cluster:
-		agent, err = NewKubeAgent(version, serviceUrl, reg, bzos.OsShutdownChan())
+		agent, err = NewKubeAgent(version, reg, bzos.OsShutdownChan())
 	}
 
 	if err != nil {
+		fmt.Printf("failed to start agent: %s\n %+v", err, debug.Stack())
 		os.Exit(1)
 	}
 
 	// TODO: catch error?
 	agent.Run(forceReRegistration)
 
+	// TODO: do we still need the below?
 	switch agentType {
 	case Cluster:
 
@@ -115,14 +112,38 @@ func main() {
 func NewSystemDAgent(
 	configDir string,
 	version string,
-	serviceUrl string,
-	registration registration.IRegistration,
+	registration *registration.Registration,
 	signalChan <-chan os.Signal,
 ) (*Agent, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	a := &Agent{
+		ctx:          ctx,
+		cancel:       cancel,
+		osSignalChan: signalChan,
+		version:      version,
+		agentType:    Bzero,
+		registration: registration,
+	}
+
+	// This context will allow us to cancel everything concisely
+	go func() {
+		select {
+		case <-a.tmb.Dying():
+			cancel()
+			return
+		case <-a.osSignalChan:
+			cancel()
+			return
+		case <-ctx.Done():
+			return
+		}
+	}()
+
 	config, err := vault.LoadSystemDVault(configDir)
 	if err != nil {
 		return nil, err
 	}
+	a.config = config
 
 	// Create our logger
 	log, err := logger.New(&logger.Config{
@@ -135,6 +156,9 @@ func NewSystemDAgent(
 	log.AddAgentVersion(version)
 	log.AddAgentType(Bzero)
 
+	log.Info("Starting up the BastionZero Agent")
+	a.logger = log
+
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
 	// registration and then it we load it before proceeding
@@ -144,32 +168,50 @@ func NewSystemDAgent(
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
 		if err := config.Reload(); err != nil {
+			a.logger.Error(err)
 			return nil, err
 		}
 	}
 
-	return &Agent{
-		logger:       log,
-		config:       config,
-		agentType:    Bzero,
-		registration: registration,
-	}, nil
+	return a, nil
 }
 
 func NewKubeAgent(
 	version string,
-	serviceUrl string,
-	registration registration.IRegistration,
+	registration *registration.Registration,
 	signalChan <-chan os.Signal,
 ) (*Agent, error) {
-	// Load our vault
-	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
-	defer cancel()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	a := &Agent{
+		ctx:          ctx,
+		cancel:       cancel,
+		version:      version,
+		osSignalChan: signalChan,
+		agentType:    Cluster,
+		registration: registration,
+	}
+
+	// This context will allow us to cancel everything concisely
+	go func() {
+		select {
+		case <-a.tmb.Dying():
+			cancel()
+			return
+		case <-a.osSignalChan:
+			cancel()
+			return
+		case <-ctx.Done():
+			return
+		}
+	}()
+
+	// Load our vault
 	config, err := vault.LoadKubernetesVault(ctx, namespace, targetName)
 	if err != nil {
 		return nil, err
 	}
+	a.config = config
 
 	// Create our logger
 	log, err := logger.New(&logger.Config{
@@ -181,21 +223,19 @@ func NewKubeAgent(
 	log.AddAgentVersion(version)
 	log.AddAgentType(Cluster)
 
+	log.Infof("Starting up the BastionZero %s Agent", getAgentType())
+
 	// Verify we have the correct RBAC permissions
 	if err := rbac.CheckPermissions(log, namespace); err != nil {
-		err = fmt.Errorf("error verifying agent kubernetes setup: %s", err)
+		err = fmt.Errorf("error verifying agent kubernetes setup: %w", err)
 		log.Error(err)
 		return nil, err
 	} else {
 		log.Info("Namespace and service account permissions verified")
 	}
+	a.logger = log
 
-	return &Agent{
-		logger:       log,
-		config:       config,
-		agentType:    Bzero,
-		registration: registration,
-	}, nil
+	return a, nil
 }
 
 func parseFlags() {
