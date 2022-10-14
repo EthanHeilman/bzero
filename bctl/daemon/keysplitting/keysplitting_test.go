@@ -14,8 +14,6 @@ import (
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	log "bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
@@ -41,20 +39,21 @@ var _ = Describe("Daemon keysplitting", func() {
 	daemonPublicKey, daemonPrivateKey, _ := keypair.GenerateKeyPair()
 	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonPrivateKey.String(), daemonPublicKey.String())
 
-	createFakeBzCert := func() {commonbzcert.BZCert {
-		Rand:            "dummyCerRand",
-		SignatureOnRand: "dummyCerRandSignature",
-		InitialIdToken:  "dummyInitialIdToken",
-		CurrentIdToken:  "dummyCurrentIdToken",
-		ClientPublicKey: daemonPublicKey.String(),
+	createFakeBzCert := func() commonbzcert.BZCert {
+		return commonbzcert.BZCert{
+			Rand:            "dummyCerRand",
+			SignatureOnRand: "dummyCerRandSignature",
+			InitialIdToken:  "dummyInitialIdToken",
+			CurrentIdToken:  "dummyCurrentIdToken",
+			ClientPublicKey: daemonPublicKey.String(),
+		}
 	}
-	
 
 	createSUT := func() (*Keysplitting, error) {
 		fakeBZCert := createFakeBzCert()
 		// Reset MockDaemonBZCert and set default mock returns
 		mockBZCert := &bzcert.MockDaemonBZCert{}
-		mockBZCert.On("PrivateKey").Return(&daemonPrivateKey)
+		mockBZCert.On("PrivateKey").Return(daemonPrivateKey)
 		mockBZCert.On("Expired").Return(false)
 		mockBZCert.On("Refresh").Return(nil)
 		mockBZCert.On("Hash").Return(&fakeBZCert)
@@ -89,7 +88,7 @@ var _ = Describe("Daemon keysplitting", func() {
 	buildDataAckWithVersion := func(data *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
 		dataAck, _ := data.BuildUnsignedDataAck(
 			emptyPayload,
-agentPublicKey.String(),
+			agentPublicKey.String(),
 			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
 		dataAck.Sign(agentPrivateKey)
@@ -101,12 +100,6 @@ agentPublicKey.String(),
 
 	// SUT's logger
 	logger = log.MockLogger(GinkgoWriter)
-
-	// Setup keypairs to use for agent and daemon
-	agentKeypair, _ = tests.GenerateEd25519Key()
-	GinkgoWriter.Printf("Agent keypair: Private key: %s; Public key: %s\n", agentKeypair.Base64EncodedPrivateKey, agentKeypair.Base64EncodedPublicKey)
-	daemonKeypair, _ = tests.GenerateEd25519Key()
-	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonKeypair.Base64EncodedPrivateKey, daemonKeypair.Base64EncodedPublicKey)
 
 	Context("Creation", func() {
 		When("creating a new keysplitter", func() {
@@ -164,30 +157,6 @@ agentPublicKey.String(),
 
 			It("sends the syn to the outbox", func() {
 				Expect(syn).To(Equal(outboxSyn))
-			})
-		})
-
-		When("the bzcert returns a bad key", func() {
-			var syn *ksmsg.KeysplittingMessage
-			var synError error
-
-			BeforeEach(func() {
-				fakeBZCert := createFakeBzCert()
-
-				badBZCert := &bzcert.MockDaemonBZCert{}
-				badBZCert.On("Refresh").Return(nil)
-				badBZCert.On("Cert").Return(&fakeBZCert)
-				badBZCert.On("PrivateKey").Return(&keypair.PrivateKey{key:[]byte("badkey")})
-
-				sut, err := New(logger, agentKeypair.Base64EncodedPublicKey, badBZCert)
-				Expect(err).ShouldNot(HaveOccurred())
-
-				syn, synError = sut.BuildSyn(testAction, emptyPayload, true)
-			})
-
-			It("fails to build the syn", func() {
-				Expect(syn).To(BeNil())
-				Expect(synError.Error()).To(ContainSubstring(ErrFailedToSign.Error()))
 			})
 		})
 
