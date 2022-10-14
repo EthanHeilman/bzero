@@ -9,11 +9,13 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	rrr "bastionzero.com/bctl/v1/bzerolib/error"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	commonbzcert "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	log "bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
@@ -27,36 +29,39 @@ func TestDaemonKeysplitting(t *testing.T) {
 
 var _ = Describe("Daemon keysplitting", func() {
 	var logger *log.Logger
-	var daemonKeypair *tests.Ed25519KeyPair
-	var agentKeypair *tests.Ed25519KeyPair
 	emptyPayload := []byte{}
 
 	const testAction string = "test/action"
 	const prePipeliningVersion string = "1.9"
 	const preSynAckNonceChangeVersion string = "2.0"
 
-	createFakeBzCert := func() commonbzcert.BZCert {
-		return commonbzcert.BZCert{
-			Rand:            "dummyCerRand",
-			SignatureOnRand: "dummyCerRandSignature",
-			InitialIdToken:  "dummyInitialIdToken",
-			CurrentIdToken:  "dummyCurrentIdToken",
-			ClientPublicKey: daemonKeypair.Base64EncodedPublicKey,
-		}
+	// Setup keypairs to use for agent and daemon
+	agentPublicKey, agentPrivateKey, _ := keypair.GenerateKeyPair()
+	GinkgoWriter.Printf("Agent keypair: Private key: %s; Public key: %s\n", agentPrivateKey.String(), agentPublicKey.String())
+	daemonPublicKey, daemonPrivateKey, _ := keypair.GenerateKeyPair()
+	GinkgoWriter.Printf("Daemon keypair: Private key: %s; Public key: %s\n", daemonPrivateKey.String(), daemonPublicKey.String())
+
+	createFakeBzCert := func() {commonbzcert.BZCert {
+		Rand:            "dummyCerRand",
+		SignatureOnRand: "dummyCerRandSignature",
+		InitialIdToken:  "dummyInitialIdToken",
+		CurrentIdToken:  "dummyCurrentIdToken",
+		ClientPublicKey: daemonPublicKey.String(),
 	}
+	
 
 	createSUT := func() (*Keysplitting, error) {
 		fakeBZCert := createFakeBzCert()
 		// Reset MockDaemonBZCert and set default mock returns
 		mockBZCert := &bzcert.MockDaemonBZCert{}
-		mockBZCert.On("PrivateKey").Return(daemonKeypair.Base64EncodedPrivateKey)
+		mockBZCert.On("PrivateKey").Return(&daemonPrivateKey)
 		mockBZCert.On("Expired").Return(false)
 		mockBZCert.On("Refresh").Return(nil)
 		mockBZCert.On("Hash").Return(&fakeBZCert)
 		mockBZCert.On("Cert").Return(&fakeBZCert)
 
 		// Init the SUT
-		return New(logger, agentKeypair.Base64EncodedPublicKey, mockBZCert)
+		return New(logger, &agentPublicKey, mockBZCert)
 	}
 
 	getSchemaVersionAsSemVer := func(agentSchemaVersion string) *semver.Version {
@@ -67,11 +72,11 @@ var _ = Describe("Daemon keysplitting", func() {
 	buildSynAckWithNonce := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string, nonce string) *ksmsg.KeysplittingMessage {
 		synAck, _ := syn.BuildUnsignedSynAck(
 			emptyPayload,
-			agentKeypair.Base64EncodedPublicKey,
+			agentPublicKey.String(),
 			nonce,
 			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
-		synAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+		synAck.Sign(&agentPrivateKey)
 		return &synAck
 	}
 	buildSynAckWithVersion := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
@@ -84,10 +89,10 @@ var _ = Describe("Daemon keysplitting", func() {
 	buildDataAckWithVersion := func(data *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
 		dataAck, _ := data.BuildUnsignedDataAck(
 			emptyPayload,
-			agentKeypair.Base64EncodedPublicKey,
+agentPublicKey.String(),
 			getSchemaVersionAsSemVer(agentSchemaVersion).String(),
 		)
-		dataAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+		dataAck.Sign(&agentPrivateKey)
 		return &dataAck
 	}
 	buildDataAck := func(data *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
@@ -143,7 +148,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(syn.Type).To(Equal(ksmsg.Syn))
 
 				By("Validly signing the message")
-				Expect(syn.VerifySignature(daemonKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
+				Expect(syn.VerifySignature(&daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating a SYN payload")
 				synPayload, ok := syn.KeysplittingPayload.(ksmsg.SynPayload)
@@ -172,7 +177,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				badBZCert := &bzcert.MockDaemonBZCert{}
 				badBZCert.On("Refresh").Return(nil)
 				badBZCert.On("Cert").Return(&fakeBZCert)
-				badBZCert.On("PrivateKey").Return("badkey")
+				badBZCert.On("PrivateKey").Return(&keypair.PrivateKey{key:[]byte("badkey")})
 
 				sut, err := New(logger, agentKeypair.Base64EncodedPublicKey, badBZCert)
 				Expect(err).ShouldNot(HaveOccurred())
@@ -194,7 +199,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				refreshError := errors.New("refresh error")
 				badBZCert.On("Refresh").Return(refreshError)
 
-				sut, err := New(logger, agentKeypair.Base64EncodedPublicKey, badBZCert)
+				sut, err := New(logger, &agentPublicKey, badBZCert)
 				Expect(err).ShouldNot(HaveOccurred())
 
 				_, synError = sut.BuildSyn(testAction, emptyPayload, true)
@@ -290,7 +295,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(data.Type).To(Equal(ksmsg.Data))
 
 				By("Signing with a valid signature")
-				Expect(data.VerifySignature(daemonKeypair.Base64EncodedPublicKey)).ShouldNot(HaveOccurred())
+				Expect(data.VerifySignature(&daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating the appropriate type of payload")
 				dataPayload, ok := data.KeysplittingPayload.(ksmsg.DataPayload)
@@ -329,7 +334,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				synAck.KeysplittingPayload = synAckPayload
 
 				// sign again since we just changed a value
-				synAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+				synAck.Sign(&agentPrivateKey)
 
 				validateErr = sut.Validate(synAck)
 			})
@@ -352,7 +357,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				synAck.KeysplittingPayload = synAckPayload
 
 				// sign again since we just changed a value
-				synAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+				synAck.Sign(&agentPrivateKey)
 
 				validateErr = sut.Validate(synAck)
 			})
@@ -404,8 +409,8 @@ var _ = Describe("Daemon keysplitting", func() {
 				sut, err := createSUT()
 				Expect(err).ShouldNot(HaveOccurred())
 
-				diffAgentKeypair, _ := tests.GenerateEd25519Key()
-				sut.agentPubKey = diffAgentKeypair.Base64EncodedPublicKey
+				diffPublicKey, _, _ := keypair.GenerateKeyPair()
+				sut.agentPubKey = &diffPublicKey
 
 				synAck := buildValidSynAck(sut)
 				validateErr = sut.Validate(synAck)
@@ -466,7 +471,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				dataAck.KeysplittingPayload = dataAckPayload
 
 				// sign again since we just changed a value
-				dataAck.Sign(agentKeypair.Base64EncodedPrivateKey)
+				dataAck.Sign(&agentPrivateKey)
 
 				validateErr = sut.Validate(dataAck)
 			})

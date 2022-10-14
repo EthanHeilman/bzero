@@ -2,7 +2,6 @@ package controlchannel
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +19,7 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 
 	"gopkg.in/tomb.v2"
@@ -48,7 +48,7 @@ type ControlChannel struct {
 
 	ksConfig              keysplitting.IKeysplittingConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	privateKey            ed25519.PrivateKey
+	privateKey            *keypair.PrivateKey
 
 	// variables for opening connections
 	serviceUrl string
@@ -81,7 +81,7 @@ func Start(logger *logger.Logger,
 	serviceUrl string,
 	targetType string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	privateKey ed25519.PrivateKey,
+	privateKey *keypair.PrivateKey,
 	ksConfig keysplitting.IKeysplittingConfig,
 ) (*ControlChannel, error) {
 
@@ -252,7 +252,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.messageSigner, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary

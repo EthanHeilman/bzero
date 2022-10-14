@@ -231,6 +231,40 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 	return s.save()
 }
 
+func (s *SystemDVault) SetRegistrationData(
+	serviceUrl string,
+	publickey keypair.PublicKey,
+	privateKey keypair.PrivateKey,
+	idpProvider string,
+	idpOrgId string,
+	targetId string,
+) error {
+
+	s.vaultLock.Lock()
+	defer s.vaultLock.Unlock()
+
+	currentVault, err := s.fetchVault()
+	if err != nil {
+		return fmt.Errorf("failed to load vault: %w", err)
+	}
+
+	// If our private keys are mismatched, it means a new registration
+	// has happened and we shouldn't write anything
+	if !(&s.data.PrivateKey).Equals(currentVault.PrivateKey) {
+		return fmt.Errorf("new registration detected, reload vault")
+	}
+
+	currentVault.ServiceUrl = serviceUrl
+	currentVault.PublicKey = publickey
+	currentVault.PrivateKey = privateKey
+	currentVault.IdpProvider = idpProvider
+	currentVault.IdpOrgId = idpOrgId
+	currentVault.TargetId = targetId
+
+	s.data = currentVault
+	return s.save()
+}
+
 func (s *SystemDVault) save() error {
 	// grab our file lock so we're not accidentally writing at the same time
 	// as other processes which is possible during registration
@@ -262,7 +296,7 @@ func (s *SystemDVault) save() error {
 	return nil
 }
 
-func (s *SystemDVault) WaitForRegistration(cancel <-chan struct{}) error {
+func (s *SystemDVault) WaitForRegistration(cancel <-chan os.Signal) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("error starting new file watcher: %w", err)
@@ -274,7 +308,7 @@ func (s *SystemDVault) WaitForRegistration(cancel <-chan struct{}) error {
 		for {
 			select {
 			case <-cancel:
-				done <- nil
+				done <- fmt.Errorf("cancelled")
 				return
 			case event, ok := <-watcher.Events:
 				if !ok {

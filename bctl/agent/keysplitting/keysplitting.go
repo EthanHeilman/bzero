@@ -1,11 +1,10 @@
 package keysplitting
 
 import (
-	"crypto/ed25519"
 	"fmt"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -20,8 +19,9 @@ type Keysplitting struct {
 	lastDataMessage  *ksmsg.KeysplittingMessage
 	expectedHPointer string
 	clientBZCert     *bzcrt.BZCert // only for one client
-	publickey        string
-	privatekey       string
+	clientPublicKey  *keypair.PublicKey
+	publickey        *keypair.PublicKey
+	privatekey       *keypair.PrivateKey
 	idpProvider      string
 	idpOrgId         string
 
@@ -32,8 +32,8 @@ type Keysplitting struct {
 }
 
 type IKeysplittingConfig interface {
-	GetPublicKey() string
-	GetPrivateKey() ed25519.PrivateKey
+	GetPublicKey() *keypair.PublicKey
+	GetPrivateKey() *keypair.PrivateKey
 	GetIdpProvider() string
 	GetIdpOrgId() string
 }
@@ -46,7 +46,6 @@ func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, erro
 
 	return &Keysplitting{
 		logger:              logger,
-		expectedHPointer:    "",
 		publickey:           config.GetPublicKey(),
 		privatekey:          config.GetPrivateKey(),
 		idpProvider:         config.GetIdpProvider(),
@@ -66,8 +65,14 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
 		}
 
+		if pubkey, err := keypair.PublicKeyFromString(bzcert.ClientPublicKey); err != nil {
+			return fmt.Errorf("malformatted public key: %s", bzcert.ClientPublicKey)
+		} else {
+			k.clientPublicKey = pubkey
+		}
+
 		// Verify the signature
-		if err := ksMessage.VerifySignature(bzcert.ClientPublicKey); err != nil {
+		if err := ksMessage.VerifySignature(k.clientPublicKey); err != nil {
 			return fmt.Errorf("failed to verify SYN's signature: %w", err)
 		}
 
@@ -85,7 +90,7 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		// TODO: CWC-1553: Always check TargetId once all daemons have updated
 		if k.shouldCheckTargetId.Check(v) {
 			// Verify SYN message commits to this agent's cryptographic identity
-			if synPayload.TargetId != k.publickey {
+			if synPayload.TargetId != k.publickey.String() {
 				return fmt.Errorf("SYN's TargetId did not match agent's public key")
 			}
 		}
@@ -100,7 +105,7 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 		}
 
 		// Verify the signature
-		if err := ksMessage.VerifySignature(k.clientBZCert.ClientPublicKey); err != nil {
+		if err := ksMessage.VerifySignature(k.clientPublicKey); err != nil {
 			return err
 		}
 
@@ -144,10 +149,10 @@ func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action str
 			}
 		}
 
-		responseMessage, err = ksMessage.BuildUnsignedSynAck(actionPayload, k.publickey, nonce, schemaVersion.String())
+		responseMessage, err = ksMessage.BuildUnsignedSynAck(actionPayload, k.publickey.String(), nonce, schemaVersion.String())
 
 	case ksmsg.Data:
-		responseMessage, err = ksMessage.BuildUnsignedDataAck(actionPayload, k.publickey, schemaVersion.String())
+		responseMessage, err = ksMessage.BuildUnsignedDataAck(actionPayload, k.publickey.String(), schemaVersion.String())
 	default:
 
 	}
@@ -165,7 +170,7 @@ func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action str
 }
 
 func (k *Keysplitting) getSchemaVersionToUse() (*semver.Version, error) {
-	agentVersion, err := semver.NewVersion(message.SchemaVersion)
+	agentVersion, err := semver.NewVersion(ksmsg.SchemaVersion)
 	if err != nil {
 		return nil, err
 	}

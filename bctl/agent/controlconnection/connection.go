@@ -15,7 +15,6 @@ package controlconnection
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -33,6 +32,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -65,7 +65,7 @@ type ControlConnection struct {
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 
 	// signing key
-	privateKey ed25519.PrivateKey
+	privateKey *keypair.PrivateKey
 
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
@@ -74,7 +74,7 @@ type ControlConnection struct {
 func New(
 	logger *logger.Logger,
 	bastionUrl string,
-	privateKey ed25519.PrivateKey,
+	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
@@ -192,7 +192,7 @@ func (c *ControlConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values, privateKey string) error {
+func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values, privateKey *keypair.PrivateKey) error {
 	// Make sure bastionUrl is valid
 	if _, err := url.ParseRequestURI(bastionUrl); err != nil {
 		return err
@@ -327,10 +327,7 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 	}
 
 	// Sign the message
-	sig, err := c.messageSigner.SignMessage(getControlChannelPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign getControlChannel message: %w", err)
-	}
+	sig := c.privateKey.Sign(getControlChannelPayload)
 
 	// Build the http client and request
 	options := httpclient.HTTPOptions{
@@ -381,10 +378,7 @@ func (c *ControlConnection) buildOpenControlChannelMessage(version string, conne
 	}
 
 	// Sign the message
-	sig, err := c.messageSigner.SignMessage(openControlChannelPayload)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to sign openControlChannel message %w", err)
-	}
+	sig := c.privateKey.Sign(openControlChannelPayload)
 
 	return base64.StdEncoding.EncodeToString(openControlChannelPayload), sig, nil
 }

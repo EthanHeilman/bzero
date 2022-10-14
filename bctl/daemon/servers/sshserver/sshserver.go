@@ -17,6 +17,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -45,7 +46,7 @@ type SshServer struct {
 	hostNames      []string
 
 	// fields for new datachannels
-	agentPubKey string
+	agentPubKey *keypair.PublicKey
 	cert        *bzcert.DaemonBZCert
 
 	tmb tomb.Tomb
@@ -60,7 +61,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 	identityFile string,
 	knownHostsFile string,
 	hostNames []string,

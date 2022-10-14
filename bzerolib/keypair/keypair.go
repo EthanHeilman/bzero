@@ -19,6 +19,23 @@ type PrivateKey struct {
 	privateKey ed25519.PrivateKey
 }
 
+func PrivateKeyFromString(privatekey string) (*PrivateKey, error) {
+	privateKeyBytes, err := base64.StdEncoding.DecodeString(privatekey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to base64 decode private key: %w", err)
+	}
+
+	// The golang ed25519 library uses a length 64 private key because the
+	// private key is in the concatenated form privatekey = privatekey + publickey.
+	if len(privateKeyBytes) == 64 {
+		return &PrivateKey{
+			privateKey: ed25519.PrivateKey(privateKeyBytes),
+		}, nil
+	} else {
+		return nil, fmt.Errorf("malformatted private key of incorrect length: %d", len(privateKeyBytes))
+	}
+}
+
 func (priv *PrivateKey) Sign(content []byte) string {
 	sig := ed25519.Sign(priv.privateKey, content)
 	return base64.StdEncoding.EncodeToString(sig)
@@ -28,12 +45,27 @@ func (priv *PrivateKey) Equals(key PrivateKey) bool {
 	return bytes.Equal(priv.privateKey, key.privateKey)
 }
 
+func (priv *PrivateKey) String() string {
+	return base64.StdEncoding.EncodeToString([]byte(priv.privateKey))
+}
+
 type PublicKey struct {
 	publicKey ed25519.PublicKey
 }
 
+func PublicKeyFromString(publickey string) (*PublicKey, error) {
+	publickeyBytes, err := base64.StdEncoding.DecodeString(publickey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode base64 string: %s", publickey)
+	}
+
+	return &PublicKey{
+		publicKey: ed25519.PublicKey(publickeyBytes),
+	}, nil
+}
+
 func (pub *PublicKey) IsEmpty() bool {
-	return len([]byte(pub.publicKey)) == 0
+	return pub.publicKey == nil
 }
 
 func (pub *PublicKey) String() string {

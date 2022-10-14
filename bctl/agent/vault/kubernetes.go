@@ -3,11 +3,11 @@ package vault
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
 	"encoding/gob"
 	"fmt"
 	"sync"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -109,18 +109,18 @@ func (k *KubernetesVault) fetchVault() (vault, error) {
 	}
 }
 
-func (k *KubernetesVault) GetPublicKey() string {
+func (k *KubernetesVault) GetPublicKey() *keypair.PublicKey {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
-	return k.data.PublicKey
+	return &k.data.PublicKey
 }
 
-func (k *KubernetesVault) GetPrivateKey() ed25519.PrivateKey {
+func (k *KubernetesVault) GetPrivateKey() *keypair.PrivateKey {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
-	return k.data.PrivateKey
+	return &k.data.PrivateKey
 }
 
 func (k *KubernetesVault) GetIdpOrgId() string {
@@ -144,6 +144,20 @@ func (k *KubernetesVault) GetAgentIdentityToken() string {
 	return k.data.AgentIdentityToken
 }
 
+func (k *KubernetesVault) GetTargetId() string {
+	k.vaultLock.RLock()
+	defer k.vaultLock.RUnlock()
+
+	return k.data.TargetId
+}
+
+func (k *KubernetesVault) GetShutdownInfo() (string, map[string]string) {
+	k.vaultLock.RLock()
+	defer k.vaultLock.RUnlock()
+
+	return k.data.ShutdownReason, k.data.ShutdownState
+}
+
 func (k *KubernetesVault) SetVersion(version string) error {
 	k.vaultLock.Lock()
 	defer k.vaultLock.Unlock()
@@ -156,7 +170,7 @@ func (k *KubernetesVault) SetVersion(version string) error {
 
 	// If our private keys are mismatched, it means a new registration
 	// has happened and we shouldn't write anything
-	if !bytes.Equal(k.data.PrivateKey, currentVault.PrivateKey) {
+	if !(&k.data.PrivateKey).Equals(currentVault.PrivateKey) {
 		return fmt.Errorf("new registration detected, reload vault")
 	}
 
@@ -166,7 +180,7 @@ func (k *KubernetesVault) SetVersion(version string) error {
 	return k.save()
 }
 
-func (k *KubernetesVault) SetShutdown(reason string, state map[string]string) error {
+func (k *KubernetesVault) SetShutdownInfo(reason string, state map[string]string) error {
 	k.vaultLock.Lock()
 	defer k.vaultLock.Unlock()
 
@@ -189,6 +203,41 @@ func (k *KubernetesVault) SetAgentIdentityToken(token string) error {
 
 	k.data.AgentIdentityToken = token
 
+	return k.save()
+}
+
+func (k *KubernetesVault) SetRegistrationData(
+	serviceUrl string,
+	publickey keypair.PublicKey,
+	privateKey keypair.PrivateKey,
+	idpProvider string,
+	idpOrgId string,
+	targetId string,
+) error {
+
+	k.vaultLock.Lock()
+	defer k.vaultLock.Unlock()
+
+	currentVault, err := k.fetchVault()
+	if err != nil {
+		return fmt.Errorf("failed to load vault: %w", err)
+	}
+
+	// TODO: think through this
+	// If our private keys are mismatched, it means a new registration
+	// has happened and we shouldn't write anything
+	if !(&k.data.PrivateKey).Equals(currentVault.PrivateKey) {
+		return fmt.Errorf("new registration detected, reload vault")
+	}
+
+	currentVault.ServiceUrl = serviceUrl
+	currentVault.PublicKey = publickey
+	currentVault.PrivateKey = privateKey
+	currentVault.IdpProvider = idpProvider
+	currentVault.IdpOrgId = idpOrgId
+	currentVault.TargetId = targetId
+
+	k.data = currentVault
 	return k.save()
 }
 

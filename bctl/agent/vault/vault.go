@@ -33,10 +33,6 @@ type vault struct {
 	// URL of our Bastion
 	ServiceUrl string
 
-	// Policy environment identifiers
-	EnvironmentId   string
-	EnvironmentName string
-
 	// For reporting back to BastionZero why the agent shutdown
 	ShutdownReason string
 	ShutdownState  map[string]string

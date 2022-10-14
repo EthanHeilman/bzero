@@ -3,6 +3,7 @@ package bzcert
 import (
 	"encoding/base64"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	mock "github.com/stretchr/testify/mock"
@@ -35,9 +36,9 @@ func (m *MockDaemonBZCert) Hash() string {
 	return base64.StdEncoding.EncodeToString(hashBytes)
 }
 
-func (m *MockDaemonBZCert) PrivateKey() string {
+func (m *MockDaemonBZCert) PrivateKey() *keypair.PrivateKey {
 	args := m.Called()
-	return args.String(0)
+	return args.Get(0).(*keypair.PrivateKey)
 }
 
 func (m *MockDaemonBZCert) Expired() bool {

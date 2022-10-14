@@ -10,8 +10,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"bastionzero.com/bctl/v1/bzerolib/tests/connectionnode"
 	"bastionzero.com/bctl/v1/bzerolib/tests/server"
@@ -28,13 +28,12 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	params := url.Values{}
 	headers := http.Header{}
 
-	fakeKeyPair, _ := tests.GenerateEd25519Key()
-	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	connectionId := uuid.New().String()
 
 	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
-	mockKeysplittingConfig.On("GetPrivateKey").Return(fakeKeyPair.Base64EncodedPrivateKey)
-	mockKeysplittingConfig.On("GetPublicKey").Return(fakeKeyPair.Base64EncodedPublicKey)
+	mockKeysplittingConfig.On("GetPrivateKey").Return(privateKey)
+	mockKeysplittingConfig.On("GetPublicKey").Return(publicKey)
 
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
@@ -45,7 +44,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, client)
+		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, &privateKey, params, headers, client)
 
 		return conn
 	}

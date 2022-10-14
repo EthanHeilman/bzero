@@ -19,6 +19,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzkube "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
@@ -57,7 +58,7 @@ type KubeServer struct {
 	// fields for new datachannels
 	targetUser   string
 	targetGroups []string
-	agentPubKey  string
+	agentPubKey  *keypair.PublicKey
 	localPort    string
 	localHost    string
 }
@@ -76,7 +77,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 ) (*KubeServer, error) {
 
 	server := &KubeServer{
