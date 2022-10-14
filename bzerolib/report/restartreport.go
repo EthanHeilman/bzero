@@ -26,7 +26,7 @@ func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string
 	// Marshall the request
 	restartBytes, err := json.Marshal(restartReport)
 	if err != nil {
-		logger.Errorf("error marshalling restart report: %+v", restartReport)
+		logger.Errorf("error marshalling restart report: %s", err)
 		return
 	}
 	body := bytes.NewBuffer(restartBytes)

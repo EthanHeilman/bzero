@@ -77,7 +77,6 @@ func main() {
 	// This sets up our registration object with all relevant information in case we need to register
 	reg := registration.New(serviceUrl, activationToken, registrationKey, targetId, version, environmentId, environmentName, targetName, idpProvider, idpOrgId)
 
-	fmt.Println("starting agent setup")
 	var agent *Agent
 	var err error
 	switch agentType {
@@ -88,7 +87,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Printf("failed to start agent: %s\n %+v", err, debug.Stack())
+		fmt.Printf("ERROR: failed to start agent: %s\n %+v", err, debug.Stack())
 		os.Exit(1)
 	}
 
