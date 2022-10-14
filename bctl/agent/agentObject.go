@@ -45,9 +45,8 @@ type Agent struct {
 
 	agentType string
 
-	signalChan        <-chan os.Signal
-	agentShutdownChan chan error
-	registration      registration.IRegistration
+	signalChan   <-chan os.Signal
+	registration registration.IRegistration
 
 	controlConn    connection.Connection
 	controlChannel *controlchannel.ControlChannel
@@ -56,6 +55,9 @@ type Agent struct {
 }
 
 func (a *Agent) Run(forceReRegistration bool) error {
+	// Report any qualified restarts
+	go a.reportQualifiedShutdown()
+
 	// Make sure our agent version is correct
 	if err := a.config.SetVersion(a.version); err != nil {
 		return err
@@ -81,10 +83,12 @@ func (a *Agent) Run(forceReRegistration bool) error {
 		return err
 	}
 
-	go a.monitorControlChannel()
+	a.tmb.Go(a.monitorControlChannel)
 
 	for {
 		select {
+		case <-a.tmb.Dead():
+			return a.tmb.Err()
 		// wait until we recieve a kill signal or other runtime shutdown
 		case signal := <-a.signalChan:
 			return fmt.Errorf("received shutdown signal: %s", signal.String())
@@ -93,8 +97,6 @@ func (a *Agent) Run(forceReRegistration bool) error {
 		// prevent the agent from restarting when it stops detecting pings from bastion
 		case runtimeErr := <-a.controlChannel.RuntimeErr():
 			a.reportError(runtimeErr)
-		case err := <-a.agentShutdownChan:
-			return err
 		}
 	}
 }
@@ -177,7 +179,7 @@ func (a *Agent) reportError(errorReport error) {
 }
 
 // check whether we're restarting after a qualifying event, and thus need to tell Bastion about it
-func (a *Agent) checkShutdownReason() {
+func (a *Agent) reportQualifiedShutdown() {
 	shutdownReason, shutdownState := a.config.GetShutdownInfo()
 
 	if shutdownReason == stoppedProcessingPongsMsg || strings.Contains(shutdownReason, controlchannel.ManualRestartMsg) {
@@ -195,7 +197,7 @@ func (a *Agent) checkShutdownReason() {
 	}
 }
 
-func (a *Agent) monitorControlChannel() {
+func (a *Agent) monitorControlChannel() error {
 	maximumMissedPongSets := int(controlconnection.MaximumReconnectWaitTime / bastionDisconnectTimeout)
 	missedPongSets := 0
 
@@ -215,14 +217,13 @@ func (a *Agent) monitorControlChannel() {
 			} else {
 				// if we don't hear from the CC but its websocket is still alive, assume the CC is broken and restart
 				a.logger.Errorf("%s -- Initializing restart...", stoppedProcessingPongsMsg)
-				a.agentShutdownChan <- fmt.Errorf(stoppedProcessingPongsMsg)
-				return
+				a.controlChannel.Close(a.tmb.Err())
+				return fmt.Errorf(stoppedProcessingPongsMsg)
 			}
 		case <-a.controlChannel.Done():
 			// if the CC is reporting done, its websocket is probably dead, or some other fatal error occurred
 			a.logger.Errorf("control channel closed with error: %s -- Initializing restart...", a.controlChannel.Err())
-			a.agentShutdownChan <- fmt.Errorf("control channel closed with error: %s", a.controlChannel.Err())
-			return
+			return fmt.Errorf("control channel closed with error: %s", a.controlChannel.Err())
 		}
 	}
 }

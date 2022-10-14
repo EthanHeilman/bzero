@@ -230,6 +230,7 @@ func parseFlags() {
 	// Parse any flag
 	flag.Parse()
 
+	// TODO: is this safe to remove our cluster check? I feel like we should support environment variables for vault-using customers
 	// The environment will overwrite any flags passed
 	serviceUrl = os.Getenv("SERVICE_URL")
 	activationToken = os.Getenv("ACTIVATION_TOKEN")
