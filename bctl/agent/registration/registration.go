@@ -1,15 +1,13 @@
 package registration
 
 import (
-	ed "crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -22,98 +20,114 @@ const (
 	getConnectionServiceEndpoint = "/api/v2/connection-service/url"
 )
 
+type RegistrationConfig interface {
+	SetRegistrationData(serviceUrl string, publickey *keypair.PublicKey, privateKey *keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
+}
+
 type Registration struct {
-	logger     *logger.Logger
-	config     *vault.Vault
-	serviceUrl string
+	logger *logger.Logger
+
+	serviceUrl      string
+	activationToken string
+	registrationKey string
+	targetId        string
+	version         string
+	environmentId   string
+	environmentName string
+	targetName      string
+	idpProvider     string
+	idpOrgId        string
 }
 
-func Register(logger *logger.Logger, serviceUrl string, activationToken string, apiKey string, targetId string) error {
-	if config, err := vault.LoadVault(); err != nil {
-		return fmt.Errorf("could not load vault: %s", err)
-
-	} else {
-		// Check we have all our requried args
-		if activationToken == "" && apiKey == "" {
-			return fmt.Errorf("in order to register, we need either an api or activation token")
-		}
-
-		logger.Infof("Registering agent with %s", serviceUrl)
-
-		// Create our registration struct and actually register
-		reg := Registration{
-			logger:     logger,
-			config:     config,
-			serviceUrl: serviceUrl,
-		}
-
-		// Generate and store our public, private key pair and add to config
-		if err := reg.generateKeys(); err != nil {
-			return err
-		}
-
-		// Complete registration with the Bastion
-		if err := reg.phoneHome(activationToken, apiKey, targetId); err != nil {
-			return err
-		}
-
-		// If the registration went ok, save the config
-		if err := reg.config.Save(); err != nil {
-			return fmt.Errorf("error saving vault: %s", err)
-		}
-
-		logger.Info("Registration complete!")
-		return nil
+func New(
+	serviceUrl string,
+	activationToken string,
+	apiKey string,
+	targetId string,
+	version string,
+	environmentId string,
+	environmentName string,
+	targetName string,
+	idpProvider string,
+	idpOrgId string,
+) *Registration {
+	return &Registration{
+		serviceUrl:      serviceUrl,
+		activationToken: activationToken,
+		registrationKey: apiKey,
+		targetId:        targetId,
+		version:         version,
+		environmentId:   environmentId,
+		environmentName: environmentName,
+		targetName:      targetName,
+		idpProvider:     idpProvider,
+		idpOrgId:        idpOrgId,
 	}
 }
 
-func (r *Registration) generateKeys() error {
-	// Generate public, secret key pair and convert to strings
-	publicKey, privateKey, err := ed.GenerateKey(nil)
+func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig) error {
+	// Check we have all our requried args
+	if r.activationToken == "" && r.registrationKey == "" {
+		return fmt.Errorf("in order to register, we need either an api key or an activation token")
+	}
+
+	r.logger = logger
+	r.logger.Infof("Registering agent with %s", r.serviceUrl)
+
+	// Generate and store our public, private key pair and add to config
+	publicKey, privateKey, err := keypair.GenerateKeyPair()
 	if err != nil {
-		return fmt.Errorf("error generating key pair: %v", err.Error())
+		return err
 	}
-	r.config.Data.PublicKey = base64.StdEncoding.EncodeToString([]byte(publicKey))
-	r.config.Data.PrivateKey = base64.StdEncoding.EncodeToString([]byte(privateKey))
-
 	r.logger.Info("Generated cryptographic identity")
+
+	r.logger.Info("Phoning home to BastionZero...")
+	// Complete registration with the Bastion
+	if err := r.phoneHome(publicKey); err != nil {
+		return err
+	}
+
+	r.logger.Info("Agent successfully Registered.  BastionZero says hi.")
+
+	// If the registration went ok, save the config
+	if err := config.SetRegistrationData(r.serviceUrl, publicKey, privateKey, r.idpProvider, r.idpOrgId, r.targetId); err != nil {
+		return fmt.Errorf("error saving config: %w", err)
+	}
+
+	r.logger.Info("Registration complete!")
 	return nil
 }
 
-func (r *Registration) phoneHome(activationToken string, apiKey string, targetId string) error {
+func (r *Registration) phoneHome(publickey *keypair.PublicKey) error {
 	// If we don't have an activation token, use api key to get one
-	if activationToken == "" {
-		if token, err := r.getActivationToken(apiKey); err != nil {
+	if r.activationToken == "" {
+		if token, err := r.getActivationToken(r.registrationKey); err != nil {
 			return err
 		} else {
-			activationToken = token
+			r.activationToken = token
 		}
 	}
 
 	// Register with Bastion
-	r.logger.Info("Phoning home to BastionZero...")
-
-	if resp, err := r.getRegistrationResponse(activationToken, targetId); err != nil {
+	if resp, err := r.getRegistrationResponse(publickey); err != nil {
 		return err
 	} else {
 		// only replace, if values were undefined by user
-		if r.config.Data.IdpProvider == "" {
-			r.config.Data.IdpProvider = resp.OrgProvider
+		if r.idpProvider == "" {
+			r.idpProvider = resp.OrgProvider
 		}
-		if r.config.Data.IdpOrgId == "" {
-			r.config.Data.IdpOrgId = resp.OrgID
+		if r.idpOrgId == "" {
+			r.idpOrgId = resp.OrgID
 		}
 
 		// set our remaining values
-		r.config.Data.TargetName = resp.TargetName
+		r.targetName = resp.TargetName
 
 		// If targetId is empty, that means to use the activationToken as the id of the target
-		if targetId == "" {
-			targetId = activationToken
+		if r.targetId == "" {
+			r.targetId = r.activationToken
 		}
-		r.config.Data.TargetId = targetId
 
-		r.logger.Info("Agent successfully Registered.  BastionZero says hi.")
 		return nil
 	}
 }
@@ -126,7 +140,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	}
 
 	req := ActivationTokenRequest{
-		TargetName: r.config.Data.TargetName,
+		TargetName: r.targetName,
 	}
 
 	// Marshall the request
@@ -163,7 +177,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	}
 }
 
-func (r *Registration) getRegistrationResponse(activationToken string, targetId string) (RegistrationResponse, error) {
+func (r *Registration) getRegistrationResponse(publickey *keypair.PublicKey) (RegistrationResponse, error) {
 	var regResponse RegistrationResponse
 
 	// if the target name was never previously set, then we default to hostname, but only Bastion knows
@@ -180,20 +194,20 @@ func (r *Registration) getRegistrationResponse(activationToken string, targetId 
 	}
 
 	// If we pass no targetId to the container, this means that our Id is the same as our activationToken
-	if targetId == "" {
-		targetId = activationToken
+	if r.targetId == "" {
+		r.targetId = r.activationToken
 	}
 
 	// Create our request
 	req := RegistrationRequest{
-		PublicKey:       r.config.Data.PublicKey,
-		ActivationCode:  activationToken,
-		Version:         r.config.Data.Version,
-		EnvironmentId:   r.config.Data.EnvironmentId,
-		EnvironmentName: r.config.Data.EnvironmentName,
-		TargetName:      r.config.Data.TargetName,
+		PublicKey:       publickey.String(),
+		ActivationCode:  r.activationToken,
+		Version:         r.version,
+		EnvironmentId:   r.environmentId,
+		EnvironmentName: r.environmentName,
+		TargetName:      r.targetName,
 		TargetHostName:  hostname,
-		TargetId:        targetId,
+		TargetId:        r.targetId,
 		Region:          region,
 	}
 
@@ -260,7 +274,7 @@ func (r *Registration) getConnectionServiceUrlFromServiceUrl() (string, error) {
 	// make our request
 	resp, err := bzhttp.Get(r.logger, endpointToHit, map[string]string{}, map[string]string{})
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making get request to get connection service url: %s", err)
 	}
 
 	// read the response

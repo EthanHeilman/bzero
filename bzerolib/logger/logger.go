@@ -119,6 +119,10 @@ func (l *Logger) AddAgentVersion(version string) {
 	l.logger = l.logger.With().Str("agentVersion", version).Logger()
 }
 
+func (l *Logger) AddAgentType(agentType string) {
+	l.logger = l.logger.With().Str("agentType", agentType).Logger()
+}
+
 func (l *Logger) AddDaemonVersion(version string) {
 	l.logger = l.logger.With().Str("daemonVersion", version).Logger()
 }
@@ -137,10 +141,10 @@ func (l *Logger) GetDatachannelLogger(id string) *Logger {
 	}
 }
 
-func (l *Logger) GetConnectionLogger(id string) *Logger {
+func (l *Logger) GetConnectionLogger(connType string) *Logger {
 	return &Logger{
 		logger: l.logger.With().
-			Str("connection", id).
+			Str("connectionType", connType).
 			Logger(),
 	}
 }
