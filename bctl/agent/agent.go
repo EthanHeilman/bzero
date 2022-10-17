@@ -23,7 +23,7 @@ var (
 	activationToken, registrationKey string
 	idpProvider, namespace, idpOrgId string
 	targetId, targetName             string
-	logLevel, vaultPath, vaultKey    string
+	logLevel, vaultPath              string
 	forceReRegistration              bool
 	wait                             bool
 	printVersion                     bool
@@ -81,7 +81,7 @@ func main() {
 	var err error
 	switch agentType {
 	case Bzero:
-		agent, err = NewSystemDAgent(vault.DefaultVaultDirectory, version, reg, bzos.OsShutdownChan())
+		agent, err = NewSystemDAgent(vaultPath, version, reg, bzos.OsShutdownChan())
 	case Cluster:
 		agent, err = NewKubeAgent(version, reg, bzos.OsShutdownChan())
 	}
@@ -91,7 +91,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO: catch error?
 	agent.Run(forceReRegistration)
 
 	// TODO: do we still need the below?
@@ -155,7 +154,7 @@ func NewSystemDAgent(
 	log.AddAgentVersion(version)
 	log.AddAgentType(Bzero)
 
-	log.Info("Starting up the BastionZero Agent")
+	log.Info("Starting up the BastionZero SystemD Agent")
 	a.logger = log
 
 	// If this is an agent run by systemd, we add the -w (wait) flag
@@ -163,6 +162,7 @@ func NewSystemDAgent(
 	// registration and then it we load it before proceeding
 	isRegistered := !config.GetPublicKey().IsEmpty()
 	if !isRegistered && wait {
+		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
 		config.WaitForRegistration(signalChan)
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
@@ -264,23 +264,23 @@ func parseFlags() {
 	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
 
 	// Use a different config path for running different agents on the same box
-	flag.StringVar(&vaultPath, "config", "", "Path to agent's config")
+	flag.StringVar(&vaultPath, "vaultPath", vault.DefaultVaultDirectory, "Path to agent's config")
 
 	// Parse any flag
 	flag.Parse()
 
-	// TODO: is this safe to remove our cluster check? I feel like we should support environment variables for vault-using customers
 	// The environment will overwrite any flags passed
-	serviceUrl = os.Getenv("SERVICE_URL")
-	activationToken = os.Getenv("ACTIVATION_TOKEN")
-	targetName = os.Getenv("TARGET_NAME")
-	targetId = os.Getenv("TARGET_ID")
-	environmentId = os.Getenv("ENVIRONMENT")
-	idpProvider = os.Getenv("IDP_PROVIDER")
-	idpOrgId = os.Getenv("IDP_ORG_ID")
-	namespace = os.Getenv("NAMESPACE")
-	registrationKey = os.Getenv("API_KEY")
-	vaultKey = os.Getenv("KUBE_SECRET_KEY") // Used for running multiple kube agents
+	if getAgentType() == Cluster {
+		serviceUrl = os.Getenv("SERVICE_URL")
+		activationToken = os.Getenv("ACTIVATION_TOKEN")
+		targetName = os.Getenv("TARGET_NAME")
+		targetId = os.Getenv("TARGET_ID")
+		environmentId = os.Getenv("ENVIRONMENT")
+		idpProvider = os.Getenv("IDP_PROVIDER")
+		idpOrgId = os.Getenv("IDP_ORG_ID")
+		namespace = os.Getenv("NAMESPACE")
+		registrationKey = os.Getenv("API_KEY")
+	}
 }
 
 func getAgentVersion() string {

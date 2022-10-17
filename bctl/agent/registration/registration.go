@@ -29,7 +29,7 @@ type Registration struct {
 
 	serviceUrl      string
 	activationToken string
-	apiKey          string
+	registrationKey string
 	targetId        string
 	version         string
 	environmentId   string
@@ -54,7 +54,7 @@ func New(
 	return &Registration{
 		serviceUrl:      serviceUrl,
 		activationToken: activationToken,
-		apiKey:          apiKey,
+		registrationKey: apiKey,
 		targetId:        targetId,
 		version:         version,
 		environmentId:   environmentId,
@@ -67,11 +67,12 @@ func New(
 
 func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig) error {
 	// Check we have all our requried args
-	if r.activationToken == "" && r.apiKey == "" {
+	if r.activationToken == "" && r.registrationKey == "" {
 		return fmt.Errorf("in order to register, we need either an api key or an activation token")
 	}
 
-	logger.Infof("Registering agent with %s", r.serviceUrl)
+	r.logger = logger
+	r.logger.Infof("Registering agent with %s", r.serviceUrl)
 
 	// Generate and store our public, private key pair and add to config
 	publicKey, privateKey, err := keypair.GenerateKeyPair()
@@ -93,14 +94,14 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 		return fmt.Errorf("error saving config: %w", err)
 	}
 
-	logger.Info("Registration complete!")
+	r.logger.Info("Registration complete!")
 	return nil
 }
 
 func (r *Registration) phoneHome(publickey *keypair.PublicKey) error {
 	// If we don't have an activation token, use api key to get one
 	if r.activationToken == "" {
-		if token, err := r.getActivationToken(r.apiKey); err != nil {
+		if token, err := r.getActivationToken(r.registrationKey); err != nil {
 			return err
 		} else {
 			r.activationToken = token

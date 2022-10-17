@@ -82,8 +82,8 @@ func (a *Agent) Run(forceReRegistration bool) (err error) {
 	// Register if we aren't already
 	isRegistered := !a.config.GetPublicKey().IsEmpty()
 	if !isRegistered || forceReRegistration {
-		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-
+		a.logger.Info("Starting registration")
+		
 		// Regardless of the response, we're done here. Registration is designed to
 		// essentially be a cli command and not fully start up the agent
 		err = a.registration.Register(a.logger, a.config)
