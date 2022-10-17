@@ -69,7 +69,8 @@ type Agent struct {
 	version        string
 }
 
-func (a *Agent) Run(forceReRegistration bool) (err error) {
+func (a *Agent) Run(forceReRegistration bool) int {
+	var err error
 	defer func() {
 		if err != nil {
 			a.reportError(err)
@@ -89,20 +90,20 @@ func (a *Agent) Run(forceReRegistration bool) (err error) {
 		// Regardless of the response, we're done here. Registration is designed to
 		// essentially be a cli command and not fully start up the agent
 		err = a.registration.Register(a.logger, a.config)
-		return err
+		return 0
 	} else {
 		a.logger.Infof("BastionZero Agent is already registered with %s", a.config.GetServiceUrl())
 	}
 
 	// Make sure our agent version is correct
 	if err = a.config.SetVersion(a.version); err != nil {
-		return err
+		return 1
 	}
 
 	// Connect the control channel to BastionZero
 	a.logger.Info("Creating connection to BastionZero...")
 	if err = a.startControlChannel(); err != nil {
-		return err
+		return 1
 	}
 
 	a.tmb.Go(a.monitorControlChannel)
@@ -110,11 +111,13 @@ func (a *Agent) Run(forceReRegistration bool) (err error) {
 	for {
 		select {
 		case <-a.tmb.Dead():
-			return a.tmb.Err()
+			err = a.tmb.Err()
+			return 1
 
 		// wait until we recieve a kill signal or other runtime shutdown
 		case signal := <-a.osSignalChan:
-			return fmt.Errorf("received shutdown signal: %s", signal.String())
+			a.logger.Errorf("received shutdown signal: %s", signal.String())
+			return 1
 
 		// we should report significant-but-non-fatal errors to bastion.
 		// this action must be separated from monitorControlChannel so that persistent runtime errors do not

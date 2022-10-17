@@ -152,7 +152,7 @@ func NewSystemDAgent(
 	log.AddAgentVersion(version)
 	log.AddAgentType(Bzero)
 
-	log.Info("Starting up the BastionZero SystemD Agent")
+	log.Info("Starting up the BastionZero Agent")
 	a.logger = log
 
 	// If this is an agent run by systemd, we add the -w (wait) flag
@@ -220,7 +220,7 @@ func NewKubeAgent(
 	log.AddAgentVersion(version)
 	log.AddAgentType(Cluster)
 
-	log.Infof("Starting up the BastionZero %s Agent", getAgentType())
+	log.Infof("Starting up the BastionZero Agent")
 
 	// Verify we have the correct RBAC permissions
 	if err := rbac.CheckPermissions(log, namespace); err != nil {

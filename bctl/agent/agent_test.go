@@ -43,7 +43,7 @@ var _ = Describe("Agent", func() {
 
 	Context("Agent Registration", func() {
 		When("we're not registered", func() {
-			var err error
+			var ret int
 			var mockEmptyConfig *mocks.Config
 			var mockRegistration *mocks.IRegistration
 
@@ -61,17 +61,17 @@ var _ = Describe("Agent", func() {
 					registration: mockRegistration,
 				}
 
-				err = agent.Run(false)
+				ret = agent.Run(false)
 			})
 
 			It("Registers", func() {
-				Expect(err).ToNot(HaveOccurred())
+				Expect(ret).To(Equal(0))
 				mockRegistration.AssertCalled(GinkgoT(), "Register", logger, mockEmptyConfig)
 			})
 		})
 
 		When("We're already registered, but are being force to re-register", func() {
-			var err error
+			var ret int
 			var mockConfig *mocks.Config
 			var mockRegistration *mocks.IRegistration
 
@@ -86,11 +86,11 @@ var _ = Describe("Agent", func() {
 				}
 
 				forceReRegistration := true
-				err = agent.Run(forceReRegistration)
+				ret = agent.Run(forceReRegistration)
 			})
 
 			It("Registers", func() {
-				Expect(err).ToNot(HaveOccurred())
+				Expect(ret).To(Equal(0))
 				mockRegistration.AssertCalled(GinkgoT(), "Register", logger, mockConfig)
 			})
 		})

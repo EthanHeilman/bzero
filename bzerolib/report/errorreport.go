@@ -18,8 +18,8 @@ const (
 type ErrorReport struct {
 	Reporter  string      `json:"reporter"`
 	Timestamp string      `json:"timestamp"`
-	State     interface{} `json:"state"`
 	Message   string      `json:"message"`
+	State     interface{} `json:"state"`
 	Logs      string      `json:"logs"`
 }
 
@@ -46,6 +46,6 @@ func ReportError(logger *logger.Logger, ctx context.Context, serviceUrl string, 
 	}
 
 	if _, err := client.Post(ctx); err != nil {
-		logger.Errorf("failed to report restart: %s, Request: %+v", err, errReport)
+		logger.Errorf("failed to report error: %s, Request: %+v", err, errReport)
 	}
 }

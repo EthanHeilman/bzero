@@ -49,34 +49,35 @@ func LoadKubernetesVault(ctx context.Context, namespace string, targetName strin
 	}
 
 	// Get our secrets object
-	kubeVault.secret, err = kubeVault.client.Get(ctx, secretName, metaV1.GetOptions{})
+	formattedSecretName := fmt.Sprintf(secretName, targetName)
+	kubeVault.secret, err = kubeVault.client.Get(ctx, formattedSecretName, metaV1.GetOptions{})
 	if err != nil {
 		// If there is no secret there, create it
-		if err := kubeVault.initVault(ctx, targetName); err != nil {
+		if err := kubeVault.initVault(ctx, formattedSecretName); err != nil {
 			return nil, err
 		}
 		return &kubeVault, nil
 	}
 
 	// Our vault exists but it was never initialized so we initialize it
-	if _, ok := kubeVault.secret.Data[vaultKey]; !ok {
-		if err := kubeVault.initVault(ctx, targetName); err != nil {
-			return nil, err
+	if vd, ok := kubeVault.secret.Data[vaultKey]; !ok || bytes.Equal(vd, []byte(defaultSecretValue)) {
+		kubeVault.data = vault{}
+		if err := kubeVault.save(); err != nil {
+			return nil, fmt.Errorf("failed to save kube vault: %s", err)
 		}
+
 		return &kubeVault, nil
 	}
 
 	// Our vault exists so we can load it up
 	if kubeVault.data, err = kubeVault.fetchVault(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load existing fault: %s", err)
 	}
 
 	return &kubeVault, nil
 }
 
-func (k *KubernetesVault) initVault(ctx context.Context, targetName string) error {
-	formattedSecretName := fmt.Sprintf(secretName, targetName)
-
+func (k *KubernetesVault) initVault(ctx context.Context, formattedSecretName string) error {
 	emptyVault, err := gobEncode(vault{})
 	if err != nil {
 		return fmt.Errorf("failed to gob encode empty vault: %w", err)
