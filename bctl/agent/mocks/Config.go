@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	keypair "bastionzero.com/bctl/v1/bzerolib/keypair"
+	messagesigner "bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -54,33 +54,52 @@ func (_m *Config) GetIdpProvider() string {
 	return r0
 }
 
-// GetPrivateKey provides a mock function with given fields:
-func (_m *Config) GetPrivateKey() *keypair.PrivateKey {
+// GetMessageSigner provides a mock function with given fields:
+func (_m *Config) GetMessageSigner() (*messagesigner.MessageSigner, error) {
 	ret := _m.Called()
 
-	var r0 *keypair.PrivateKey
-	if rf, ok := ret.Get(0).(func() *keypair.PrivateKey); ok {
+	var r0 *messagesigner.MessageSigner
+	if rf, ok := ret.Get(0).(func() *messagesigner.MessageSigner); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*keypair.PrivateKey)
+			r0 = ret.Get(0).(*messagesigner.MessageSigner)
 		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// GetPrivateKey provides a mock function with given fields:
+func (_m *Config) GetPrivateKey() string {
+	ret := _m.Called()
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
 	}
 
 	return r0
 }
 
 // GetPublicKey provides a mock function with given fields:
-func (_m *Config) GetPublicKey() *keypair.PublicKey {
+func (_m *Config) GetPublicKey() string {
 	ret := _m.Called()
 
-	var r0 *keypair.PublicKey
-	if rf, ok := ret.Get(0).(func() *keypair.PublicKey); ok {
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
 		r0 = rf()
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*keypair.PublicKey)
-		}
+		r0 = ret.Get(0).(string)
 	}
 
 	return r0
@@ -151,13 +170,13 @@ func (_m *Config) SetAgentIdentityToken(_a0 string) error {
 	return r0
 }
 
-// SetRegistrationData provides a mock function with given fields: serviceUrl, publickey, privateKey, idpProvider, idpOrgId, targetId
-func (_m *Config) SetRegistrationData(serviceUrl string, publickey *keypair.PublicKey, privateKey *keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error {
-	ret := _m.Called(serviceUrl, publickey, privateKey, idpProvider, idpOrgId, targetId)
+// SetRegistrationData provides a mock function with given fields: serviceUrl, string, privateKey, idpProvider, idpOrgId, targetId
+func (_m *Config) SetRegistrationData(serviceUrl string, publicKey string, privateKey string, idpProvider string, idpOrgId string, targetId string) error {
+	ret := _m.Called(serviceUrl, publicKey, privateKey, idpProvider, idpOrgId, targetId)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, *keypair.PublicKey, *keypair.PrivateKey, string, string, string) error); ok {
-		r0 = rf(serviceUrl, publickey, privateKey, idpProvider, idpOrgId, targetId)
+	if rf, ok := ret.Get(0).(func(string, string, string, string, string, string) error); ok {
+		r0 = rf(serviceUrl, publicKey, privateKey, idpProvider, idpOrgId, targetId)
 	} else {
 		r0 = ret.Error(0)
 	}

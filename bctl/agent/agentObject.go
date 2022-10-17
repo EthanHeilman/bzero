@@ -19,6 +19,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 	"github.com/google/uuid"
 	"gopkg.in/tomb.v2"
@@ -44,6 +45,7 @@ type Config interface {
 	GetTargetId() string
 	GetShutdownInfo() (string, map[string]string)
 	GetServiceUrl() string
+	GetMessageSigner() (*messagesigner.MessageSigner, error)
 
 	SetVersion(version string) error
 	SetShutdownInfo(reason string, state map[string]string) error
@@ -80,10 +82,10 @@ func (a *Agent) Run(forceReRegistration bool) (err error) {
 	go a.reportQualifiedShutdown()
 
 	// Register if we aren't already
-	isRegistered := !a.config.GetPublicKey().IsEmpty()
+	isRegistered := a.config.GetPublicKey() != ""
 	if !isRegistered || forceReRegistration {
 		a.logger.Info("Starting registration")
-		
+
 		// Regardless of the response, we're done here. Registration is designed to
 		// essentially be a cli command and not fully start up the agent
 		err = a.registration.Register(a.logger, a.config)
@@ -129,12 +131,17 @@ func (a *Agent) startControlChannel() error {
 	serviceUrl := a.config.GetServiceUrl()
 
 	aipLogger := a.logger.GetComponentLogger("AgentIdentityProvider")
+	ms, err := a.config.GetMessageSigner()
+	if err != nil {
+		return err
+	}
+
 	agentIdentityProvider := agentidentity.New(
 		aipLogger,
 		serviceUrl,
 		targetId,
 		a.config,
-		privateKey,
+		ms,
 	)
 
 	// TODO: remove this dumb ccId concept
@@ -148,7 +155,7 @@ func (a *Agent) startControlChannel() error {
 
 	headers := http.Header{}
 	params := url.Values{
-		"public_key": {a.config.GetPublicKey().String()},
+		"public_key": {a.config.GetPublicKey()},
 		"version":    {a.version},
 		"target_id":  {targetId},
 		"agent_type": {Bzero},
@@ -157,11 +164,11 @@ func (a *Agent) startControlChannel() error {
 	// Create our control channel's connection to BastionZero
 	// TODO: we can't interrupt the connection if our agent dies before the initial connection is established
 	connLogger := ccLogger.GetConnectionLogger("controlchannel")
-	if conn, err := controlconnection.New(connLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider); err != nil {
+	if conn, err := controlconnection.New(connLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider, ms); err != nil {
 		return err
 	} else {
 		// Start up our control channel
-		a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, Bzero, agentIdentityProvider, privateKey, a.config)
+		a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, Bzero, agentIdentityProvider, ms, a.config)
 		a.controlConn = conn
 
 		return err
@@ -216,7 +223,7 @@ func (a *Agent) reportQualifiedShutdown() {
 			a.config.GetServiceUrl(),
 			report.RestartReport{
 				TargetId:       a.config.GetTargetId(),
-				AgentPublicKey: a.config.GetPublicKey().String(),
+				AgentPublicKey: a.config.GetPublicKey(),
 				Timestamp:      fmt.Sprint(time.Now().UTC().Unix()),
 				Message:        shutdownReason,
 				State:          shutdownState,

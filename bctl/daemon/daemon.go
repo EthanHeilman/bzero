@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,7 +108,7 @@ func reportError(logger *bzlogger.Logger, err error) {
 		},
 	}
 
-	report.ReportError(logger, config[SERVICE_URL].Value, errReport)
+	report.ReportError(logger, context.Background(), config[SERVICE_URL].Value, errReport)
 }
 
 func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {

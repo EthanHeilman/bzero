@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -9,7 +10,7 @@ import (
 	"sync"
 
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gofrs/flock"
 )
@@ -124,14 +125,14 @@ func (s *SystemDVault) Reload() error {
 	}
 }
 
-func (s *SystemDVault) GetPublicKey() *keypair.PublicKey {
+func (s *SystemDVault) GetPublicKey() string {
 	s.vaultLock.RLock()
 	defer s.vaultLock.RUnlock()
 
 	return s.data.PublicKey
 }
 
-func (s *SystemDVault) GetPrivateKey() *keypair.PrivateKey {
+func (s *SystemDVault) GetPrivateKey() string {
 	s.vaultLock.RLock()
 	defer s.vaultLock.RUnlock()
 
@@ -178,6 +179,11 @@ func (s *SystemDVault) GetServiceUrl() string {
 	defer s.vaultLock.RUnlock()
 
 	return s.data.ServiceUrl
+}
+
+func (s *SystemDVault) GetMessageSigner() (*messagesigner.MessageSigner, error) {
+	privKey, _ := base64.StdEncoding.DecodeString(s.GetPrivateKey())
+	return messagesigner.New(privKey)
 }
 
 func (s *SystemDVault) SetVersion(version string) error {
@@ -240,8 +246,8 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 
 func (s *SystemDVault) SetRegistrationData(
 	serviceUrl string,
-	publickey *keypair.PublicKey,
-	privateKey *keypair.PrivateKey,
+	publickey string,
+	privateKey string,
 	idpProvider string,
 	idpOrgId string,
 	targetId string,
@@ -330,7 +336,7 @@ func (s *SystemDVault) WaitForRegistration(cancel <-chan os.Signal) error {
 						continue
 					} else {
 						// if we haven't completed registration yet, continue waiting
-						if config.PublicKey.IsEmpty() {
+						if config.PublicKey == "" {
 							continue
 						} else {
 							done <- nil

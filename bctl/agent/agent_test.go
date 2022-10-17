@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"bastionzero.com/bctl/v1/bctl/agent/mocks"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/tests"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -28,10 +28,10 @@ var _ = Describe("Agent", func() {
 	}
 
 	generateMockConfig := func() *mocks.Config {
-		publickey, _, _ := keypair.GenerateKeyPair()
+		fakeKeyPair, _ := tests.GenerateEd25519Key()
 
 		mockConfig := mocks.NewConfig(GinkgoT())
-		mockConfig.On("GetPublicKey").Return(publickey)
+		mockConfig.On("GetPublicKey").Return(fakeKeyPair.Base64EncodedPublicKey)
 		mockConfig.On("GetTargetId").Return("targetid")
 		mockConfig.On("GetShutdownInfo").Return("reason", map[string]string{})
 		mockConfig.On("SetVersion", mock.AnythingOfType("string")).Return(nil)
@@ -49,7 +49,7 @@ var _ = Describe("Agent", func() {
 
 			BeforeEach(func() {
 				mockEmptyConfig = mocks.NewConfig(GinkgoT())
-				mockEmptyConfig.On("GetPublicKey").Return(&keypair.PublicKey{})
+				mockEmptyConfig.On("GetPublicKey").Return("")
 				mockEmptyConfig.On("GetShutdownInfo").Return("", map[string]string{})
 				mockEmptyConfig.On("SetVersion", mock.AnythingOfType("string")).Return(nil)
 

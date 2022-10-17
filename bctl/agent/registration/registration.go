@@ -1,13 +1,14 @@
 package registration
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -21,7 +22,7 @@ const (
 )
 
 type RegistrationConfig interface {
-	SetRegistrationData(serviceUrl string, publickey *keypair.PublicKey, privateKey *keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
+	SetRegistrationData(serviceUrl string, string, privateKey string, idpProvider string, idpOrgId string, targetId string) error
 }
 
 type Registration struct {
@@ -75,7 +76,7 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 	r.logger.Infof("Registering agent with %s", r.serviceUrl)
 
 	// Generate and store our public, private key pair and add to config
-	publicKey, privateKey, err := keypair.GenerateKeyPair()
+	publicKey, privateKey, err := r.generateKeys()
 	if err != nil {
 		return err
 	}
@@ -98,7 +99,19 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 	return nil
 }
 
-func (r *Registration) phoneHome(publickey *keypair.PublicKey) error {
+func (r *Registration) generateKeys() (string, string, error) {
+	// Generate public, secret key pair and convert to strings
+	publicKey, privateKey, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		return "", "", fmt.Errorf("error generating key pair: %v", err.Error())
+	}
+	publicKeyString := base64.StdEncoding.EncodeToString([]byte(publicKey))
+	privateKeyString := base64.StdEncoding.EncodeToString([]byte(privateKey))
+
+	return publicKeyString, privateKeyString, nil
+}
+
+func (r *Registration) phoneHome(publickey string) error {
 	// If we don't have an activation token, use api key to get one
 	if r.activationToken == "" {
 		if token, err := r.getActivationToken(r.registrationKey); err != nil {
@@ -177,7 +190,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	}
 }
 
-func (r *Registration) getRegistrationResponse(publickey *keypair.PublicKey) (RegistrationResponse, error) {
+func (r *Registration) getRegistrationResponse(publickey string) (RegistrationResponse, error) {
 	var regResponse RegistrationResponse
 
 	// if the target name was never previously set, then we default to hostname, but only Bastion knows
@@ -200,7 +213,7 @@ func (r *Registration) getRegistrationResponse(publickey *keypair.PublicKey) (Re
 
 	// Create our request
 	req := RegistrationRequest{
-		PublicKey:       publickey.String(),
+		PublicKey:       publickey,
 		ActivationCode:  r.activationToken,
 		Version:         r.version,
 		EnvironmentId:   r.environmentId,

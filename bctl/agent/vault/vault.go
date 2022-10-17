@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
 )
 
 type vault struct {
@@ -19,8 +17,8 @@ type vault struct {
 	// it is only ever used to send in that format
 	// The private key is used to sign and therefore is stored in its
 	// most usable format
-	PublicKey  *keypair.PublicKey
-	PrivateKey *keypair.PrivateKey
+	PublicKey  string
+	PrivateKey string
 
 	// OIDC-compliant token used for authenticating to BastionZero
 	AgentIdentityToken string
@@ -106,14 +104,14 @@ func (v *vault) UnmarshalJSON(data []byte) error {
 	// We've changed the types of these fields from string to something more specific.
 	// Because of that we need to peel of any leading/trailing quotation marks that belie
 	// the variables' true type
-	var privateKey *keypair.PrivateKey
+	var privateKey string
 	if err := json.Unmarshal(objmap["PrivateKey"], &privateKey); err != nil {
 		return fmt.Errorf("failed to unmarshal privateKey: %s", err)
 	} else {
 		v.PrivateKey = privateKey
 	}
 
-	var publicKey *keypair.PublicKey
+	var publicKey string
 	if err := json.Unmarshal(objmap["PublicKey"], &publicKey); err != nil {
 		return fmt.Errorf("failed to unmarshal publicKey: %s", err)
 	} else {

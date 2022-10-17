@@ -3,11 +3,12 @@ package vault
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/gob"
 	"fmt"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -109,14 +110,14 @@ func (k *KubernetesVault) fetchVault() (vault, error) {
 	}
 }
 
-func (k *KubernetesVault) GetPublicKey() *keypair.PublicKey {
+func (k *KubernetesVault) GetPublicKey() string {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
 	return k.data.PublicKey
 }
 
-func (k *KubernetesVault) GetPrivateKey() *keypair.PrivateKey {
+func (k *KubernetesVault) GetPrivateKey() string {
 	k.vaultLock.RLock()
 	defer k.vaultLock.RUnlock()
 
@@ -163,6 +164,11 @@ func (k *KubernetesVault) GetServiceUrl() string {
 	defer k.vaultLock.RUnlock()
 
 	return k.data.ServiceUrl
+}
+
+func (k *KubernetesVault) GetMessageSigner() (*messagesigner.MessageSigner, error) {
+	privKey, _ := base64.StdEncoding.DecodeString(k.GetPrivateKey())
+	return messagesigner.New(privKey)
 }
 
 func (k *KubernetesVault) SetVersion(version string) error {
@@ -215,8 +221,8 @@ func (k *KubernetesVault) SetAgentIdentityToken(token string) error {
 
 func (k *KubernetesVault) SetRegistrationData(
 	serviceUrl string,
-	publickey *keypair.PublicKey,
-	privateKey *keypair.PrivateKey,
+	publickey string,
+	privateKey string,
 	idpProvider string,
 	idpOrgId string,
 	targetId string,

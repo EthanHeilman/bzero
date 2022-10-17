@@ -160,7 +160,7 @@ func NewSystemDAgent(
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
 	// registration and then it we load it before proceeding
-	isRegistered := !config.GetPublicKey().IsEmpty()
+	isRegistered := config.GetPublicKey() != ""
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
 		config.WaitForRegistration(signalChan)
