@@ -116,7 +116,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			})
 
 			It("instantiates without error", func() {
-				Expect(err).ToNot(HaveOccurred(), "connection did not fail to instantiate")
+				Expect(err).ToNot(HaveOccurred(), "connection failed to instantiate")
 			})
 
 			It("connects successfully", func() {
@@ -126,15 +126,25 @@ var _ = Describe("Agent Control Channel Connection", func() {
 		})
 
 		When("connecting with an invalid connection url", func() {
+			var err error
 			malformedUrl := "this is a malformed url"
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+			})
+
+			It("instantiates without error", func() {
+				Expect(err).ToNot(HaveOccurred(), "connection failed to instantiate")
 			})
 
 			It("fails to establish a connection", func() {
-				Expect(err).To(HaveOccurred(), "connection successfully instantiated")
+				for i := 1; i < 3; i++ {
+					if conn.Ready() {
+						Expect(conn.Ready()).To(Equal(false))
+					}
+					time.Sleep(time.Second)
+				}
 			})
 		})
 	})

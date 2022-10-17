@@ -242,7 +242,7 @@ func (c *ControlConnection) connect(bastionUrl string, headers http.Header, para
 				continue
 			}
 
-			getControlChannelResponse, err := c.getControlChannel(connectionOrchestratorUrl, agentIdentityToken)
+			getControlChannelResponse, err := c.getControlChannel(ctx, connectionOrchestratorUrl, agentIdentityToken)
 			if err != nil {
 				c.logger.Infof("Retrying in %s because we failed to get assigned a connection node from the orchestrator: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
@@ -311,7 +311,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	return responseDecoded.ConnectionServiceUrl, nil
 }
 
-func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken string) (*GetControlChannelResponse, error) {
+func (c *ControlConnection) getControlChannel(ctx context.Context, connUrl string, agentIdentityToken string) (*GetControlChannelResponse, error) {
 	// Create a new GetControlChannel message
 	getControlChannel := GetControlChannel{
 		BackendAgentMessage: am.BackendAgentMessage{
@@ -347,9 +347,9 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 	}
 
 	// Make request
-	response, err := client.Get(context.Background())
+	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for control channel. Request: %+v Error: %s. Response: %+v", getControlChannel, err, response)
+		return nil, fmt.Errorf("error making get request for control channel. Request: %+v Error: %s", getControlChannel, err)
 	}
 
 	// Decode and return response
