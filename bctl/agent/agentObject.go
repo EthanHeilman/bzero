@@ -144,7 +144,6 @@ func (a *Agent) startControlChannel() error {
 		ms,
 	)
 
-	// TODO: remove this dumb ccId concept
 	ccId := uuid.New().String()
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
 	wsLogger := ccLogger.GetComponentLogger("Websocket")
@@ -162,9 +161,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Create our control channel's connection to BastionZero
-	// TODO: we can't interrupt the connection if our agent dies before the initial connection is established
-	connLogger := ccLogger.GetConnectionLogger("controlchannel")
-	if conn, err := controlconnection.New(connLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider, ms); err != nil {
+	if conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider, ms); err != nil {
 		return err
 	} else {
 		// Start up our control channel

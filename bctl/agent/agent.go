@@ -88,12 +88,10 @@ func main() {
 
 	if err != nil {
 		fmt.Printf("ERROR: failed to start agent: %s\n %+v", err, debug.Stack())
-		os.Exit(1)
+	} else {
+		agent.Run(forceReRegistration)
 	}
 
-	agent.Run(forceReRegistration)
-
-	// TODO: do we still need the below?
 	switch agentType {
 	case Cluster:
 

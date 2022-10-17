@@ -233,7 +233,7 @@ func (r *Registration) getRegistrationResponse(publickey string) (RegistrationRe
 	// Marshal the request
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
-		return regResponse, fmt.Errorf("error marshalling register agent message for agent: %+v", req)
+		return regResponse, fmt.Errorf("error marshalling register agent message for agent: %s", err)
 	}
 
 	// Perform the request

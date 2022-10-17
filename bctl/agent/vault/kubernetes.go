@@ -181,12 +181,6 @@ func (k *KubernetesVault) SetVersion(version string) error {
 		return err
 	}
 
-	// If our private keys are mismatched, it means a new registration
-	// has happened and we shouldn't write anything
-	// if k.data.PrivateKey != currentVault.PrivateKey {
-	// 	return fmt.Errorf("new registration detected, reload vault")
-	// }
-
 	currentVault.Version = version
 
 	k.data = currentVault
@@ -235,20 +229,16 @@ func (k *KubernetesVault) SetRegistrationData(
 	if err != nil {
 		return fmt.Errorf("failed to load vault: %w", err)
 	}
-
-	// TODO: think through this
-	// If our private keys are mismatched, it means a new registration
-	// has happened and we shouldn't write anything
-	// if k.data.PrivateKey != currentVault.PrivateKey {
-	// 	return fmt.Errorf("new registration detected, reload vault")
-	// }
-
 	currentVault.ServiceUrl = serviceUrl
 	currentVault.PublicKey = publickey
 	currentVault.PrivateKey = privateKey
 	currentVault.IdpProvider = idpProvider
 	currentVault.IdpOrgId = idpOrgId
 	currentVault.TargetId = targetId
+
+	// Vacate our agent identity token because a new registration means we need a new
+	// one even if the previous one remains verifiable
+	currentVault.AgentIdentityToken = ""
 
 	k.data = currentVault
 	return k.save()

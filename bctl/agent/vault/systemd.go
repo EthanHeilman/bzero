@@ -195,12 +195,6 @@ func (s *SystemDVault) SetVersion(version string) error {
 		return fmt.Errorf("failed to load vault: %w", err)
 	}
 
-	// If our private keys are mismatched, it means a new registration
-	// has happened and we shouldn't write anything
-	// if s.data.PrivateKey != currentVault.PrivateKey {
-	// 	return fmt.Errorf("new registration detected, reload vault")
-	// }
-
 	currentVault.Version = version
 
 	s.data = currentVault
@@ -232,12 +226,6 @@ func (s *SystemDVault) SetAgentIdentityToken(token string) error {
 		return fmt.Errorf("failed to load vault: %w", err)
 	}
 
-	// If our private keys are mismatched, it means a new registration
-	// has happened and we shouldn't write anything
-	// if s.data.PrivateKey != currentVault.PrivateKey {
-	// 	return fmt.Errorf("new registration detected, reload vault")
-	// }
-
 	currentVault.AgentIdentityToken = token
 
 	s.data = currentVault
@@ -261,18 +249,16 @@ func (s *SystemDVault) SetRegistrationData(
 		return fmt.Errorf("failed to load vault: %w", err)
 	}
 
-	// If our private keys are mismatched, it means a new registration
-	// has happened and we shouldn't write anything
-	// if s.data.PrivateKey != currentVault.PrivateKey {
-	// 	return fmt.Errorf("new registration detected, reload vault")
-	// }
-
 	currentVault.ServiceUrl = serviceUrl
 	currentVault.PublicKey = publickey
 	currentVault.PrivateKey = privateKey
 	currentVault.IdpProvider = idpProvider
 	currentVault.IdpOrgId = idpOrgId
 	currentVault.TargetId = targetId
+
+	// Vacate our agent identity token because a new registration means we need a new
+	// one even if the previous one remains verifiable
+	currentVault.AgentIdentityToken = ""
 
 	s.data = currentVault
 	return s.save()
@@ -290,14 +276,14 @@ func (s *SystemDVault) save() error {
 	}
 	defer s.fileLock.Unlock()
 
-	// overwrite entire file every time
-	dataBytes, err := json.Marshal(s.data)
-	if err != nil {
+	// empty out our file
+	if err := os.Truncate(s.vaultPath, 0); err != nil {
 		return err
 	}
 
-	// empty out our file
-	if err := os.Truncate(s.vaultPath, 0); err != nil {
+	// overwrite entire file every time
+	dataBytes, err := json.Marshal(s.data)
+	if err != nil {
 		return err
 	}
 
@@ -336,9 +322,7 @@ func (s *SystemDVault) WaitForRegistration(cancel <-chan os.Signal) error {
 						continue
 					} else {
 						// if we haven't completed registration yet, continue waiting
-						if config.PublicKey == "" {
-							continue
-						} else {
+						if config.PublicKey != "" {
 							done <- nil
 							return
 						}

@@ -141,10 +141,10 @@ func (l *Logger) GetDatachannelLogger(id string) *Logger {
 	}
 }
 
-func (l *Logger) GetConnectionLogger(connType string) *Logger {
+func (l *Logger) GetConnectionLogger(id string) *Logger {
 	return &Logger{
 		logger: l.logger.With().
-			Str("connectionType", connType).
+			Str("connectionId", id).
 			Logger(),
 	}
 }
