@@ -70,8 +70,7 @@ type Agent struct {
 func (a *Agent) Run(forceReRegistration bool) (err error) {
 	defer func() {
 		if err != nil {
-			// TODO: Check if I need to actually be reporting this error
-			a.logger.Error(err)
+			a.reportError(err)
 		}
 	}()
 
@@ -191,13 +190,13 @@ func (a *Agent) Close(reason error) {
 }
 
 // report early errors to the bastion so we have greater visibility
-func (a *Agent) reportError(errorReport error) {
-	a.logger.Error(errorReport)
+func (a *Agent) reportError(reason error) {
+	a.logger.Error(reason)
 
 	errReport := report.ErrorReport{
 		Reporter:  fmt.Sprintf("%s-agent-%s", getAgentType(), getAgentVersion()),
 		Timestamp: fmt.Sprint(time.Now().UTC().Unix()),
-		Message:   errorReport.Error(),
+		Message:   reason.Error(),
 		State:     a.state(),
 	}
 

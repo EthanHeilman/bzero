@@ -29,7 +29,7 @@ type HttpClient struct {
 
 	backoffParams *backoff.ExponentialBackOff
 
-	targetUrl string
+	TargetUrl string
 	body      io.Reader
 	headers   http.Header
 	params    url.Values
@@ -60,7 +60,7 @@ func New(
 
 	return &HttpClient{
 		logger:    logger,
-		targetUrl: serviceUrl,
+		TargetUrl: serviceUrl,
 		body:      options.Body,
 		headers:   options.Headers,
 		params:    options.Params,
@@ -72,7 +72,12 @@ func NewWithBackoff(
 	serviceUrl string,
 	options HTTPOptions,
 ) (*HttpClient, error) {
-	backoffParams := backoff.NewExponentialBackOff()
+	client, err := New(logger, serviceUrl, options)
+	if err != nil {
+		return nil, err
+	}
+
+	client.backoffParams = backoff.NewExponentialBackOff()
 
 	// Ref: https://github.com/cenkalti/backoff/blob/a78d3804c2c84f0a3178648138442c9b07665bda/exponential.go#L76
 	// DefaultInitialInterval     = 500 * time.Millisecond
@@ -81,10 +86,10 @@ func NewWithBackoff(
 	// DefaultMaxInterval         = 60 * time.Second
 	// DefaultMaxElapsedTime      = 15 * time.Minute
 
-	backoffParams.MaxInterval = 15 * time.Minute
-	backoffParams.MaxElapsedTime = 72 * time.Hour
+	client.backoffParams.MaxInterval = 15 * time.Minute
+	client.backoffParams.MaxElapsedTime = 72 * time.Hour
 
-	return New(logger, serviceUrl, options)
+	return client, nil
 }
 
 func (h *HttpClient) Post(ctx context.Context) (*http.Response, error) {
@@ -134,7 +139,11 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 	}
 
 	// Build our Request
-	request, _ := http.NewRequestWithContext(ctx, string(method), h.targetUrl, h.body)
+	request, err := http.NewRequestWithContext(ctx, method, h.TargetUrl, h.body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build http request: %w", err)
+	}
+
 	request.Header = http.Header(h.headers)
 
 	// Add params to request URL
@@ -143,12 +152,12 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 	// Make our Request
 	response, err := client.Do(request)
 	if err != nil {
-		return response, fmt.Errorf("%s request failed: %w", string(method), err)
+		return response, fmt.Errorf("%s request failed: %w", method, err)
 	}
 
 	// Check if request was successful
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response, fmt.Errorf("%s request failed with status %s", string(method), response.Status)
+		return response, fmt.Errorf("%s request failed with status %s", method, response.Status)
 	}
 
 	return response, err

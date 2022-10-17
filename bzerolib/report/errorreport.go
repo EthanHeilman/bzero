@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
@@ -15,14 +16,16 @@ const (
 )
 
 type ErrorReport struct {
-	Reporter  string            `json:"reporter"`
-	Timestamp string            `json:"timestamp"`
-	State     map[string]string `json:"state"`
-	Message   string            `json:"message"`
-	Logs      string            `json:"logs"`
+	Reporter  string      `json:"reporter"`
+	Timestamp string      `json:"timestamp"`
+	State     interface{} `json:"state"`
+	Message   string      `json:"message"`
+	Logs      string      `json:"logs"`
 }
 
 func ReportError(logger *logger.Logger, ctx context.Context, serviceUrl string, errReport ErrorReport) {
+	errReport.State = fmt.Sprintf("%+v", errReport.State)
+
 	// Marshall the request
 	errBytes, err := json.Marshal(errReport)
 	if err != nil {

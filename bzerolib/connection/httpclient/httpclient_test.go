@@ -19,7 +19,7 @@ func TestHttpClient(t *testing.T) {
 	RunSpecs(t, "HttpClient Suite")
 }
 
-var _ = Describe("HttpClient", Ordered, func() {
+var _ = Describe("HttpClient", func() {
 	var client *HttpClient
 	var server *tests.MockServer
 
@@ -43,8 +43,8 @@ var _ = Describe("HttpClient", Ordered, func() {
 			It("can correctly build the full URL", func() {
 				Expect(err).ToNot(HaveOccurred(), "Client failed to build correctly: %s", err)
 
-				annotation := fmt.Sprintf("Client should have combined the testUrl with the provided endpoint but instead built: %s", client.targetUrl)
-				Expect(client.targetUrl).To(Equal(fmt.Sprintf("%s/%s", testUrl, fakeEndpoint)), annotation)
+				annotation := fmt.Sprintf("Client should have combined the testUrl with the provided endpoint but instead built: %s", client.TargetUrl)
+				Expect(client.TargetUrl).To(Equal(fmt.Sprintf("%s/%s", testUrl, fakeEndpoint)), annotation)
 			})
 		})
 
@@ -116,6 +116,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			})
 
 			It("includes headers in the request", func() {
+				// Eventually(client.Get).WithContext(ctx).Should(Equal(nil))
 				Expect(err).ToNot(HaveOccurred(), "Server didn't see the headers we were supposed to send")
 			})
 		})
@@ -224,6 +225,40 @@ var _ = Describe("HttpClient", Ordered, func() {
 			})
 
 			It("sets the method to GET", func() {
+				Expect(err).ToNot(HaveOccurred(), "Client failed to execute a GET request: %s", err)
+			})
+		})
+
+		When("Sending a GET request with backoff", func() {
+			var err error
+			var retryCount int
+
+			handleGet := func(w http.ResponseWriter, r *http.Request) {
+				if retryCount != 0 {
+					retryCount--
+					w.WriteHeader(http.StatusBadRequest)
+				} else {
+					w.WriteHeader(http.StatusOK)
+				}
+			}
+
+			BeforeEach(func() {
+				server = tests.NewMockServer(tests.MockHandler{
+					Endpoint:    "/",
+					HandlerFunc: handleGet,
+				})
+
+				retryCount = 3
+				client, _ = NewWithBackoff(logger, server.Url, HTTPOptions{})
+				_, err = client.Get(ctx)
+			})
+
+			AfterEach(func() {
+				server.Close()
+			})
+
+			It("sets the method to GET", func() {
+				time.Sleep(5 * time.Second)
 				Expect(err).ToNot(HaveOccurred(), "Client failed to execute a GET request: %s", err)
 			})
 		})

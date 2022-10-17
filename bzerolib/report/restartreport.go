@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
@@ -23,6 +24,8 @@ type RestartReport struct {
 }
 
 func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string, restartReport RestartReport) {
+	restartReport.State = fmt.Sprintf("%+v", restartReport.State)
+
 	// Marshall the request
 	restartBytes, err := json.Marshal(restartReport)
 	if err != nil {
@@ -42,9 +45,7 @@ func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string
 		logger.Errorf("failed to create our http client: %s", err)
 	}
 
-	logger.Infof("making restart request to: |%s|", client.TargetUrl)
-
 	if _, err := client.Post(ctx); err != nil {
-		logger.Errorf("failed to report restart: %s. Report: %+v", err, restartReport)
+		logger.Errorf("failed to report restart to %s: %s. Report: %+v", client.TargetUrl, err, restartReport)
 	}
 }
