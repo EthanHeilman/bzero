@@ -42,7 +42,9 @@ func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string
 		logger.Errorf("failed to create our http client: %s", err)
 	}
 
+	logger.Infof("making restart request to: |%s|", client.TargetUrl)
+
 	if _, err := client.Post(ctx); err != nil {
-		logger.Errorf("failed to report restart: %s, Request: %+v", err, restartReport)
+		logger.Errorf("failed to report restart: %s. Report: %+v", err, restartReport)
 	}
 }

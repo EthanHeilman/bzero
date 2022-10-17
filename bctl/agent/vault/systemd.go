@@ -110,9 +110,9 @@ func (s *SystemDVault) fetchVault() (vault, error) {
 		return config, err
 	} else if err := json.Unmarshal([]byte(file), &config); err != nil {
 		return config, err
-	} else {
-		return config, err
 	}
+
+	return config, nil
 }
 
 func (s *SystemDVault) Reload() error {
