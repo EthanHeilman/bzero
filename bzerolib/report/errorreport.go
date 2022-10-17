@@ -43,6 +43,6 @@ func ReportError(logger *logger.Logger, ctx context.Context, serviceUrl string, 
 	}
 
 	if _, err := client.Post(ctx); err != nil {
-		logger.Errorf("failed to report restart: %s, Request: %+v, Response Status: %s", err, errReport)
+		logger.Errorf("failed to report restart: %s, Request: %+v", err, errReport)
 	}
 }
