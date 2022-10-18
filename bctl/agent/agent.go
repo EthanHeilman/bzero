@@ -86,10 +86,11 @@ func main() {
 		agent, err = NewKubeAgent(version, reg, bzos.OsShutdownChan())
 	}
 
+	exitError := 1
 	if err != nil {
 		fmt.Printf("ERROR: failed to start agent: %s\n %+v", err, debug.Stack())
 	} else {
-		agent.Run(forceReRegistration)
+		exitError = agent.Run(forceReRegistration)
 	}
 
 	switch agentType {
@@ -101,7 +102,7 @@ func main() {
 		// and so should have all agents exit
 		select {}
 	case Bzero:
-		os.Exit(1)
+		os.Exit(exitError)
 	}
 }
 
