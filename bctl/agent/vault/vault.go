@@ -122,6 +122,10 @@ func (v *vault) UnmarshalJSON(data []byte) error {
 	// in order for us to be able to parse it as a map
 	val := objmap["ShutdownState"]
 
+	if string(data) == "null" || string(data) == `""` {
+		v.ShutdownState = map[string]string{}
+	}
+
 	s := strings.TrimSuffix(strings.TrimPrefix(string(val), "\""), "\"")
 	if strings.HasPrefix(s, "map[") {
 		s = strings.TrimPrefix(s, "map[")
