@@ -111,13 +111,10 @@ func (a *Agent) Run(forceReRegistration bool) int {
 	for {
 		select {
 		case <-a.tmb.Dead():
-			err = a.tmb.Err()
-			return 1
-
+			return a.Close(a.tmb.Err())
 		// wait until we recieve a kill signal or other runtime shutdown
 		case signal := <-a.osSignalChan:
-			a.logger.Errorf("received shutdown signal: %s", signal.String())
-			return 1
+			return a.Close(fmt.Errorf("received shutdown signal: %s", signal.String()))
 
 		// we should report significant-but-non-fatal errors to bastion.
 		// this action must be separated from monitorControlChannel so that persistent runtime errors do not
@@ -175,7 +172,7 @@ func (a *Agent) startControlChannel() error {
 	}
 }
 
-func (a *Agent) Close(reason error) {
+func (a *Agent) Close(reason error) int {
 	a.logger.Infof("Agent closing because: %s", reason)
 
 	if a.tmb.Alive() {
@@ -190,10 +187,9 @@ func (a *Agent) Close(reason error) {
 	a.config.SetShutdownInfo(reason.Error(), a.state())
 
 	if reason == nil {
-		os.Exit(0)
+		return 0
 	}
-
-	os.Exit(1)
+	return 1
 }
 
 // report early errors to the bastion so we have greater visibility
@@ -239,6 +235,7 @@ func (a *Agent) monitorControlChannel() error {
 		select {
 		case <-a.tmb.Dying():
 			a.controlChannel.Close(a.tmb.Err())
+			return nil
 		case <-a.controlChannel.Pong():
 			// the CC is still alive!
 			missedPongSets = 0
@@ -251,7 +248,7 @@ func (a *Agent) monitorControlChannel() error {
 			} else {
 				// if we don't hear from the CC but its websocket is still alive, assume the CC is broken and restart
 				a.logger.Errorf("%s -- Initializing restart...", stoppedProcessingPongsMsg)
-				a.controlChannel.Close(a.tmb.Err())
+				a.controlChannel.Close(fmt.Errorf(stoppedProcessingPongsMsg))
 				return fmt.Errorf(stoppedProcessingPongsMsg)
 			}
 		case <-a.controlChannel.Done():
@@ -270,7 +267,7 @@ func (a *Agent) state() map[string]string {
 
 	return map[string]string{
 		"activationToken":       activationToken,
-		"registrationKeyLength": fmt.Sprintf("%v", len(registrationKey)),
+		"registrationKeyLength": fmt.Sprintf("%d", len(registrationKey)),
 		"targetName":            a.config.GetTargetId(),
 		"targetHostName":        hostname,
 		"goos":                  runtime.GOOS,

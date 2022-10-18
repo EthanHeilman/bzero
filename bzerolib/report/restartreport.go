@@ -34,7 +34,7 @@ func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string
 	}
 	body := bytes.NewBuffer(restartBytes)
 
-	client, err := httpclient.NewWithBackoff(logger, serviceUrl, httpclient.HTTPOptions{
+	client, err := httpclient.New(logger, serviceUrl, httpclient.HTTPOptions{
 		Endpoint: restartEndpoint,
 		Body:     body,
 		Headers: http.Header{
@@ -43,6 +43,7 @@ func ReportRestart(logger *logger.Logger, ctx context.Context, serviceUrl string
 	})
 	if err != nil {
 		logger.Errorf("failed to create our http client: %s", err)
+		return
 	}
 
 	if _, err := client.Post(ctx); err != nil {

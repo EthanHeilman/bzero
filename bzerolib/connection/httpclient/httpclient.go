@@ -86,8 +86,8 @@ func NewWithBackoff(
 	// DefaultMaxInterval         = 60 * time.Second
 	// DefaultMaxElapsedTime      = 15 * time.Minute
 
-	client.backoffParams.MaxInterval = 15 * time.Minute
-	client.backoffParams.MaxElapsedTime = 72 * time.Hour
+	client.backoffParams.MaxInterval = 5 * time.Minute
+	client.backoffParams.MaxElapsedTime = time.Hour
 
 	return client, nil
 }
