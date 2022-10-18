@@ -138,25 +138,26 @@ func NewSystemDAgent(
 		}
 	}()
 
-	config, err := vault.LoadSystemDVault(configDir)
-	if err != nil {
-		return nil, err
-	}
-	a.config = config
-
 	// Create our logger
-	log, err := logger.New(&logger.Config{
+	logger, err := logger.New(&logger.Config{
 		ConsoleWriters: []io.Writer{os.Stdout},
 		FilePath:       defaultLogFilePath,
 	})
 	if err != nil {
 		return nil, err
 	}
-	log.AddAgentVersion(version)
-	log.AddAgentType(Bzero)
+	logger.AddAgentVersion(version)
+	logger.AddAgentType(Bzero)
+	a.logger = logger
 
-	log.Info("Starting up the BastionZero Agent")
-	a.logger = log
+	config, err := vault.LoadSystemDVault(configDir)
+	if err != nil {
+		a.logger.Errorf("failed to load systemd vault: %s", err)
+		return nil, err
+	}
+	a.config = config
+
+	a.logger.Info("Starting up the BastionZero Agent")
 
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
@@ -206,34 +207,35 @@ func NewKubeAgent(
 		}
 	}()
 
-	// Load our vault
-	config, err := vault.LoadKubernetesVault(ctx, namespace, targetName)
-	if err != nil {
-		return nil, err
-	}
-	a.config = config
-
 	// Create our logger
-	log, err := logger.New(&logger.Config{
+	logger, err := logger.New(&logger.Config{
 		ConsoleWriters: []io.Writer{os.Stdout},
 	})
 	if err != nil {
 		return nil, err
 	}
-	log.AddAgentVersion(version)
-	log.AddAgentType(Cluster)
+	logger.AddAgentVersion(version)
+	logger.AddAgentType(Cluster)
+	a.logger = logger
 
-	log.Infof("Starting up the BastionZero Agent")
+	// Load our vault
+	config, err := vault.LoadKubernetesVault(ctx, namespace, targetName)
+	if err != nil {
+		a.logger.Errorf("failed to load kubernetes vault: %s", err)
+		return nil, err
+	}
+	a.config = config
+
+	a.logger.Infof("Starting up the BastionZero Agent")
 
 	// Verify we have the correct RBAC permissions
-	if err := rbac.CheckPermissions(log, namespace); err != nil {
+	if err := rbac.CheckPermissions(logger, namespace); err != nil {
 		err = fmt.Errorf("error verifying agent kubernetes setup: %w", err)
-		log.Error(err)
+		a.logger.Error(err)
 		return nil, err
 	} else {
-		log.Info("Namespace and service account permissions verified")
+		a.logger.Info("Namespace and service account permissions verified")
 	}
-	a.logger = log
 
 	return a, nil
 }

@@ -126,13 +126,13 @@ func (v *vault) UnmarshalJSON(data []byte) error {
 		v.ShutdownState = map[string]string{}
 	}
 
-	s := strings.TrimSuffix(strings.TrimPrefix(string(val), "\""), "\"")
+	s := strings.TrimSuffix(strings.TrimPrefix(string(val), `"`), `"`)
 	if strings.HasPrefix(s, "map[") {
 		s = strings.TrimPrefix(s, "map[")
 		s = strings.TrimSuffix(s, "]")
-		s = strings.ReplaceAll(s, ":", "\":\"")
-		s = strings.ReplaceAll(s, " ", "\", \"")
-		s = "{\"" + s + "\"}"
+		s = strings.ReplaceAll(s, ":", `":"`)
+		s = strings.ReplaceAll(s, " ", `", "`)
+		s = `{"` + s + `"}`
 		val = json.RawMessage(s)
 	}
 
