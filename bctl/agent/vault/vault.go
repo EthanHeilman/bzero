@@ -122,7 +122,7 @@ func (v *vault) UnmarshalJSON(data []byte) error {
 	// in order for us to be able to parse it as a map
 	val := objmap["ShutdownState"]
 
-	if string(data) == "null" || string(data) == `""` {
+	if string(val) == "null" || string(val) == `""` {
 		v.ShutdownState = map[string]string{}
 	}
 
