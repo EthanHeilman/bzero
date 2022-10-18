@@ -123,7 +123,7 @@ func (v *vault) UnmarshalJSON(data []byte) error {
 	val := objmap["ShutdownState"]
 
 	if string(val) == "null" || string(val) == `""` {
-		v.ShutdownState = map[string]string{}
+		return nil
 	}
 
 	s := strings.TrimSuffix(strings.TrimPrefix(string(val), `"`), `"`)
