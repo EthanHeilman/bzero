@@ -93,17 +93,19 @@ func main() {
 		exitError = agent.Run(forceReRegistration)
 	}
 
-	switch agentType {
-	case Cluster:
+	os.Exit(exitError)
 
-		// Sleep forever because otherwise kube will endlessly try restarting
-		// Ref: https://stackoverflow.com/questions/36419054/go-projects-main-goroutine-sleep-forever
-		// TODO: as soon as we have a "bastion breakup" message, we can safely get all agents to stop calling us
-		// and so should have all agents exit
-		select {}
-	case Bzero:
-		os.Exit(exitError)
-	}
+	// switch agentType {
+	// case Cluster:
+
+	// 	// Sleep forever because otherwise kube will endlessly try restarting
+	// 	// Ref: https://stackoverflow.com/questions/36419054/go-projects-main-goroutine-sleep-forever
+	// 	// TODO: as soon as we have a "bastion breakup" message, we can safely get all agents to stop calling us
+	// 	// and so should have all agents exit
+	// 	select {}
+	// case Bzero:
+	// 	os.Exit(exitError)
+	// }
 }
 
 func NewSystemDAgent(
