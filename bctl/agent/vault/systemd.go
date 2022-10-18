@@ -7,7 +7,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
@@ -30,11 +29,6 @@ type SystemDVault struct {
 }
 
 func LoadSystemDVault(vaultDir string) (*SystemDVault, error) {
-	vaultDir, err := filepath.EvalSymlinks(vaultDir)
-	if err != nil {
-		return nil, err
-	}
-
 	vaultPath := path.Join(vaultDir, vaultFileName)
 	fileLock := filelock.NewFileLock(path.Join(vaultDir, vaultFileLockName))
 
