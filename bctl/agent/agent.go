@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -174,8 +175,8 @@ func New(logger *logger.Logger, fileIo bzio.BzFileIo) (*Agent, error) {
 func (a *Agent) checkShutdownReason() {
 	if a.config.Data.ShutdownReason == stoppedProcessingPongsMsg || strings.Contains(a.config.Data.ShutdownReason, controlchannel.ManualRestartMsg) {
 		a.logger.Infof("Notifying Bastion that we restarted because: %s", a.config.Data.ShutdownReason)
-		report.ReportRestart(
-			a.logger,
+		if err := report.ReportRestart(
+			context.TODO(),
 			serviceUrl,
 			report.RestartReport{
 				TargetId:       targetId,
@@ -183,7 +184,10 @@ func (a *Agent) checkShutdownReason() {
 				Timestamp:      fmt.Sprint(time.Now().Unix()),
 				Message:        a.config.Data.ShutdownReason,
 				State:          a.config.Data.ShutdownState,
-			})
+			}); err != nil {
+			a.logger.Error(fmt.Errorf("failed to report restart: %s", err))
+		}
+
 	}
 }
 
@@ -374,7 +378,9 @@ func reportError(logger *logger.Logger, errorReport error) {
 		},
 	}
 
-	report.ReportError(logger, serviceUrl, errReport)
+	if err := report.ReportError(context.TODO(), serviceUrl, errReport); err != nil && logger != nil {
+		logger.Errorf("failed to report error: %s", err)
+	}
 }
 
 func parseFlags() error {

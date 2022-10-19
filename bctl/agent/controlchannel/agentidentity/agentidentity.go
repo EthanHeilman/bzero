@@ -145,7 +145,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 		},
 	}
 
-	client, err := httpclient.New(a.logger, a.serviceUrl, options)
+	client, err := httpclient.New(a.serviceUrl, options)
 	if err != nil {
 		return nil, err
 	}

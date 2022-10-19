@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"github.com/cenkalti/backoff"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,11 +19,10 @@ func TestHttpClient(t *testing.T) {
 	RunSpecs(t, "HttpClient Suite")
 }
 
-var _ = Describe("HttpClient", Ordered, func() {
+var _ = Describe("HttpClient", func() {
 	var client *HttpClient
 	var server *tests.MockServer
 
-	logger := logger.MockLogger(GinkgoWriter)
 	ctx := context.Background()
 
 	Context("Creation", func() {
@@ -35,7 +34,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 			fakeEndpoint := "fake"
 
 			BeforeEach(func() {
-				client, err = New(logger, testUrl, HTTPOptions{
+				client, err = New(testUrl, HTTPOptions{
 					Endpoint: fakeEndpoint,
 				})
 			})
@@ -73,7 +72,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: verifyParams,
 				})
 
-				client, _ = New(logger, server.Url, HTTPOptions{
+				client, _ = New(server.Url, HTTPOptions{
 					Params: fakeParams,
 				})
 				_, err = client.Get(ctx)
@@ -109,7 +108,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: verifyHeaders,
 				})
 
-				client, _ = New(logger, server.Url, HTTPOptions{
+				client, _ = New(server.Url, HTTPOptions{
 					Headers: fakeHeaders,
 				})
 				_, err = client.Get(ctx)
@@ -122,13 +121,51 @@ var _ = Describe("HttpClient", Ordered, func() {
 
 		When("Creating with backoff", func() {
 			var err error
+			var retryCount int
+			var server *tests.MockServer
+
+			backoffParams := backoff.NewExponentialBackOff()
+			backoffParams.MaxInterval = 5 * time.Minute
+			backoffParams.MaxElapsedTime = time.Hour
+
+			handleGet := func(w http.ResponseWriter, r *http.Request) {
+				if retryCount != 0 {
+					retryCount--
+					w.WriteHeader(http.StatusBadRequest)
+				} else {
+					w.WriteHeader(http.StatusOK)
+				}
+			}
 
 			BeforeEach(func() {
-				_, err = NewWithBackoff(logger, testUrl, HTTPOptions{})
+				server = tests.NewMockServer(tests.MockHandler{
+					Endpoint:    "/",
+					HandlerFunc: handleGet,
+				})
+
+				retryCount = 3
+				client, err = New(server.Url, HTTPOptions{
+					ExponentialBackoff: backoffParams,
+				})
+			})
+
+			AfterEach(func() {
+				server.Close()
 			})
 
 			It("it builds without error", func() {
 				Expect(err).ToNot(HaveOccurred(), "Client failed to build: %s", err)
+			})
+
+			It("retries until it gets a successful http response", func() {
+				done := make(chan struct{})
+				go func() {
+					_, err = client.Get(ctx)
+					close(done)
+				}()
+				Eventually(done, 5*time.Second).Should(BeClosed())
+				Expect(err).ToNot(HaveOccurred(), "Client failed to execute a GET request: %s", err)
+				Expect(retryCount).To(Equal(0))
 			})
 		})
 	})
@@ -151,7 +188,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handlePost,
 				})
 
-				client, _ = New(logger, server.Url, HTTPOptions{})
+				client, _ = New(server.Url, HTTPOptions{})
 				_, err = client.Post(ctx)
 			})
 
@@ -183,7 +220,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handlePatch,
 				})
 
-				client, _ = New(logger, server.Url, HTTPOptions{})
+				client, _ = New(server.Url, HTTPOptions{})
 				_, err = client.Patch(ctx)
 			})
 
@@ -215,7 +252,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 					HandlerFunc: handleGet,
 				})
 
-				client, _ = New(logger, server.Url, HTTPOptions{})
+				client, _ = New(server.Url, HTTPOptions{})
 				_, err = client.Get(ctx)
 			})
 
@@ -249,7 +286,7 @@ var _ = Describe("HttpClient", Ordered, func() {
 				})
 
 				newctx, cancel := context.WithCancel(ctx)
-				client, _ = New(logger, server.Url, HTTPOptions{})
+				client, _ = New(server.Url, HTTPOptions{})
 
 				err = fmt.Errorf("context not cancelled yet")
 				go func() { _, err = client.Get(newctx) }()

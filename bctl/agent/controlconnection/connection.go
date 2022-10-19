@@ -292,7 +292,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 		Endpoint: connectionServiceEndpoint,
 	}
 
-	client, err := httpclient.New(c.logger, serviceUrl, options)
+	client, err := httpclient.New(serviceUrl, options)
 	if err != nil {
 		return "", err
 	}
@@ -343,7 +343,7 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 		},
 	}
 
-	client, err := httpclient.New(c.logger, connUrl, options)
+	client, err := httpclient.New(connUrl, options)
 	if err != nil {
 		return nil, err
 	}

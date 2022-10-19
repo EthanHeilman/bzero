@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -107,7 +108,9 @@ func reportError(logger *bzlogger.Logger, err error) {
 		},
 	}
 
-	report.ReportError(logger, config[SERVICE_URL].Value, errReport)
+	if err := report.ReportError(context.TODO(), config[SERVICE_URL].Value, errReport); err != nil && logger != nil {
+		logger.Errorf("failed to report error to BastionZero: %s", err)
+	}
 }
 
 func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {
