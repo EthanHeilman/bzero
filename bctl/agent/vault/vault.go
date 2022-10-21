@@ -77,7 +77,7 @@ func InCluster() bool {
 	}
 }
 
-func WaitForNewRegistration(logger *logger.Logger) error {
+func WaitForNewRegistration(ctx context.Context, logger *logger.Logger) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("error starting new file watcher: %s", err)
@@ -88,9 +88,13 @@ func WaitForNewRegistration(logger *logger.Logger) error {
 	go func() {
 		for {
 			select {
+			case <-ctx.Done():
+				done <- fmt.Errorf("context cancelled")
+				return
 			case event, ok := <-watcher.Events:
 				if !ok {
 					done <- fmt.Errorf("file watcher closed events channel")
+					return
 				}
 
 				if event.Op&fsnotify.Write == fsnotify.Write {
@@ -101,18 +105,19 @@ func WaitForNewRegistration(logger *logger.Logger) error {
 						continue
 					} else {
 						// if we haven't completed registration yet, continue waiting
-						if config.PublicKey == "" {
-							continue
-						} else {
+						if config.PublicKey != "" {
 							done <- nil
+							return
 						}
 					}
 				}
 			case err, ok := <-watcher.Errors:
 				if !ok {
 					done <- fmt.Errorf("file watcher closed errors channel")
+					return
 				}
 				done <- fmt.Errorf("file watcher caught error: %s", err)
+				return
 			}
 		}
 	}()
@@ -258,6 +263,42 @@ func (v *Vault) Save() error {
 	} else {
 		return v.saveSystemd()
 	}
+}
+
+func (v *Vault) SetRegistrationData(serviceUrl string, publicKey string, privateKey string, idpProvider string, idpOrgId string, targetId string) error {
+	v.Data.ServiceUrl = serviceUrl
+	v.Data.PublicKey = publicKey
+	v.Data.PrivateKey = privateKey
+	v.Data.IdpProvider = idpProvider
+	v.Data.IdpOrgId = idpOrgId
+	v.Data.TargetId = targetId
+
+	return v.Save()
+}
+
+func (v *Vault) SetShutdownInfo(reason string, state string) error {
+	v.Data.ShutdownReason = reason
+	v.Data.ShutdownState = state
+
+	return v.Save()
+}
+
+func (v *Vault) SetVersion(version string) error {
+	v.Data.Version = version
+
+	return v.Save()
+}
+
+func (v *Vault) GetServiceUrl() string {
+	return v.Data.ServiceUrl
+}
+
+func (v *Vault) GetShutdownInfo() (string, string) {
+	return v.Data.ShutdownReason, v.Data.ShutdownState
+}
+
+func (v *Vault) GetTargetId() string {
+	return v.Data.TargetId
 }
 
 func (v *Vault) GetPublicKey() string {
