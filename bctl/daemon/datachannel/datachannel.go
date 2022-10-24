@@ -3,6 +3,7 @@ package datachannel
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	tomb "gopkg.in/tomb.v2"
@@ -14,6 +15,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
 )
 
 const (
@@ -370,9 +372,14 @@ func (d *DataChannel) handleError(agentMessage *am.AgentMessage) error {
 
 	if rrr.ErrorType(errMessage.Type) == rrr.KeysplittingValidationError {
 		return d.keysplitter.Recover(errMessage)
-	} else {
-		return fmt.Errorf("received fatal %s error from agent: %s", errMessage.Type, errMessage.Message)
+		// although string comparison is a brittle way to do this, we need to in cases when the
+		// original Go error gets cast as a string and transmitted as JSON
+	} else if strings.Contains(errMessage.Message, unixuser.UserNotFoundErrMsg) {
+		return &unixuser.UserNotFoundError{}
 	}
+
+	// return any error we don't specifically handle
+	return fmt.Errorf("received fatal %s error from agent: %s", errMessage.Type, errMessage.Message)
 }
 
 func (d *DataChannel) handleStream(agentMessage *am.AgentMessage) error {
