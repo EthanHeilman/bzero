@@ -300,7 +300,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	// make our request
 	resp, err := client.Get(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making get request to get connection service url: %w", err)
 	}
 
 	// Decode and return response
@@ -351,7 +351,7 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 	// Make request
 	response, err := client.Get(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for control channel. Request: %+v Error: %s. Response: %+v", getControlChannel, err, response)
+		return nil, fmt.Errorf("error making get request for control channel: %s. Request: %+v", err, getControlChannel)
 	}
 
 	// Decode and return response

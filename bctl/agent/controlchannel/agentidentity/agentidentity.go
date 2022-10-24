@@ -22,7 +22,7 @@ const (
 
 type IAgentIdentityTokenStore interface {
 	GetAgentIdentityToken() string
-	SaveAgentIdentityToken(string) error
+	SetAgentIdentityToken(string) error
 }
 
 type IAgentIdentityProvider interface {
@@ -75,7 +75,7 @@ func (a *AgentIdentityProvider) refreshToken(ctx context.Context) (string, error
 	if res, err := a.getTokenFromBastion(ctx); err != nil {
 		return "", err
 	} else {
-		if err = a.store.SaveAgentIdentityToken(res.Token); err != nil {
+		if err = a.store.SetAgentIdentityToken(res.Token); err != nil {
 			return "", err
 		} else {
 			return res.Token, nil
@@ -153,7 +153,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	// Send the request
 	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for agent identity token. Request: %+v Error: %s. Response: %+v", getAgentIdentityToken, err, response)
+		return nil, fmt.Errorf("error making get request for agent identity token: %s. Request: %+v", err, getAgentIdentityToken)
 	}
 
 	// Decode and return response

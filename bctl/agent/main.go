@@ -10,9 +10,9 @@ import (
 	"runtime/debug"
 	"strings"
 
+	"bastionzero.com/bctl/v1/bctl/agent/config"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
@@ -23,7 +23,7 @@ var (
 	activationToken, registrationKey string
 	idpProvider, namespace, idpOrgId string
 	targetId, targetName             string
-	logLevel, vaultPath              string
+	logLevel, configDir              string
 	forceReregistration              bool
 	wait                             bool
 	printVersion                     bool
@@ -78,13 +78,13 @@ func main() {
 	var err error
 	switch agentType {
 	case Systemd:
-		agent, err = NewSystemDAgent(version, reg)
+		agent, err = NewSystemdAgent(version, reg)
 	case Kubernetes:
 		agent, err = NewKubeAgent(version, reg)
 	}
 
 	if err != nil {
-		fmt.Printf("ERROR: failed to start agent: %s\n %+v\n", err, debug.Stack())
+		fmt.Printf("ERROR: failed to start agent: %s\n %+v\n", err, string(debug.Stack()))
 		os.Exit(1)
 	}
 
@@ -121,6 +121,8 @@ func parseFlags() {
 	flag.StringVar(&environmentId, "environmentId", "", "Policy environment ID to associate with agent")
 	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
 
+	flag.StringVar(&configDir, "configDir", config.DefaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
+
 	// Parse any flag
 	flag.Parse()
 
@@ -138,7 +140,7 @@ func parseFlags() {
 	}
 }
 
-func NewSystemDAgent(
+func NewSystemdAgent(
 	version string,
 	registration *registration.Registration,
 ) (a *Agent, err error) {
@@ -170,7 +172,7 @@ func NewSystemDAgent(
 		ConsoleWriters: []io.Writer{os.Stdout},
 		FilePath:       defaultLogFilePath,
 	}); err != nil {
-		return nil, err
+		return
 	}
 	a.logger.AddAgentVersion(version)
 	a.logger.AddAgentType(string(Systemd))
@@ -183,9 +185,8 @@ func NewSystemDAgent(
 		}
 	}()
 
-	if a.config, err = vault.LoadVault(); err != nil {
-		err = fmt.Errorf("failed to load systemd vault: %s", err)
-		return nil, err
+	if a.config, err = config.LoadSystemdConfig(configDir); err != nil {
+		return a, fmt.Errorf("failed to load systemd config: %s", err)
 	}
 
 	a.logger.Info("Starting up the BastionZero Agent")
@@ -196,12 +197,11 @@ func NewSystemDAgent(
 	isRegistered := a.config.GetPublicKey() != ""
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-		vault.WaitForNewRegistration(a.ctx, a.logger)
+		a.config.WaitForRegistration(a.ctx)
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if a.config, err = vault.LoadVault(); err != nil {
-			err = fmt.Errorf("failed to reload vault after new registration detected: %w", err)
-			return nil, err
+		if err := a.config.Reload(); err != nil {
+			return a, fmt.Errorf("failed to reload config after new registration detected: %w", err)
 		}
 	}
 
@@ -209,10 +209,12 @@ func NewSystemDAgent(
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		// Regardless of the response, we're done here. Registration for the SystemD agent
+		// Regardless of the response, we're done here. Registration for the Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
-		err = registration.Register(a.logger, a.config)
-		return nil, err
+		if err = registration.Register(a.logger, a.config); err != nil {
+			return
+		}
+		os.Exit(0)
 	} else {
 		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
 	}
@@ -265,42 +267,39 @@ func NewKubeAgent(
 		}
 	}()
 
-	// Load our vault
-	if a.config, err = vault.LoadVault(); err != nil {
-		err = fmt.Errorf("failed to load kubernetes vault: %s", err)
-		return nil, err
+	// Load our config
+	if a.config, err = config.LoadKubernetesConfig(a.ctx, namespace, targetName); err != nil {
+		return a, fmt.Errorf("failed to load kubernetes config: %s", err)
 	}
 
 	a.logger.Infof("Starting up the BastionZero Agent")
 
 	// Verify we have the correct RBAC permissions
 	if err = rbac.CheckPermissions(a.logger, namespace); err != nil {
-		err = fmt.Errorf("error verifying agent kubernetes setup: %w", err)
-		return nil, err
+		return a, fmt.Errorf("error verifying agent kubernetes setup: %w", err)
 	} else {
 		a.logger.Info("Namespace and service account permissions verified")
 	}
 
-	// The kube agent registers itself (if requested) and then reloads the vault
+	// The kube agent registers itself (if requested) and then reloads the config
 	// to continue running. There is no restart after registration.
 	isRegistered := a.config.GetPublicKey() != ""
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
 		if err = registration.Register(a.logger, a.config); err != nil {
-			err = fmt.Errorf("failed to register kube agent: %w", err)
-			return nil, err
+			return a, fmt.Errorf("failed to register kube agent: %w", err)
 		}
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if a.config, err = vault.LoadVault(); err != nil {
-			return nil, err
+		if err = a.config.Reload(); err != nil {
+			return
 		}
 	} else {
 		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
 	}
 
-	return a, nil
+	return
 }
 
 func getAgentVersion() string {

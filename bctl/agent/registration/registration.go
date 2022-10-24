@@ -276,7 +276,7 @@ func (r *Registration) getConnectionServiceUrlFromServiceUrl() (string, error) {
 	// build our endpoint
 	endpointToHit, err := bzhttp.BuildEndpoint(r.serviceUrl, getConnectionServiceEndpoint)
 	if err != nil {
-		return "", fmt.Errorf("error building endpoint for get connection service request")
+		return "", fmt.Errorf("error building endpoint for get connection service request: %s", err)
 	}
 
 	// make our request
@@ -288,7 +288,7 @@ func (r *Registration) getConnectionServiceUrlFromServiceUrl() (string, error) {
 	// read the response
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading body on get connection service url requets")
+		return "", fmt.Errorf("error reading body on get connection service url requets: %s", err)
 	}
 
 	// unmarshal the response into struct

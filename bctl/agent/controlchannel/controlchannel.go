@@ -16,7 +16,6 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
@@ -356,7 +355,7 @@ func (c *ControlChannel) reportHealth() error {
 	}
 
 	// Let bastion know a list of valid cluster users if they have changed
-	if vault.InCluster() {
+	if c.targetType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}

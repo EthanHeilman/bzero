@@ -48,25 +48,28 @@ type IRegistration interface {
 	Register(logger *logger.Logger, config registration.RegistrationConfig) error
 }
 
-type Config interface {
+type AgentConfig interface {
 	keysplitting.IKeysplittingConfig
 	registration.RegistrationConfig
 	agentidentity.IAgentIdentityTokenStore
 
 	GetTargetId() string
-	GetShutdownInfo() (string, string)
+	GetShutdownInfo() (string, map[string]string)
 	GetServiceUrl() string
 	GetMessageSigner() (*messagesigner.MessageSigner, error)
 
 	SetVersion(version string) error
-	SetShutdownInfo(reason string, state string) error
+	SetShutdownInfo(reason string, state map[string]string) error
+
+	Reload() error
+	WaitForRegistration(ctx context.Context) error
 }
 
 type Agent struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 
-	config       Config
+	config       AgentConfig
 	agentType    AgentType
 	version      string
 	osSignalChan <-chan os.Signal
@@ -114,12 +117,10 @@ func (a *Agent) Run() (err error) {
 	for {
 		select {
 		case <-a.tmb.Dead():
-			err = a.tmb.Err()
-			return
+			return a.tmb.Err()
 		// wait until we recieve a kill signal or other runtime shutdown
 		case signal := <-a.osSignalChan:
-			err = fmt.Errorf("received shutdown signal: %s", signal.String())
-			return
+			return fmt.Errorf("received shutdown signal: %s", signal.String())
 
 		// we should report significant-but-non-fatal errors to bastion.
 		// this action must be separated from monitorControlChannel so that persistent runtime errors do not
@@ -194,7 +195,7 @@ func (a *Agent) Close(reason error) {
 		return
 	}
 
-	a.config.SetShutdownInfo(reason.Error(), fmt.Sprintf("%+v", a.state()))
+	a.config.SetShutdownInfo(reason.Error(), a.state())
 }
 
 // report early errors to the bastion so we have greater visibility

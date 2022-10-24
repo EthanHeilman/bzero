@@ -99,7 +99,7 @@ func reportError(logger *bzlogger.Logger, err error) {
 
 	errReport := report.ErrorReport{
 		Reporter:  "daemon-" + daemonVersion,
-		Timestamp: fmt.Sprint(time.Now().Unix()),
+		Timestamp: fmt.Sprint(time.Now().UTC().Unix()),
 		Message:   err.Error(),
 		State: map[string]string{
 			"targetHostName": "",
