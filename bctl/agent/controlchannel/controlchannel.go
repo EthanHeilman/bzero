@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
@@ -64,6 +65,7 @@ type ControlChannel struct {
 	runtimeErrChan chan error
 
 	targetType string
+	targetId   string
 
 	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
 	connections     map[string]AgentDatachannelConnection
@@ -81,6 +83,7 @@ func Start(logger *logger.Logger,
 	conn connection.Connection, // control channel connection
 	serviceUrl string,
 	targetType string,
+	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	messageSigner messagesigner.IMessageSigner,
 	ksConfig keysplitting.IKeysplittingConfig,
@@ -92,6 +95,7 @@ func Start(logger *logger.Logger,
 		id:                    id,
 		serviceUrl:            serviceUrl,
 		targetType:            targetType,
+		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
 		messageSigner:         messageSigner,
 		ksConfig:              ksConfig,
@@ -136,6 +140,17 @@ func Start(logger *logger.Logger,
 			}
 		})
 
+		// Make a context and tie it in with our tomb to use for processing control messages
+		ctx, cancel := context.WithCancel(context.Background())
+
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-control.tmb.Dying():
+				cancel()
+			}
+		}()
+
 		for {
 			select {
 			case <-control.tmb.Dying():
@@ -151,7 +166,7 @@ func Start(logger *logger.Logger,
 				// Process each message in its own thread
 				// TODO: (CWC-2038) it would be safer to put a limit on how many threads can be created this way
 				go func() {
-					if err := control.processInput(agentMessage); err != nil {
+					if err := control.processInput(agentMessage, ctx); err != nil {
 						logger.Error(err)
 						control.runtimeErrChan <- err
 					}
@@ -271,7 +286,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 }
 
 // This is our main process function where incoming messages from the connection will be processed
-func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
+func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.Context) error {
 	c.logger.Debugf("control channel received %s message", am.MessageType(agentMessage.MessageType))
 
 	switch am.MessageType(agentMessage.MessageType) {
@@ -285,6 +300,18 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			restartRequest = RestartAgentMessage{}
 		}
 		c.Close(fmt.Errorf("%s: %+v", ManualRestartMsg, restartRequest))
+	case am.RetrieveLogs:
+		var retrieveLogsRequest RetrieveAgentLogsMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &retrieveLogsRequest); err != nil {
+			return fmt.Errorf("malformed retrieve agent logs request: %s", err)
+		} else {
+			c.logger.Infof("Sending %s logs from agent %s", c.targetType, c.targetId)
+			if err := agentreport.ReportLogs(c.targetType, c.agentIdentityProvider, ctx, c.serviceUrl, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
+				return fmt.Errorf("error sending agent logs to Bastion: %s", err)
+			} else {
+				c.logger.Infof("Successfully sent agent logs to Bastion")
+			}
+		}
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {

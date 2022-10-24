@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
@@ -171,7 +172,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), agentIdentityProvider, ms, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, ms, a.config)
 	a.controlConn = conn
 
 	return err
@@ -221,10 +222,10 @@ func (a *Agent) reportQualifiedShutdown() {
 	if shutdownReason == stoppedProcessingPongsMsg || strings.Contains(shutdownReason, controlchannel.ManualRestartMsg) {
 		a.logger.Infof("Notifying Bastion that we restarted because: %s", shutdownReason)
 
-		if err := report.ReportRestart(
+		if err := agentreport.ReportRestart(
 			a.ctx,
 			a.config.GetServiceUrl(),
-			report.RestartReport{
+			agentreport.RestartReport{
 				TargetId:       a.config.GetTargetId(),
 				AgentPublicKey: a.config.GetPublicKey(),
 				Timestamp:      fmt.Sprint(time.Now().UTC().Unix()),

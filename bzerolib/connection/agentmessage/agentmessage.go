@@ -48,4 +48,7 @@ const (
 
 	// poison pill message - an order from an admin to restart
 	Restart MessageType = "restart"
+
+	// message to trigger agent to send logs to bastion
+	RetrieveLogs MessageType = "retrievelogs"
 )
