@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config"
+	"bastionzero.com/bctl/v1/bctl/agent/config/client"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
@@ -31,8 +32,9 @@ var (
 )
 
 const (
-	prodServiceUrl     = "https://cloud.bastionzero.com/"
-	defaultLogFilePath = "/var/log/bzero/bzero-agent.log"
+	prodServiceUrl         = "https://cloud.bastionzero.com/"
+	defaultLogFilePath     = "/var/log/bzero/bzero-agent.log"
+	defaultConfigDirectory = "/etc/bzero"
 
 	// Env var to flag if we are in a kube cluster
 	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
@@ -121,7 +123,7 @@ func parseFlags() {
 	flag.StringVar(&environmentId, "environmentId", "", "Policy environment ID to associate with agent")
 	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
 
-	flag.StringVar(&configDir, "configDir", config.DefaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
+	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
 	// Parse any flag
 	flag.Parse()
@@ -185,7 +187,12 @@ func NewSystemdAgent(
 		}
 	}()
 
-	if a.config, err = config.LoadSystemdConfig(configDir); err != nil {
+	sysdClient, err := client.NewSystemdClient(configDir)
+	if err != nil {
+		return a, fmt.Errorf("failed to initialize systemd client: %s", err)
+	}
+
+	if a.config, err = config.Load(sysdClient); err != nil {
 		return a, fmt.Errorf("failed to load systemd config: %s", err)
 	}
 
@@ -194,10 +201,10 @@ func NewSystemdAgent(
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
 	// registration and then it we load it before proceeding
-	isRegistered := a.config.GetPublicKey() != ""
+	isRegistered := !a.config.GetPublicKey().IsEmpty()
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-		a.config.WaitForRegistration(a.ctx)
+		sysdClient.WaitForRegistration(a.ctx)
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
 		if err := a.config.Reload(); err != nil {
@@ -267,9 +274,11 @@ func NewKubeAgent(
 		}
 	}()
 
-	// Load our config
-	if a.config, err = config.LoadKubernetesConfig(a.ctx, namespace, targetName); err != nil {
-		return a, fmt.Errorf("failed to load kubernetes config: %s", err)
+	// Initialize our config
+	if kubeClient, err := client.NewKubernetesClient(ctx, namespace, targetName); err != nil {
+		return a, fmt.Errorf("failed to initialize our kube config client: %w", err)
+	} else if a.config, err = config.Load(kubeClient); err != nil {
+		return a, fmt.Errorf("failed to load kubernetes config: %w", err)
 	}
 
 	a.logger.Infof("Starting up the BastionZero Agent")
@@ -283,7 +292,7 @@ func NewKubeAgent(
 
 	// The kube agent registers itself (if requested) and then reloads the config
 	// to continue running. There is no restart after registration.
-	isRegistered := a.config.GetPublicKey() != ""
+	isRegistered := !a.config.GetPublicKey().IsEmpty()
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 

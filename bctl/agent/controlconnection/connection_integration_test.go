@@ -9,8 +9,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"bastionzero.com/bctl/v1/bzerolib/tests/connectionnode"
 
@@ -50,7 +50,21 @@ func respondWithErrorCodes(logger *logger.Logger, defaultHandler http.HandlerFun
 	}
 }
 
-var _ = Describe("Agent Control Connection Integration", Ordered, func() {
+func waitForConnectionReady(conn connection.Connection) <-chan struct{} {
+	doneChan := make(chan struct{})
+	go func() {
+		for {
+			if conn.Ready() {
+				close(doneChan)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	return doneChan
+}
+
+var _ = Describe("Agent Control Connection Integration", func() {
 	logger := logger.MockLogger(GinkgoWriter)
 
 	headers := http.Header{}
@@ -60,14 +74,10 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 		"target_id":  {"targetId"},
 	}
 
-	fakeKeyPair, _ := tests.GenerateEd25519Key()
-	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	_, privateKey, _ := keypair.GenerateKeyPair()
 
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
-
-	keyPair, _ := tests.GenerateEd25519Key()
-	privateKey := keyPair.Base64EncodedPrivateKey
 
 	createConnectionWithBastion := func(cnUrl string) connection.Connection {
 		websocket.WebsocketUrlScheme = websocket.HttpWebsocketScheme
@@ -75,7 +85,7 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, privateKey, params, headers, client, mockAgentIdentityProvider, fakeMessageSigner)
+		conn, _ := New(logger, cnUrl, privateKey, params, headers, client, mockAgentIdentityProvider)
 
 		return conn
 	}
@@ -85,6 +95,7 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 		When("The Bastion throws an error while trying to connect", func() {
 			var mockCN *connectionnode.MockConnectionNode
 			var conn connection.Connection
+			var done <-chan struct{}
 
 			BeforeEach(func() {
 				mockCN = connectionnode.New(logger, controlChannelHubEndpoint)
@@ -93,10 +104,8 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 
 				maxBackoffInterval = 50 * time.Millisecond
 
-				// put this in its own routine because trying to connect is blocking
-				go func() {
-					conn = createConnectionWithBastion(mockBastion.Url)
-				}()
+				conn = createConnectionWithBastion(mockBastion.Url)
+				done = waitForConnectionReady(conn)
 			})
 
 			AfterEach(func() {
@@ -105,8 +114,7 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 			})
 
 			It("retries to connect until it is able to successfully connect", func() {
-				time.Sleep(3 * time.Second)
-				Expect(conn.Ready()).To(Equal(true), "Connection never connected")
+				Eventually(done).WithTimeout(5*time.Second).Should(BeClosed(), "Connection never connected")
 				Expect(retryCount).To(Equal(len(BadStatusCodes)+1), "Connect flow did not cycle through all bad status codes before connecting")
 			})
 		})
@@ -123,9 +131,7 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 				maxBackoffInterval = 50 * time.Millisecond
 
 				// put this in its own routine because trying to connect is blocking
-				go func() {
-					conn = createConnectionWithBastion(mockBastion.Url)
-				}()
+				conn = createConnectionWithBastion(mockBastion.Url)
 			})
 
 			AfterEach(func() {
@@ -134,8 +140,9 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 			})
 
 			It("retries to connect until it is able to successfully connect", func() {
-				time.Sleep(3 * time.Second)
-				Expect(conn.Ready()).To(Equal(true), "Connection never connected")
+				// time.Sleep(3 * time.Second)
+				done := waitForConnectionReady(conn)
+				Eventually(done).WithTimeout(5*time.Second).Should(BeClosed(), "Connection never connected")
 				Expect(retryCount).To(Equal(len(BadStatusCodes)+1), "Connect flow did not cycle through all bad status codes before connecting")
 			})
 		})
@@ -152,6 +159,8 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 				mockBastion := setupMockBastion(mockGetConnectionServiceUrlHandler(mockCO.Url))
 
 				conn = createConnectionWithBastion(mockBastion.Url)
+				done := waitForConnectionReady(conn)
+				Eventually(done).WithTimeout(time.Second).Should(BeClosed())
 
 				mockCN.BreakWebsocket()
 			})
@@ -177,6 +186,9 @@ var _ = Describe("Agent Control Connection Integration", Ordered, func() {
 				mockBastion := setupMockBastion(mockGetConnectionServiceUrlHandler(mockCO.Url))
 
 				conn = createConnectionWithBastion(mockBastion.Url)
+
+				done := waitForConnectionReady(conn)
+				Eventually(done).WithTimeout(time.Second).Should(BeClosed())
 
 				mockCN.CloseWebsocket()
 			})

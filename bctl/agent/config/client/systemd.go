@@ -1,4 +1,4 @@
-package config
+package client
 
 import (
 	"context"
@@ -8,18 +8,19 @@ import (
 	"os"
 	"path"
 
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"github.com/fsnotify/fsnotify"
 	"github.com/gofrs/flock"
 )
 
 const (
-	DefaultConfigDirectory = "/etc/bzero"
-	configFileName         = "vault.json"
-	configFileLockName     = "vault.lock"
+	// "Vault" was our old name for the config, renaming the .json file seemed unecessary at the time
+	configFileName     = "vault.json"
+	configFileLockName = "vault.lock"
 )
 
-type systemdClient struct {
+type SystemdClient struct {
 	configPath string
 	fileLock   *flock.Flock
 
@@ -27,11 +28,11 @@ type systemdClient struct {
 	lastMod int64
 }
 
-func newSystemdClient(configDir string) (*systemdClient, error) {
+func NewSystemdClient(configDir string) (*SystemdClient, error) {
 	configPath := path.Join(configDir, configFileName)
 	fileLock := filelock.NewFileLock(path.Join(configDir, configFileLockName))
 
-	config := &systemdClient{
+	config := &SystemdClient{
 		configPath: configPath,
 	}
 
@@ -60,9 +61,8 @@ func newSystemdClient(configDir string) (*systemdClient, error) {
 	return config, nil
 }
 
-// We know the config exists, we just need to load it
-func (s *systemdClient) Fetch() (data, error) {
-	var config data
+func (s *SystemdClient) Fetch() (data.DataV2, error) {
+	var config data.DataV2
 	for {
 		if acquiredLock, err := s.fileLock.TryLock(); err != nil {
 			return config, fmt.Errorf("error acquiring lock: %w", err)
@@ -77,22 +77,24 @@ func (s *systemdClient) Fetch() (data, error) {
 		return config, err
 	}
 
-	if len(file) == 0 {
-		return config, err
-	} else if err := json.Unmarshal([]byte(file), &config); err != nil {
-		return config, err
-	}
-
 	if info, err := os.Stat(s.configPath); err != nil {
 		return config, fmt.Errorf("failed to get config file info %s: %w", s.configPath, err)
 	} else {
 		s.lastMod = info.ModTime().Unix()
 	}
 
+	if len(file) == 0 {
+		return config, nil
+	}
+
+	if err := json.Unmarshal([]byte(file), &config); err != nil {
+		return config, err
+	}
+
 	return config, nil
 }
 
-func (s *systemdClient) Save(d data) error {
+func (s *SystemdClient) Save(d data.DataV2) error {
 	// grab our file lock so we're not accidentally writing at the same time
 	// as other processes which is possible during registration
 	for {
@@ -131,7 +133,7 @@ func (s *systemdClient) Save(d data) error {
 	return nil
 }
 
-func (s *systemdClient) WaitForRegistration(ctx context.Context) error {
+func (s *SystemdClient) WaitForRegistration(ctx context.Context) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("error starting new file watcher: %w", err)
@@ -151,7 +153,7 @@ func (s *systemdClient) WaitForRegistration(ctx context.Context) error {
 					}
 
 					if event.Op&fsnotify.Write == fsnotify.Write {
-						if data, err := s.Fetch(); err == nil && data.PublicKey != "" {
+						if data, err := s.Fetch(); err == nil && !data.PublicKey.IsEmpty() {
 							return nil
 						}
 					}

@@ -11,6 +11,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
 	rrr "bastionzero.com/bctl/v1/bzerolib/error"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -28,8 +29,8 @@ type Keysplitting struct {
 
 	bzcert bzcert.IDaemonBZCert
 
-	agentPubKey  string
-	ackPublicKey string
+	agentPubKey  *keypair.PublicKey
+	ackPublicKey *keypair.PublicKey
 
 	synAction string
 
@@ -66,24 +67,18 @@ type Keysplitting struct {
 
 func New(
 	logger *logger.Logger,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 	bzcert bzcert.IDaemonBZCert,
 ) (*Keysplitting, error) {
 
 	keysplitter := &Keysplitting{
-		logger:               logger,
-		bzcert:               bzcert,
-		agentPubKey:          agentPubKey,
-		ackPublicKey:         "",
-		pipelineMap:          orderedmap.New(),
-		outboxQueue:          make(chan *ksmsg.KeysplittingMessage, maxPipelineLimit),
-		recovering:           false,
-		synAction:            "initial",
-		errorRecoveryAttempt: 0,
-		isHandshakeComplete:  false,
-		lastAck:              nil,
-		lastAckedData:        nil,
-		pipelineLimit:        maxPipelineLimit,
+		logger:        logger,
+		bzcert:        bzcert,
+		agentPubKey:   agentPubKey,
+		pipelineMap:   orderedmap.New(),
+		outboxQueue:   make(chan *ksmsg.KeysplittingMessage, maxPipelineLimit),
+		synAction:     "initial",
+		pipelineLimit: maxPipelineLimit,
 	}
 	keysplitter.pipelineOpen = sync.NewCond(&keysplitter.stateLock)
 
@@ -205,8 +200,12 @@ func (k *Keysplitting) resend(nonce string) {
 
 func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 	// TODO: CWC-1553: Remove this code once all agents have updated
-	if msg, ok := ksMessage.KeysplittingPayload.(ksmsg.SynAckPayload); ok && k.ackPublicKey == "" {
-		k.ackPublicKey = msg.TargetPublicKey
+	if msg, ok := ksMessage.KeysplittingPayload.(ksmsg.SynAckPayload); ok && k.ackPublicKey == nil {
+		if publickey, err := keypair.PublicKeyFromString(msg.TargetPublicKey); err != nil {
+			return fmt.Errorf("invalid public key")
+		} else {
+			k.ackPublicKey = publickey
+		}
 	}
 
 	// Verify the agent's signature
@@ -323,7 +322,7 @@ func (k *Keysplitting) pipeline(action string, actionPayload []byte) error {
 	} else {
 		// otherwise, we're going to need to predict the ack we're building off of
 		ksMessage := pair.Value.(ksmsg.KeysplittingMessage)
-		if newAck, err := ksMessage.BuildUnsignedDataAck([]byte{}, k.agentPubKey, k.schemaVersion.String()); err != nil {
+		if newAck, err := ksMessage.BuildUnsignedDataAck([]byte{}, k.agentPubKey.String(), k.schemaVersion.String()); err != nil {
 			return fmt.Errorf("failed to predict ack: %s", err)
 		} else {
 			ack = &newAck
@@ -363,7 +362,7 @@ func (k *Keysplitting) buildResponse(ksMessage *ksmsg.KeysplittingMessage, actio
 	// Use the agreed upon schema version from the synack when building data messages
 	if responseMessage, err := ksMessage.BuildUnsignedData(action, payload, k.bzcert.Hash(), k.schemaVersion.String()); err != nil {
 		return responseMessage, err
-	} else if err := responseMessage.Sign(k.bzcert.PrivateKey()); err != nil {
+	} else if ok := responseMessage.Sign(k.bzcert.PrivateKey()); !ok {
 		return responseMessage, fmt.Errorf("%w: %s", ErrFailedToSign, err)
 	} else {
 		return responseMessage, nil
@@ -414,7 +413,7 @@ func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (
 		Type:          string(ksmsg.Syn),
 		Action:        k.synAction,
 		ActionPayload: payloadBytes,
-		TargetId:      k.agentPubKey,
+		TargetId:      k.agentPubKey.String(),
 		Nonce:         util.Nonce(),
 		BZCert:        *k.bzcert.Cert(),
 	}
@@ -425,7 +424,7 @@ func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (
 	}
 
 	// Sign it and add it to our hash map
-	if err := ksMessage.Sign(k.bzcert.PrivateKey()); err != nil {
+	if ok := ksMessage.Sign(k.bzcert.PrivateKey()); !ok {
 		return nil, fmt.Errorf("%s: %w", ErrFailedToSign, err)
 	} else if err := k.addToPipelineMap(ksMessage); err != nil {
 		return nil, err

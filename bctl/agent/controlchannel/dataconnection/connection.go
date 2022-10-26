@@ -29,8 +29,8 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"github.com/cenkalti/backoff"
 	"gopkg.in/tomb.v2"
 )
@@ -71,7 +71,7 @@ type DataConnection struct {
 
 	// provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 
 	// Channel indicating when the DaemonConnected control message is sent in the websocket
 	daemonReadyChan chan bool
@@ -83,7 +83,7 @@ func New(
 	connectionId string,
 	ksConfig keysplitting.IKeysplittingConfig,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
@@ -104,7 +104,7 @@ func New(
 		sendQueue:             make(chan *am.AgentMessage, 50),
 		ksConfig:              ksConfig,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		daemonReadyChan:       make(chan bool),
 	}
 
@@ -366,10 +366,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 			}
 
 			// Sign the message
-			sig, err := d.messageSigner.SignMessage(openAgentWebsocketPayload)
-			if err != nil {
-				return fmt.Errorf("failed to sign openAgentWebsocket message: %w", err)
-			}
+			sig := d.privateKey.Sign(openAgentWebsocketPayload)
 
 			// Add our AgentIdentityToken as Bearer Authorization header
 			headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", agentIdentityToken)}

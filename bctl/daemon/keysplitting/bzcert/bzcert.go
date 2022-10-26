@@ -1,12 +1,12 @@
 package bzcert
 
 import (
-	"encoding/base64"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
 )
@@ -14,7 +14,7 @@ import (
 type IDaemonBZCert interface {
 	bzcert.IBZCert
 	Cert() *bzcert.BZCert
-	PrivateKey() string
+	PrivateKey() *keypair.PrivateKey
 	Refresh() error
 }
 
@@ -22,7 +22,7 @@ type DaemonBZCert struct {
 	bzcert.BZCert
 
 	// unexported members
-	privateKey               string
+	privateKey               *keypair.PrivateKey
 	config                   *zliconfig.ZLIConfig
 	currentIdTokenExpiration int64
 }
@@ -47,7 +47,7 @@ func (b *DaemonBZCert) Cert() *bzcert.BZCert {
 	return &b.BZCert
 }
 
-func (b *DaemonBZCert) PrivateKey() string {
+func (b *DaemonBZCert) PrivateKey() *keypair.PrivateKey {
 	return b.privateKey
 }
 
@@ -70,20 +70,9 @@ func (b *DaemonBZCert) Refresh() error {
 }
 
 func (b *DaemonBZCert) populateFromConfig() error {
-	var privateKey string
-
-	if privateKeyBytes, err := base64.StdEncoding.DecodeString(b.config.CertConfig.PrivateKey); err != nil {
-		return fmt.Errorf("failed to base64 decode private key: %w", err)
-	} else if len(privateKeyBytes) == 64 {
-		// The golang ed25519 library uses a length 64 private key because the
-		// private key is in the concatenated form privatekey = privatekey + publickey.
-		privateKey = b.config.CertConfig.PrivateKey
-	} else if len(privateKeyBytes) == 32 {
-		// If the key was generated as length 32, we can correct for that here
-		publickeyBytes, _ := base64.StdEncoding.DecodeString(b.config.CertConfig.PublicKey)
-		privateKey = base64.StdEncoding.EncodeToString(append(privateKeyBytes, publickeyBytes...))
-	} else {
-		return fmt.Errorf("malformatted private key of incorrect length: %d", len(privateKeyBytes))
+	privateKey, err := keypair.PrivateKeyFromString(b.config.CertConfig.PrivateKey)
+	if err != nil {
+		return err
 	}
 
 	// Update all of our objects values

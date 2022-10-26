@@ -1,14 +1,13 @@
 package registration
 
 import (
-	"crypto/ed25519"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )
 
@@ -22,7 +21,7 @@ const (
 )
 
 type RegistrationConfig interface {
-	SetRegistrationData(serviceUrl string, publicKey string, privateKey string, idpProvider string, idpOrgId string, targetId string) error
+	SetRegistrationData(serviceUrl string, publicKey *keypair.PublicKey, privateKey *keypair.PrivateKey, idpProvider string, idpOrgId string, targetId string) error
 }
 
 type Registration struct {
@@ -76,7 +75,7 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 	r.logger.Infof("Registering agent with %s", r.serviceUrl)
 
 	// Generate and store our public, private key pair and add to config
-	publicKey, privateKey, err := r.generateKeys()
+	publicKey, privateKey, err := keypair.GenerateKeyPair()
 	if err != nil {
 		return err
 	}
@@ -84,7 +83,7 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 
 	r.logger.Info("Phoning home to BastionZero...")
 	// Complete registration with the Bastion
-	if err := r.phoneHome(publicKey); err != nil {
+	if err := r.phoneHome(publicKey.String()); err != nil {
 		return err
 	}
 
@@ -92,23 +91,11 @@ func (r *Registration) Register(logger *logger.Logger, config RegistrationConfig
 
 	// If the registration went ok, save the config
 	if err := config.SetRegistrationData(r.serviceUrl, publicKey, privateKey, r.idpProvider, r.idpOrgId, r.targetId); err != nil {
-		return fmt.Errorf("error saving config: %w", err)
+		return fmt.Errorf("failed to persist new registration data: %w", err)
 	}
 
 	r.logger.Info("Registration complete!")
 	return nil
-}
-
-func (r *Registration) generateKeys() (string, string, error) {
-	// Generate public, secret key pair and convert to strings
-	publicKey, privateKey, err := ed25519.GenerateKey(nil)
-	if err != nil {
-		return "", "", fmt.Errorf("error generating key pair: %v", err.Error())
-	}
-	publicKeyString := base64.StdEncoding.EncodeToString([]byte(publicKey))
-	privateKeyString := base64.StdEncoding.EncodeToString([]byte(privateKey))
-
-	return publicKeyString, privateKeyString, nil
 }
 
 func (r *Registration) phoneHome(publickey string) error {

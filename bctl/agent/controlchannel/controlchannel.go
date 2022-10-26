@@ -20,8 +20,8 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 
 	"gopkg.in/tomb.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +49,7 @@ type ControlChannel struct {
 
 	ksConfig              keysplitting.IKeysplittingConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 
 	// variables for opening connections
 	serviceUrl string
@@ -84,7 +84,7 @@ func Start(logger *logger.Logger,
 	targetType string,
 	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey *keypair.PrivateKey,
 	ksConfig keysplitting.IKeysplittingConfig,
 ) (*ControlChannel, error) {
 
@@ -96,7 +96,7 @@ func Start(logger *logger.Logger,
 		targetType:            targetType,
 		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		ksConfig:              ksConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
@@ -267,7 +267,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.messageSigner, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
@@ -354,6 +354,7 @@ func (c *ControlChannel) reportHealth() error {
 		return err
 	}
 
+	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
 	if c.targetType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {

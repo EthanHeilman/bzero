@@ -20,7 +20,6 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 	"github.com/google/uuid"
 	"gopkg.in/tomb.v2"
@@ -56,13 +55,11 @@ type AgentConfig interface {
 	GetTargetId() string
 	GetShutdownInfo() (string, map[string]string)
 	GetServiceUrl() string
-	GetMessageSigner() (*messagesigner.MessageSigner, error)
 
 	SetVersion(version string) error
 	SetShutdownInfo(reason string, state map[string]string) error
 
 	Reload() error
-	WaitForRegistration(ctx context.Context) error
 }
 
 type Agent struct {
@@ -137,17 +134,12 @@ func (a *Agent) startControlChannel() error {
 	serviceUrl := a.config.GetServiceUrl()
 
 	aipLogger := a.logger.GetComponentLogger("AgentIdentityProvider")
-	ms, err := a.config.GetMessageSigner()
-	if err != nil {
-		return err
-	}
-
 	agentIdentityProvider := agentidentity.New(
 		aipLogger,
 		serviceUrl,
 		targetId,
 		a.config,
-		ms,
+		privateKey,
 	)
 
 	ccId := uuid.New().String()
@@ -160,20 +152,20 @@ func (a *Agent) startControlChannel() error {
 
 	headers := http.Header{}
 	params := url.Values{
-		"public_key": {a.config.GetPublicKey()},
+		"public_key": {a.config.GetPublicKey().String()},
 		"version":    {a.version},
 		"target_id":  {targetId},
 		"agent_type": {string(Systemd)},
 	}
 
 	// Create our control channel's connection to BastionZero
-	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider, ms)
+	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider)
 	if err != nil {
 		return err
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, ms, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, privateKey, a.config)
 	a.controlConn = conn
 
 	return err
@@ -228,7 +220,7 @@ func (a *Agent) reportQualifiedShutdown() {
 			a.config.GetServiceUrl(),
 			agentreport.RestartReport{
 				TargetId:       a.config.GetTargetId(),
-				AgentPublicKey: a.config.GetPublicKey(),
+				AgentPublicKey: a.config.GetPublicKey().String(),
 				Timestamp:      fmt.Sprint(time.Now().UTC().Unix()),
 				Message:        shutdownReason,
 				State:          shutdownState,

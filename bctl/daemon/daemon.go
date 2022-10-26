@@ -21,6 +21,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/sshserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/webserver"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
@@ -124,6 +125,12 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 		return
 	}
 
+	publicKey, err := keypair.PublicKeyFromString(config[AGENT_PUB_KEY].Value)
+	if err != nil {
+		errChan <- err
+		return
+	}
+
 	// This validates the bzcert before creating the server so we can fail
 	// fast if the cert is no longer valid. This may result in prompting the
 	// user to login again if the cert contains expired IdP id tokens
@@ -152,15 +159,15 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 
 	switch bzplugin.PluginName(plugin) {
 	case bzplugin.Db:
-		server, err = newDbServer(logger, errChan, headers, params, cert)
+		server, err = newDbServer(logger, publicKey, errChan, headers, params, cert)
 	case bzplugin.Kube:
-		server, err = newKubeServer(logger, errChan, headers, params, cert)
+		server, err = newKubeServer(logger, publicKey, errChan, headers, params, cert)
 	case bzplugin.Shell:
-		server, err = newShellServer(logger, errChan, headers, params, cert)
+		server, err = newShellServer(logger, publicKey, errChan, headers, params, cert)
 	case bzplugin.Ssh:
-		server, err = newSshServer(logger, errChan, headers, params, cert)
+		server, err = newSshServer(logger, publicKey, errChan, headers, params, cert)
 	case bzplugin.Web:
-		server, err = newWebServer(logger, errChan, headers, params, cert)
+		server, err = newWebServer(logger, publicKey, errChan, headers, params, cert)
 	default:
 		errChan <- fmt.Errorf("unhandled plugin passed when trying to start server: %s", plugin)
 	}
@@ -184,7 +191,7 @@ func listenForShutdown(shutdownChan <-chan struct{}, server Server) {
 	}
 }
 
-func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*sshserver.SshServer, error) {
+func newSshServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*sshserver.SshServer, error) {
 	subLogger := logger.GetComponentLogger("sshserver")
 
 	// Check if remote port is valid
@@ -208,7 +215,7 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
-		config[AGENT_PUB_KEY].Value,
+		publicKey,
 		config[IDENTITY_FILE].Value,
 		config[KNOWN_HOSTS_FILE].Value,
 		strings.Split(config[HOSTNAMES].Value, ","),
@@ -219,7 +226,7 @@ func newSshServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 	)
 }
 
-func newShellServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*shellserver.ShellServer, error) {
+func newShellServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*shellserver.ShellServer, error) {
 	subLogger := logger.GetComponentLogger("shellserver")
 
 	params["connectionType"] = []string{string(dataconnection.Shell)}
@@ -233,11 +240,11 @@ func newShellServer(logger *bzlogger.Logger, errChan chan error, headers http.He
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
-		config[AGENT_PUB_KEY].Value,
+		publicKey,
 	)
 }
 
-func newWebServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*webserver.WebServer, error) {
+func newWebServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*webserver.WebServer, error) {
 	subLogger := logger.GetComponentLogger("webserver")
 
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
@@ -259,11 +266,11 @@ func newWebServer(logger *bzlogger.Logger, errChan chan error, headers http.Head
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
-		config[AGENT_PUB_KEY].Value,
+		publicKey,
 	)
 }
 
-func newDbServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*dbserver.DbServer, error) {
+func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*dbserver.DbServer, error) {
 	subLogger := logger.GetComponentLogger("dbserver")
 
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
@@ -285,11 +292,11 @@ func newDbServer(logger *bzlogger.Logger, errChan chan error, headers http.Heade
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
-		config[AGENT_PUB_KEY].Value,
+		publicKey,
 	)
 }
 
-func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*kubeserver.KubeServer, error) {
+func newKubeServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan chan error, headers http.Header, params url.Values, cert *bzcert.DaemonBZCert) (*kubeserver.KubeServer, error) {
 
 	subLogger := logger.GetComponentLogger("kubeserver")
 
@@ -317,7 +324,7 @@ func newKubeServer(logger *bzlogger.Logger, errChan chan error, headers http.Hea
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
-		config[AGENT_PUB_KEY].Value,
+		publicKey,
 	)
 }
 

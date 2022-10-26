@@ -1,12 +1,15 @@
-package config
+package data
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 )
 
-type data struct {
+// This version was introduced in https://github.com/bastionzero/bzero/pull/166
+type DataV2 struct {
 	// Agent Version
 	Version string
 
@@ -14,12 +17,8 @@ type data struct {
 	AgentType string
 
 	// Agent signature key pair
-	// Our public key is stored as a base64 encoded string because
-	// it is only ever used to send in that format
-	// The private key is used to sign and therefore is stored in its
-	// most usable format
-	PublicKey  string
-	PrivateKey string
+	PublicKey  *keypair.PublicKey
+	PrivateKey *keypair.PrivateKey
 
 	// OIDC-compliant token used for authenticating to BastionZero
 	AgentIdentityToken string
@@ -43,7 +42,7 @@ type data struct {
 
 // In order to make the new config backwards compatible, we have to have some custom
 // unmarshalling logic
-func (v *data) UnmarshalJSON(data []byte) error {
+func (v *DataV2) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" || string(data) == `""` {
 		return nil
 	}
@@ -102,14 +101,14 @@ func (v *data) UnmarshalJSON(data []byte) error {
 		v.ShutdownReason = t
 	}
 
-	var privateKey string
+	var privateKey *keypair.PrivateKey
 	if err := json.Unmarshal(objmap["PrivateKey"], &privateKey); err != nil {
 		return fmt.Errorf("failed to unmarshal privateKey: %s", err)
 	} else {
 		v.PrivateKey = privateKey
 	}
 
-	var publicKey string
+	var publicKey *keypair.PublicKey
 	if err := json.Unmarshal(objmap["PublicKey"], &publicKey); err != nil {
 		return fmt.Errorf("failed to unmarshal publicKey: %s", err)
 	} else {
@@ -136,4 +135,27 @@ func (v *data) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+// This is a bit of history keeping but it's also very useful to keep track of past definitions for this
+// object so that we can test backwards compatability
+// This version covers the structure prior to https://github.com/bastionzero/bzero/pull/169
+// There were changes to this structure since the agent's inception, but in the above PR, we
+// changed type definitions
+type DataV1 struct {
+	PublicKey          string
+	PrivateKey         string
+	ServiceUrl         string
+	TargetName         string
+	Namespace          string
+	IdpProvider        string
+	IdpOrgId           string
+	TargetId           string
+	EnvironmentId      string
+	EnvironmentName    string
+	AgentType          string
+	Version            string
+	ShutdownReason     string
+	ShutdownState      string
+	AgentIdentityToken string
 }

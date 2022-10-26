@@ -1,11 +1,11 @@
 package message
 
 import (
-	ed "crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 )
 
@@ -138,40 +138,23 @@ func (k *KeysplittingMessage) GetActionPayload() []byte {
 	}
 }
 
-func (k *KeysplittingMessage) VerifySignature(publicKey string) error {
-	pubKeyBits, _ := base64.StdEncoding.DecodeString(publicKey)
-	if len(pubKeyBits) != 32 {
-		return fmt.Errorf("public key has invalid length %v", len(pubKeyBits))
-	}
-	pubkey := ed.PublicKey(pubKeyBits)
-
+func (k *KeysplittingMessage) VerifySignature(publicKey *keypair.PublicKey) error {
 	hashBits, ok := util.HashPayload(k.KeysplittingPayload)
 	if !ok {
 		return fmt.Errorf("failed to hash the keysplitting payload")
 	}
 
-	sigBits, _ := base64.StdEncoding.DecodeString(k.Signature)
-
-	if ok := ed.Verify(pubkey, hashBits, sigBits); ok {
-		return nil
-	} else {
+	if ok := publicKey.Verify(hashBits, k.Signature); !ok {
 		return fmt.Errorf("invalid signature: signature: %s payload: %+v", k.Signature, k.KeysplittingPayload)
 	}
-}
-
-func (k *KeysplittingMessage) Sign(privateKey string) error {
-	keyBytes, _ := base64.StdEncoding.DecodeString(privateKey)
-	if len(keyBytes) != 64 {
-		return fmt.Errorf("invalid private key length: %v", len(keyBytes))
-	}
-	privkey := ed.PrivateKey(keyBytes)
-
-	hashBits, _ := util.HashPayload(k.KeysplittingPayload)
-
-	sig := ed.Sign(privkey, hashBits)
-	k.Signature = base64.StdEncoding.EncodeToString(sig)
 
 	return nil
+}
+
+func (k *KeysplittingMessage) Sign(privateKey *keypair.PrivateKey) bool {
+	hashBits, ok := util.HashPayload(k.KeysplittingPayload)
+	k.Signature = privateKey.Sign(hashBits)
+	return ok
 }
 
 func (k *KeysplittingMessage) UnmarshalJSON(data []byte) error {

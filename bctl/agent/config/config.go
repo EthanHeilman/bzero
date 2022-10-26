@@ -1,11 +1,10 @@
 package config
 
 import (
-	"context"
-	"encoding/base64"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 )
 
 type configFetchError string
@@ -20,69 +19,45 @@ func (e configSaveError) Error() string {
 	return "failed to save config: " + string(e)
 }
 
-type client interface {
-	Fetch() (data, error)
-	Save(d data) error
-	WaitForRegistration(ctx context.Context) error
+type configClient interface {
+	Fetch() (data.DataV2, error)
+	Save(d data.DataV2) error
 }
 
 type Config struct {
 	lock   sync.RWMutex
-	data   data
-	client client
+	data   data.DataV2
+	client configClient
 }
 
-func LoadSystemdConfig(configDir string) (*Config, error) {
-	config := &Config{}
-	var err error
-
-	if config.client, err = newSystemdClient(configDir); err != nil {
-		return nil, err
-	}
-
-	if config.data, err = config.client.Fetch(); err != nil {
+func Load(client configClient) (*Config, error) {
+	if data, err := client.Fetch(); err != nil {
 		return nil, configFetchError(err.Error())
+	} else {
+		return &Config{
+			client: client,
+			data:   data,
+		}, nil
 	}
-
-	return config, nil
-}
-
-func LoadKubernetesConfig(ctx context.Context, namespace string, targetName string) (*Config, error) {
-	config := &Config{}
-	var err error
-
-	if config.client, err = newKubernetesClient(ctx, namespace, targetName); err != nil {
-		return nil, err
-	}
-
-	if config.data, err = config.client.Fetch(); err != nil {
-		return nil, configFetchError(err.Error())
-	}
-
-	return config, nil
-}
-
-func (c *Config) WaitForRegistration(ctx context.Context) error {
-	return c.client.WaitForRegistration(ctx)
 }
 
 func (c *Config) Reload() error {
 	if newData, err := c.client.Fetch(); err != nil {
-		return err
+		return configFetchError(err.Error())
 	} else {
 		c.data = newData
 	}
 	return nil
 }
 
-func (c *Config) GetPublicKey() string {
+func (c *Config) GetPublicKey() *keypair.PublicKey {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
 	return c.data.PublicKey
 }
 
-func (c *Config) GetPrivateKey() string {
+func (c *Config) GetPrivateKey() *keypair.PrivateKey {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -129,11 +104,6 @@ func (c *Config) GetServiceUrl() string {
 	defer c.lock.RUnlock()
 
 	return c.data.ServiceUrl
-}
-
-func (c *Config) GetMessageSigner() (*messagesigner.MessageSigner, error) {
-	privKey, _ := base64.StdEncoding.DecodeString(c.GetPrivateKey())
-	return messagesigner.New(privKey)
 }
 
 func (c *Config) SetVersion(version string) error {
@@ -193,8 +163,8 @@ func (c *Config) SetAgentIdentityToken(token string) error {
 
 func (c *Config) SetRegistrationData(
 	serviceUrl string,
-	publickey string,
-	privateKey string,
+	publickey *keypair.PublicKey,
+	privateKey *keypair.PrivateKey,
 	idpProvider string,
 	idpOrgId string,
 	targetId string,
