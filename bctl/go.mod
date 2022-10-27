@@ -12,6 +12,7 @@ require (
 	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/coreos/go-oidc/v3 v3.0.0
 	github.com/creack/pty v1.1.15
+	github.com/crunchydata/crunchy-proxy v0.0.0-20190407215550-64e9426fd4ad
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/gofrs/flock v0.8.1
 	github.com/golang-jwt/jwt/v4 v4.4.2
