@@ -1,6 +1,7 @@
 package bzcert
 
 import (
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -70,7 +71,25 @@ func (b *DaemonBZCert) Refresh() error {
 }
 
 func (b *DaemonBZCert) populateFromConfig() error {
-	privateKey, err := keypair.PrivateKeyFromString(b.config.CertConfig.PrivateKey)
+	privatekey := b.config.CertConfig.PrivateKey
+	privatekeyBytes, err := base64.StdEncoding.DecodeString(privatekey)
+	if err != nil {
+		return fmt.Errorf("private key is not base64 encoded: %w", err)
+	}
+
+	// The golang ed25519 library only generates and accepts ed25519 certificates that
+	// are in the form privatekey + publickey and therefore have length 64. The library
+	// we use to generate these in the zli (https://paulmillr.com/noble/) creates them
+	// with 32-bytes and so we correct that here
+	if len(privatekeyBytes) == 32 {
+		publicKeyBytes, err := base64.StdEncoding.DecodeString(b.config.CertConfig.PublicKey)
+		if err != nil {
+			return fmt.Errorf("public key is not base64 encoded: %w", err)
+		}
+		privatekey = base64.StdEncoding.EncodeToString(append(privatekeyBytes, publicKeyBytes...))
+	}
+
+	privateKey, err := keypair.PrivateKeyFromString(privatekey)
 	if err != nil {
 		return err
 	}
