@@ -25,18 +25,22 @@ var _ = Describe("Agent Authorized Keys", Ordered, func() {
 	logger := logger.MockLogger(GinkgoWriter)
 	testUser, _ := unixuser.Current()
 
+	var doneChan chan struct{}
+
 	authorizedKeysFile := path.Join(testUser.HomeDir, authorizedKeyFolder, authorizedKeyFileName)
 	os.OpenFile(authorizedKeysFile, os.O_RDONLY|os.O_CREATE, 0666)
 
 	fakePubKey := "ssh-rsa " + base64.StdEncoding.EncodeToString([]byte("fake"))
+
+	BeforeEach(func() {
+		doneChan = make(chan struct{})
+	})
 
 	AfterEach(func() {
 		os.RemoveAll(path.Join(testUser.HomeDir, authorizedKeyFolder))
 	})
 
 	Context("Happy Path", func() {
-
-		doneChan := make(chan struct{})
 
 		It("adds keys to user's authorized_keys file and removes them after expiration", func() {
 			authKeyService, _ := New(logger, doneChan, testUser, authorizedKeyFolder, authorizedKeyFolder, time.Second)
@@ -78,7 +82,6 @@ var _ = Describe("Agent Authorized Keys", Ordered, func() {
 	})
 
 	Context("Stressful Path", func() {
-		doneChan := make(chan struct{})
 		numKeys := 10
 
 		It("allows for writing many keys at once", func() {
@@ -126,6 +129,11 @@ var _ = Describe("Agent Authorized Keys", Ordered, func() {
 
 			// make sure we are not wiping any existing keys
 			Expect(strings.Contains(string(fileBytes), testString)).To(BeTrue())
+		})
+
+		It("Doesn't panic when a nil user is provided", func() {
+			_, err := New(logger, doneChan, nil, authorizedKeyFolder, authorizedKeyFolder, time.Second)
+			Expect(err).NotTo(BeNil(), "should not succeed with a nil user")
 		})
 	})
 })

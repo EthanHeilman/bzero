@@ -10,7 +10,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	rrr "bastionzero.com/bctl/v1/bzerolib/error"
+	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
 	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
@@ -35,7 +35,7 @@ type OpenDataChannelPayload struct {
 type IKeysplitting interface {
 	BuildSyn(action string, payload interface{}, send bool) (*ksmsg.KeysplittingMessage, error)
 	Validate(ksMessage *ksmsg.KeysplittingMessage) error
-	Recover(errorMessage rrr.ErrorMessage) error
+	Recover(errorMessage bzerr.ErrorMessage) error
 	Inbox(action string, actionPayload []byte) error
 	IsPipelineEmpty() bool
 	Outbox() <-chan *ksmsg.KeysplittingMessage
@@ -164,12 +164,22 @@ func (d *DataChannel) handshakeOrTimeout(attach bool, action string, synPayload 
 			case am.Error:
 				d.logger.Errorf("Received error message on initial syn: %s", string(agentMessage.MessagePayload))
 
-				// Limit the number of times we retry to initiate handshake it is very likely
+				// Limit the number of times we retry to initiate handshake; it is very likely
 				// this error will be unrecoverable
 				if retryCount >= maxRetry {
-					err := fmt.Errorf("retried %d times to recover from error on initial syn without success", maxRetry)
-					d.logger.Error(err)
-					return err
+					rerr := fmt.Sprintf("retried %d times to recover from error on initial syn without success", maxRetry)
+					var errMessage bzerr.ErrorMessage
+					if err := json.Unmarshal(agentMessage.MessagePayload, &errMessage); err != nil {
+						d.logger.Errorf("failed to unmarshal error message: %s", err)
+					} else if err := checkForKnownErrors(errMessage.Message); err != nil {
+						return err
+					} else {
+						// base case, we couldn't unmarshal or it's not a known error
+						rerr += fmt.Sprintf("; Latest error: %s", errMessage.Message)
+					}
+
+					d.logger.Errorf(rerr)
+					return fmt.Errorf(rerr)
 				}
 				retryCount++
 
@@ -365,17 +375,15 @@ func (d *DataChannel) processInputMessage(agentMessage *am.AgentMessage) error {
 }
 
 func (d *DataChannel) handleError(agentMessage *am.AgentMessage) error {
-	var errMessage rrr.ErrorMessage
+	var errMessage bzerr.ErrorMessage
 	if err := json.Unmarshal(agentMessage.MessagePayload, &errMessage); err != nil {
 		return fmt.Errorf("could not unmarshal error message: %s", err)
 	}
 
-	if rrr.ErrorType(errMessage.Type) == rrr.KeysplittingValidationError {
+	if bzerr.ErrorType(errMessage.Type) == bzerr.KeysplittingValidationError {
 		return d.keysplitter.Recover(errMessage)
-		// although string comparison is a brittle way to do this, we need to in cases when the
-		// original Go error gets cast as a string and transmitted as JSON
-	} else if strings.Contains(errMessage.Message, unixuser.UserNotFoundErrMsg) {
-		return &unixuser.UserNotFoundError{}
+	} else if err := checkForKnownErrors(errMessage.Message); err != nil {
+		return err
 	}
 
 	// return any error we don't specifically handle
@@ -415,5 +423,17 @@ func (d *DataChannel) handleKeysplitting(agentMessage *am.AgentMessage) error {
 		return fmt.Errorf("unhandled keysplitting type")
 	}
 
+	return nil
+}
+
+// Sometimes the agent produces an error that we would like to handle specially (e.g., show the user a helpful message).
+// Unfortunately these errors' types get lost when they are serialized and sent across the wire.
+// although string comparison is a brittle way to check for such errors, it's the best tool we've got
+func checkForKnownErrors(errString string) error {
+	if strings.Contains(errString, unixuser.UserNotFoundErrMsg) {
+		return &unixuser.UserNotFoundError{}
+	}
+
+	// base case, we didn't find anything special
 	return nil
 }
