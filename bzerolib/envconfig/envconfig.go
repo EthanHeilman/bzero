@@ -13,18 +13,21 @@ Getting and Setting will set it to the file's value
 
 package envconfig
 
+// TODO: revisit this structure once I sort out yaml
+// TODO: revisit documentation
 type Entry struct {
-	Id      string
 	Value   string
 	Comment string
 	EnvVar  string
 }
 
+type EntryMap map[string]Entry
+
 type EnvConfig interface {
 	// Set takes an Entry and returns the value written to the file. If Entry.EnvVar is unset or is set in
 	// agreement with Entry.EnvVar, then Entry.Value is returned (and Entry.EnvVar is set to Entry.Value).
 	//	Otherwise, the value of Entry.EnvVar is both written to the underlying file and returned
-	Set(entry Entry) (string, error)
+	Set(id string, entry Entry) (string, error)
 	// Get takes an id and returns the corresponding Entry. If Entry.EnvVar is set and disagrees with Entry.Value,
 	// the value of Entry.EnvVar is both written to the underlying file and returned. If it is not set, Entry.Value is
 	// returned and written to Entry.EnvVar
