@@ -13,6 +13,9 @@ Getting and Setting will set it to the file's value
 
 package envconfig
 
+// TODO: special errors
+//  - i.e. failed to load vs entry not found
+
 // TODO: revisit this structure once I sort out yaml
 // TODO: revisit documentation
 type Entry struct {
@@ -28,13 +31,16 @@ type EnvConfig interface {
 	// agreement with Entry.EnvVar, then Entry.Value is returned (and Entry.EnvVar is set to Entry.Value).
 	//	Otherwise, the value of Entry.EnvVar is both written to the underlying file and returned
 	Set(id string, entry Entry) (string, error)
-	// Get takes an id and returns the corresponding Entry. If Entry.EnvVar is set and disagrees with Entry.Value,
+
+	// Get takes an id and returns a value. If Entry.EnvVar is set and disagrees with Entry.Value,
 	// the value of Entry.EnvVar is both written to the underlying file and returned. If it is not set, Entry.Value is
 	// returned and written to Entry.EnvVar
-	Get(id string) (Entry, error)
+	Get(id string) (string, error)
+
 	// Delete takes an id and removes the corresponding Entry from the underlying config file. If hard == true, it also
 	// unsets Entry.EnvVar
 	Delete(id string, hard bool) error
+
 	// DeleteAll clears the underlying config file. If hard == true, it also unsets Entry.EnvVar for every Entry in the file
 	DeleteAll(hard bool) error
 }
