@@ -16,7 +16,7 @@ import (
 )
 
 type IKubeDaemonAction interface {
-	ReceiveKeysplitting(actionPayload []byte)
+	ReceiveMrtap(actionPayload []byte)
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(writer http.ResponseWriter, request *http.Request) error
 	Done() <-chan struct{}
@@ -112,14 +112,14 @@ func (k *KubeDaemonPlugin) StartAction(action bzkube.KubeAction, logId string, c
 	return nil
 }
 
-func (k *KubeDaemonPlugin) ReceiveKeysplitting(action string, actionPayload []byte) error {
+func (k *KubeDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
 	// if actionPayload is empty, then there's nothing we need to process
 	if len(actionPayload) == 0 {
 		return nil
 	} else if k.action == nil {
-		return fmt.Errorf("received keysplitting message before action was created")
+		return fmt.Errorf("received MrTAP message before action was created")
 	}
 
-	k.action.ReceiveKeysplitting(actionPayload)
+	k.action.ReceiveMrtap(actionPayload)
 	return nil
 }

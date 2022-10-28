@@ -25,7 +25,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
@@ -66,8 +66,8 @@ type DataConnection struct {
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
 
-	// config values needed for keysplitting when creating datachannels
-	ksConfig keysplitting.IKeysplittingConfig
+	// config values needed for MrTAP when creating datachannels
+	mrtapConfig mrtap.MrtapConfig
 
 	// provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
@@ -81,7 +81,7 @@ func New(
 	logger *logger.Logger,
 	connUrl string,
 	connectionId string,
-	ksConfig keysplitting.IKeysplittingConfig,
+	mrtapConfig mrtap.MrtapConfig,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
 	params url.Values,
@@ -102,7 +102,7 @@ func New(
 		client:                client,
 		broker:                broker.New(),
 		sendQueue:             make(chan *am.AgentMessage, 50),
-		ksConfig:              ksConfig,
+		mrtapConfig:           mrtapConfig,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
 		daemonReadyChan:       make(chan bool),
@@ -136,7 +136,7 @@ func New(
 					conn.logger.Errorf("Failed to marshal close daemon websocket message %s", err)
 				} else {
 					cdwMessage := am.AgentMessage{
-						MessageType:    string(am.CloseDaemonWebsocket),
+						MessageType:    am.CloseDaemonWebsocket,
 						MessagePayload: messagePayloadBytes,
 						SchemaVersion:  am.CurrentVersion,
 						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
@@ -241,12 +241,12 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	d.logger.Infof("got new open data channel control message for id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
-	ksSubLogger := d.logger.GetComponentLogger("mrzap")
+	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
-	if keysplitter, err := keysplitting.New(ksSubLogger, d.ksConfig); err != nil {
+	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, keysplitter, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, mt, dcId, odMessage.Syn)
 		return err
 	}
 }
@@ -406,7 +406,7 @@ func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.CloseDaemonWebsocket:
 		return "CloseDaemonWebsocketV1", nil
-	case am.Keysplitting, am.Stream, am.Error:
+	case am.Mrtap, am.MrtapLegacy, am.Stream, am.Error:
 		return "ResponseAgentToBastionV1", nil
 	default:
 		return "", fmt.Errorf("unable to determine SignalR endpoint for message type: %s", agentMessage.MessageType)

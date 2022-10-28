@@ -81,8 +81,8 @@ func (s *ShellDaemonPlugin) ReceiveStream(smessage smsg.StreamMessage) {
 	}
 }
 
-func (s *ShellDaemonPlugin) ReceiveKeysplitting(action string, actionPayload []byte) error {
-	s.logger.Infof("Shell plugin received keysplitting message with action: %s", action)
+func (s *ShellDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
+	s.logger.Infof("Shell plugin received MrTAP message with action: %s", action)
 
 	switch action {
 	case string(bzshell.ShellReplay):

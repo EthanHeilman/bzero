@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
 	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
@@ -19,6 +19,7 @@ const (
 	BZCertIdTokenError = 2
 	CancelledByUser    = 3
 	UserNotFound       = 4
+	ZliConfigError     = 5
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -38,14 +39,19 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var shellCancelledError *bzshell.ShellCancelledError
 	var sshStdinClosedError *bzssh.SshStdinClosedError
 	var userNotFoundError *unixuser.UserNotFoundError
+	var certConfigError *bzcert.CertConfigError
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
 	// refreshed) token error and prompt user to re-login
 	if errors.As(err, &initialIdTokenError) || errors.As(err, &currentIdTokenError) {
 		logger.Errorf("Error constructing BastionZero certificate: %s", err)
-		logger.Errorf("IdP tokens are invalid/expired. Please try to re-login with the zli.")
+		logger.Errorf("IdP tokens are invalid/expired. Please try to re-login with the zli")
 		os.Exit(BZCertIdTokenError)
+	} else if errors.As(err, &certConfigError) {
+		logger.Errorf("Error parsing zli config file: %s", err)
+		logger.Errorf("Please try to re-login with the zli")
+		os.Exit(ZliConfigError)
 	} else if errors.As(err, &userNotFoundError) {
 		logger.Errorf(err.Error())
 		os.Exit(UserNotFound)

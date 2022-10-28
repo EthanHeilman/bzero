@@ -9,8 +9,8 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
@@ -164,14 +164,14 @@ func (s *SshServer) newDataChannel(action string) error {
 		RemotePort: s.remotePort,
 	}
 
-	ksLogger := s.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, s.agentPubKey, s.cert)
+	mtLogger := s.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, s.agentPubKey, s.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "ssh/" + action
-	s.dc, err = datachannel.New(subLogger, dcId, s.conn, keysplitter, plugin, action, synPayload, attach, false)
+	s.dc, err = datachannel.New(subLogger, dcId, s.conn, mt, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}

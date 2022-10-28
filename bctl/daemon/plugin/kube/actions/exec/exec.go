@@ -65,7 +65,7 @@ func (e *ExecAction) Err() error {
 	return e.err
 }
 
-func (e *ExecAction) ReceiveKeysplitting(actionPayload []byte) {}
+func (e *ExecAction) ReceiveMrtap(actionPayload []byte) {}
 
 func (e *ExecAction) ReceiveStream(stream smsg.StreamMessage) {
 	e.streamInputChan <- stream

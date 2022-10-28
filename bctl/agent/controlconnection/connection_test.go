@@ -153,7 +153,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 		When("a datachannel sends messages to the connection", func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			BeforeEach(func() {
@@ -177,7 +177,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
 				ChannelId:   testId,
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			testAgentMessageBytes, _ := json.Marshal(testAgentMessage)

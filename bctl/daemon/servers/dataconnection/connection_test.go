@@ -114,7 +114,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 	Context("Send", func() {
 		When("a datachannel sends messages to the connection", func() {
 			testAgentMessage := agentmessage.AgentMessage{
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			BeforeEach(func() {
@@ -138,7 +138,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
 				ChannelId:   testId,
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			testAgentMessageBytes, _ := json.Marshal(testAgentMessage)

@@ -1,22 +1,22 @@
-package keysplitting
+package mrtap
 
 import (
 	"fmt"
 
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	bzcrt "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 	"github.com/Masterminds/semver"
 )
 
 // schema version <= this value doesn't set targetId to the agent's pubkey
 const schemaVersionTargetIdNotSet string = "1.0"
 
-type Keysplitting struct {
+type Mrtap struct {
 	logger           *logger.Logger
-	lastDataMessage  *ksmsg.KeysplittingMessage
+	lastDataMessage  *message.MrtapMessage
 	expectedHPointer string
 	clientBZCert     *bzcrt.BZCert // only for one client
 	clientPublicKey  *keypair.PublicKey
@@ -31,20 +31,20 @@ type Keysplitting struct {
 	daemonSchemaVersion *semver.Version
 }
 
-type IKeysplittingConfig interface {
+type MrtapConfig interface {
 	GetPublicKey() *keypair.PublicKey
 	GetPrivateKey() *keypair.PrivateKey
 	GetIdpProvider() string
 	GetIdpOrgId() string
 }
 
-func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, error) {
+func New(logger *logger.Logger, config MrtapConfig) (*Mrtap, error) {
 	shouldCheckTargetIdConstraint, err := semver.NewConstraint(fmt.Sprintf("> %s", schemaVersionTargetIdNotSet))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create check target id constraint: %w", err)
 	}
 
-	return &Keysplitting{
+	return &Mrtap{
 		logger:              logger,
 		publickey:           config.GetPublicKey(),
 		privatekey:          config.GetPrivateKey(),
@@ -54,105 +54,104 @@ func New(logger *logger.Logger, config IKeysplittingConfig) (*Keysplitting, erro
 	}, nil
 }
 
-func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
-	switch ksMessage.Type {
-	case ksmsg.Syn:
-		synPayload := ksMessage.KeysplittingPayload.(ksmsg.SynPayload)
+func (m *Mrtap) Validate(msg *message.MrtapMessage) error {
+	switch msg.Type {
+	case message.Syn:
+		synPayload := msg.Payload.(message.SynPayload)
 		bzcert := synPayload.BZCert
 
 		// Verify the BZCert
-		if err := bzcert.Verify(k.idpProvider, k.idpOrgId); err != nil {
+		if err := bzcert.Verify(m.idpProvider, m.idpOrgId); err != nil {
 			return fmt.Errorf("failed to verify SYN's BZCert: %w", err)
 		}
 
 		if pubkey, err := keypair.PublicKeyFromString(bzcert.ClientPublicKey); err != nil {
 			return fmt.Errorf("malformatted public key: %s", bzcert.ClientPublicKey)
 		} else {
-			k.clientPublicKey = pubkey
+			m.clientPublicKey = pubkey
 		}
 
 		// Verify the signature
-		if err := ksMessage.VerifySignature(k.clientPublicKey); err != nil {
+		if err := msg.VerifySignature(m.clientPublicKey); err != nil {
 			return fmt.Errorf("failed to verify SYN's signature: %w", err)
 		}
 
-		// Extract semver version to determine if different protocol checks must
-		// be done
+		// Extract semver version to determine if different protocol checks must be done
 		v, err := semver.NewVersion(synPayload.SchemaVersion)
 		if err != nil {
 			return fmt.Errorf("failed to parse schema version (%v) as semver: %w", synPayload.SchemaVersion, err)
 		} else {
-			k.daemonSchemaVersion = v
+			m.daemonSchemaVersion = v
 		}
 
 		// Daemons with schema version <= 1.0 do not set targetId, so we cannot
 		// apply this check universally
 		// TODO: CWC-1553: Always check TargetId once all daemons have updated
-		if k.shouldCheckTargetId.Check(v) {
+		if m.shouldCheckTargetId.Check(v) {
 			// Verify SYN message commits to this agent's cryptographic identity
-			if synPayload.TargetId != k.publickey.String() {
+			if synPayload.TargetId != m.publickey.String() {
 				return fmt.Errorf("SYN's TargetId did not match agent's public key")
 			}
 		}
 
-		k.clientBZCert = &bzcert
-	case ksmsg.Data:
-		dataPayload := ksMessage.KeysplittingPayload.(ksmsg.DataPayload)
+		m.clientBZCert = &bzcert
+	case message.Data:
+		dataPayload := msg.Payload.(message.DataPayload)
 
 		// Check BZCert matches one we have stored
-		if k.clientBZCert.Hash() != dataPayload.BZCertHash {
+		if m.clientBZCert.Hash() != dataPayload.BZCertHash {
 			return fmt.Errorf("DATA's BZCert does not match the active user's")
 		}
 
 		// Verify the signature
-		if err := ksMessage.VerifySignature(k.clientPublicKey); err != nil {
+		if err := msg.VerifySignature(m.clientPublicKey); err != nil {
 			return err
 		}
 
 		// Check that BZCert isn't expired
-		if k.clientBZCert.Expired() {
+		if m.clientBZCert.Expired() {
 			return fmt.Errorf("DATA's referenced BZCert has expired")
 		}
 
 		// Verify received hash pointer matches expected
-		if dataPayload.HPointer != k.expectedHPointer {
-			return fmt.Errorf("DATA's hash pointer %s did not match expected hash pointer %s", dataPayload.HPointer, k.expectedHPointer)
+		if dataPayload.HPointer != m.expectedHPointer {
+			return fmt.Errorf("DATA's hash pointer %s did not match expected hash pointer %s", dataPayload.HPointer, m.expectedHPointer)
 		}
 
-		k.lastDataMessage = ksMessage
+		m.lastDataMessage = msg
 	default:
-		return fmt.Errorf("error validating unhandled Keysplitting type")
+		return fmt.Errorf("error validating unhandled MrTAP type")
 	}
 
 	return nil
 }
 
-func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action string, actionPayload []byte) (ksmsg.KeysplittingMessage, error) {
-	var responseMessage ksmsg.KeysplittingMessage
+func (m *Mrtap) BuildAck(msg *message.MrtapMessage, action string, actionPayload []byte) (message.MrtapMessage, error) {
+	var responseMessage message.MrtapMessage
 	var err error
 
-	schemaVersion, err := k.getSchemaVersionToUse()
+	schemaVersion, err := m.getSchemaVersionToUse()
 	if err != nil {
 		return responseMessage, err
 	}
 
-	switch ksMessage.Type {
-	case ksmsg.Syn:
+	switch msg.Type {
+	case message.Syn:
 		// If this is the beginning of the hash chain, then we create a nonce with a random value,
 		// otherwise we use the hash of the previous value to maintain the hash chain and immutability
 		nonce := util.Nonce()
-		if k.lastDataMessage != nil {
-			if lastDataMessageHash := k.lastDataMessage.Hash(); lastDataMessageHash == "" {
-				return ksmsg.KeysplittingMessage{}, fmt.Errorf("failed to get hash of last valid data message")
+		if m.lastDataMessage != nil {
+			if lastDataMessageHash := m.lastDataMessage.Hash(); lastDataMessageHash == "" {
+				return message.MrtapMessage{}, fmt.Errorf("failed to get hash of last valid data message")
 			} else {
 				nonce = lastDataMessageHash
 			}
 		}
 
-		responseMessage, err = ksMessage.BuildUnsignedSynAck(actionPayload, k.publickey.String(), nonce, schemaVersion.String())
+		responseMessage, err = msg.BuildUnsignedSynAck(actionPayload, m.publickey.String(), nonce, schemaVersion.String())
 
-	case ksmsg.Data:
-		responseMessage, err = ksMessage.BuildUnsignedDataAck(actionPayload, k.publickey.String(), schemaVersion.String())
+	case message.Data:
+		responseMessage, err = msg.BuildUnsignedDataAck(actionPayload, m.publickey.String(), schemaVersion.String())
 	default:
 
 	}
@@ -161,25 +160,25 @@ func (k *Keysplitting) BuildAck(ksMessage *ksmsg.KeysplittingMessage, action str
 		return responseMessage, err
 	}
 
-	responseMessage.Sign(k.privatekey)
+	responseMessage.Sign(m.privatekey)
 	if responseMessage.Signature == "" {
 		return responseMessage, fmt.Errorf("could not sign payload: %s", err)
 	} else if hash := responseMessage.Hash(); hash == "" {
 		return responseMessage, fmt.Errorf("could not hash payload")
 	} else {
-		k.expectedHPointer = hash
+		m.expectedHPointer = hash
 		return responseMessage, nil
 	}
 }
 
-func (k *Keysplitting) getSchemaVersionToUse() (*semver.Version, error) {
-	agentVersion, err := semver.NewVersion(ksmsg.SchemaVersion)
+func (m *Mrtap) getSchemaVersionToUse() (*semver.Version, error) {
+	agentVersion, err := semver.NewVersion(message.SchemaVersion)
 	if err != nil {
 		return nil, err
 	}
 
-	if k.daemonSchemaVersion.LessThan(agentVersion) {
-		return k.daemonSchemaVersion, nil
+	if m.daemonSchemaVersion.LessThan(agentVersion) {
+		return m.daemonSchemaVersion, nil
 	} else {
 		return agentVersion, nil
 	}

@@ -10,8 +10,8 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
@@ -166,15 +166,15 @@ func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemo
 		RemoteHost: d.remoteHost,
 	}
 
-	ksLogger := d.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, d.agentPubKey, d.cert)
+	mtLogger := d.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, d.agentPubKey, d.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "db/" + action
 	attach := false
-	_, err = datachannel.New(subLogger, dcId, d.conn, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, d.conn, mt, plugin, action, synPayload, attach, true)
 	if err != nil {
 		return err
 	}

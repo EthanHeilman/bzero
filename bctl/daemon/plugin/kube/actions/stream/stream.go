@@ -68,7 +68,7 @@ func (s *StreamAction) Err() error {
 	return s.err
 }
 
-func (s *StreamAction) ReceiveKeysplitting(actionPayload []byte) {}
+func (s *StreamAction) ReceiveMrtap(actionPayload []byte) {}
 
 func (s *StreamAction) ReceiveStream(smessage smsg.StreamMessage) {
 	s.logger.Debugf("Stream action received %v stream", smessage.Type)
