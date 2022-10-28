@@ -13,6 +13,8 @@ Getting and Setting will set it to the file's value
 
 package envconfig
 
+import "os"
+
 // TODO: special errors
 //  - i.e. failed to load vs entry not found
 
@@ -24,13 +26,15 @@ type Entry struct {
 	EnvVar  string
 }
 
+// TODO: map[string]*Entry???
 type EntryMap map[string]Entry
 
 type EnvConfig interface {
 	// Set takes an Entry and returns the value written to the file. If Entry.EnvVar is unset or is set in
 	// agreement with Entry.EnvVar, then Entry.Value is returned (and Entry.EnvVar is set to Entry.Value).
-	//	Otherwise, the value of Entry.EnvVar is both written to the underlying file and returned
-	Set(id string, entry Entry) (string, error)
+	// Otherwise, the value of Entry.EnvVar is both written to the underlying file and returned
+	// TODO: pointer?
+	Set(id string, entry *Entry) (string, error)
 
 	// Get takes an id and returns a value. If Entry.EnvVar is set and disagrees with Entry.Value,
 	// the value of Entry.EnvVar is both written to the underlying file and returned. If it is not set, Entry.Value is
@@ -43,4 +47,18 @@ type EnvConfig interface {
 
 	// DeleteAll clears the underlying config file. If hard == true, it also unsets Entry.EnvVar for every Entry in the file
 	DeleteAll(hard bool) error
+}
+
+// a successful return from Reconcile guarantees that entry.Value and the value of entry.EnvVar are in agreement
+func (e *Entry) Reconcile() error {
+	// if the env var is set, see if we need to update the entry's value
+	if envVal, ok := os.LookupEnv(e.EnvVar); ok {
+		if envVal != e.Value {
+			e.Value = envVal
+		}
+		return nil
+	}
+
+	// otherwise, set the env var and return what was in the file
+	return os.Setenv(e.EnvVar, e.Value)
 }

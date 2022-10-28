@@ -9,10 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const (
-	lockFileName = ".bzero.lock"
-)
-
 // YamlEnvConfig implements EnvConfig with an underlying yaml file
 type YamlEnvConfig struct {
 	path     string
@@ -28,7 +24,59 @@ func NewYamlEnvConfig(path string, fileLock *filelock.FileLock) (*YamlEnvConfig,
 	return &YamlEnvConfig{path, fileLock}, nil
 }
 
+func (y *YamlEnvConfig) Set(id string, entry *Entry) (string, error) {
+	lock, err := y.fileLock.NewLock()
+	if err != nil {
+		return "", fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return "", fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
+	// first, load entry into memory
+	em, err := y.load()
+	// FIXME: hey what happens if this is empty?
+	if err != nil {
+		// TODO: special
+		return "", err
+	}
+
+	if err = entry.Reconcile(); err != nil {
+		return "", err
+	}
+
+	em[id] = *entry
+
+	if err = y.save(em); err != nil {
+		return "", err
+	}
+
+	return entry.Value, nil
+}
+
 func (y *YamlEnvConfig) Get(id string) (string, error) {
+	lock, err := y.fileLock.NewLock()
+	if err != nil {
+		return "", fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return "", fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
 	// first, load entry into memory
 	em, err := y.load()
 	if err != nil {
@@ -42,26 +90,26 @@ func (y *YamlEnvConfig) Get(id string) (string, error) {
 		return "", fmt.Errorf("TODO:")
 	}
 
-	// if the env var is set, see if we need to update the entry's value
-	if envVal, ok := os.LookupEnv(entry.EnvVar); ok {
-		if envVal != entry.Value {
-			entry.Value = envVal
-			em[id] = entry
-		}
-
-		return envVal, nil
-	}
-
-	// otherwise, set the env var and return what was in the file
-	if err = os.Setenv(entry.EnvVar, entry.Value); err != nil {
-		// even though we have the value, this is an error case because the whole mechanism
-		// relies on the environment variable being availalbe to read and write to
-		return "", err
-	}
+	err = entry.Reconcile()
+	return entry.Value, err
 }
 
-// TODO: lock
 func (y *YamlEnvConfig) Delete(id string, hard bool) error {
+	lock, err := y.fileLock.NewLock()
+	if err != nil {
+		return fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
 	// first, load entry into memory
 	em, err := y.load()
 	if err != nil {
@@ -82,11 +130,26 @@ func (y *YamlEnvConfig) Delete(id string, hard bool) error {
 		os.Unsetenv(entry.EnvVar)
 	}
 
-	return nil
+	return y.save(em)
 }
 
-// TODO: acquire lock first
 func (y *YamlEnvConfig) DeleteAll(hard bool) error {
+
+	lock, err := y.fileLock.NewLock()
+	if err != nil {
+		return fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
 	// first, load everything into memory
 	em, err := y.load()
 	if err != nil {
@@ -94,7 +157,6 @@ func (y *YamlEnvConfig) DeleteAll(hard bool) error {
 	}
 
 	// second, clear the config file
-	// TODO: Remove it?
 	if err = os.Truncate(y.path, 0); err != nil {
 		return err
 	}
@@ -105,10 +167,10 @@ func (y *YamlEnvConfig) DeleteAll(hard bool) error {
 			os.Unsetenv(entry.EnvVar)
 		}
 	}
+
+	return nil
 }
 
-// TODO: acquire a lock first
-// actually no that's the caller's job since this is internal
 func (y *YamlEnvConfig) save(em EntryMap) error {
 	// FIXME: perms
 	file, err := os.OpenFile(y.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 700)
@@ -132,8 +194,6 @@ func (y *YamlEnvConfig) save(em EntryMap) error {
 	return nil
 }
 
-// TODO: acquire a lock first
-// actually no that's the caller's job since this is internal
 func (y *YamlEnvConfig) load() (EntryMap, error) {
 	data, err := os.ReadFile("items.yaml")
 	if err != nil {
