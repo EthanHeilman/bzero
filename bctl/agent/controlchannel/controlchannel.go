@@ -12,16 +12,16 @@ import (
 	"sync"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 
 	"gopkg.in/tomb.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -49,7 +49,7 @@ type ControlChannel struct {
 
 	ksConfig              keysplitting.IKeysplittingConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 
 	// variables for opening connections
 	serviceUrl string
@@ -64,6 +64,7 @@ type ControlChannel struct {
 	runtimeErrChan chan error
 
 	targetType string
+	targetId   string
 
 	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
 	connections     map[string]AgentDatachannelConnection
@@ -81,8 +82,9 @@ func Start(logger *logger.Logger,
 	conn connection.Connection, // control channel connection
 	serviceUrl string,
 	targetType string,
+	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey *keypair.PrivateKey,
 	ksConfig keysplitting.IKeysplittingConfig,
 ) (*ControlChannel, error) {
 
@@ -92,8 +94,9 @@ func Start(logger *logger.Logger,
 		id:                    id,
 		serviceUrl:            serviceUrl,
 		targetType:            targetType,
+		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		ksConfig:              ksConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
@@ -136,6 +139,17 @@ func Start(logger *logger.Logger,
 			}
 		})
 
+		// Make a context and tie it in with our tomb to use for processing control messages
+		ctx, cancel := context.WithCancel(context.Background())
+
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-control.tmb.Dying():
+				cancel()
+			}
+		}()
+
 		for {
 			select {
 			case <-control.tmb.Dying():
@@ -151,7 +165,7 @@ func Start(logger *logger.Logger,
 				// Process each message in its own thread
 				// TODO: (CWC-2038) it would be safer to put a limit on how many threads can be created this way
 				go func() {
-					if err := control.processInput(agentMessage); err != nil {
+					if err := control.processInput(agentMessage, ctx); err != nil {
 						logger.Error(err)
 						control.runtimeErrChan <- err
 					}
@@ -253,7 +267,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.messageSigner, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
@@ -271,7 +285,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 }
 
 // This is our main process function where incoming messages from the connection will be processed
-func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
+func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.Context) error {
 	c.logger.Debugf("control channel received %s message", am.MessageType(agentMessage.MessageType))
 
 	switch am.MessageType(agentMessage.MessageType) {
@@ -285,6 +299,18 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			restartRequest = RestartAgentMessage{}
 		}
 		c.Close(fmt.Errorf("%s: %+v", ManualRestartMsg, restartRequest))
+	case am.RetrieveLogs:
+		var retrieveLogsRequest RetrieveAgentLogsMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &retrieveLogsRequest); err != nil {
+			return fmt.Errorf("malformed retrieve agent logs request: %s", err)
+		} else {
+			c.logger.Infof("Sending %s logs from agent %s", c.targetType, c.targetId)
+			if err := agentreport.ReportLogs(c.targetType, c.agentIdentityProvider, ctx, c.serviceUrl, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
+				return fmt.Errorf("error sending agent logs to Bastion: %s", err)
+			} else {
+				c.logger.Infof("Successfully sent agent logs to Bastion")
+			}
+		}
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {
@@ -328,8 +354,9 @@ func (c *ControlChannel) reportHealth() error {
 		return err
 	}
 
+	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
-	if vault.InCluster() {
+	if c.targetType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}

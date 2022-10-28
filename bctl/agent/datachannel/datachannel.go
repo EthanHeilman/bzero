@@ -323,7 +323,7 @@ func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string,
 	}
 
 	if err != nil {
-		rerr := fmt.Errorf("failed to start %s plugin: %s", pluginName, err)
+		rerr := fmt.Errorf("failed to start %s plugin with %s action: %s", pluginName, action, err)
 		d.logger.Error(rerr)
 		return rerr
 	} else {

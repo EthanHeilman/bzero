@@ -17,6 +17,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
@@ -38,7 +39,7 @@ type ShellServer struct {
 	dataChannelId string
 
 	// fields for new datachannels
-	agentPubKey string
+	agentPubKey *keypair.PublicKey
 	cert        *bzcert.DaemonBZCert
 
 	tmb tomb.Tomb
@@ -53,7 +54,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 ) (*ShellServer, error) {
 
 	server := &ShellServer{
@@ -81,16 +82,14 @@ func New(
 	// the error to the errChan. Using a tmb prevents any side-effects from
 	// server.Close from being called multiple times.
 	server.tmb.Go(func() error {
-		select {
-		case <-server.tmb.Dying():
-			server.logger.Infof("shell server tmb is dying")
-			err := server.tmb.Err()
-			if server.conn != nil {
-				server.conn.Close(err, connectionCloseTimeout)
-			}
-			server.errChan <- err
-			return err
+		<-server.tmb.Dying()
+		server.logger.Infof("shell server tmb is dying")
+		err := server.tmb.Err()
+		if server.conn != nil {
+			server.conn.Close(err, connectionCloseTimeout)
 		}
+		server.errChan <- err
+		return err
 	})
 
 	return server, nil

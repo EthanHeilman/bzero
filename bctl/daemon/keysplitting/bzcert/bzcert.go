@@ -7,6 +7,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
 )
@@ -14,7 +15,7 @@ import (
 type IDaemonBZCert interface {
 	bzcert.IBZCert
 	Cert() *bzcert.BZCert
-	PrivateKey() string
+	PrivateKey() *keypair.PrivateKey
 	Refresh() error
 }
 
@@ -22,7 +23,7 @@ type DaemonBZCert struct {
 	bzcert.BZCert
 
 	// unexported members
-	privateKey               string
+	privateKey               *keypair.PrivateKey
 	config                   *zliconfig.ZLIConfig
 	currentIdTokenExpiration int64
 }
@@ -47,7 +48,7 @@ func (b *DaemonBZCert) Cert() *bzcert.BZCert {
 	return &b.BZCert
 }
 
-func (b *DaemonBZCert) PrivateKey() string {
+func (b *DaemonBZCert) PrivateKey() *keypair.PrivateKey {
 	return b.privateKey
 }
 
@@ -70,20 +71,27 @@ func (b *DaemonBZCert) Refresh() error {
 }
 
 func (b *DaemonBZCert) populateFromConfig() error {
-	var privateKey string
+	privatekey := b.config.CertConfig.PrivateKey
+	privatekeyBytes, err := base64.StdEncoding.DecodeString(privatekey)
+	if err != nil {
+		return fmt.Errorf("private key is not base64 encoded: %w", err)
+	}
 
-	if privateKeyBytes, err := base64.StdEncoding.DecodeString(b.config.CertConfig.PrivateKey); err != nil {
-		return fmt.Errorf("failed to base64 decode private key: %w", err)
-	} else if len(privateKeyBytes) == 64 {
-		// The golang ed25519 library uses a length 64 private key because the
-		// private key is in the concatenated form privatekey = privatekey + publickey.
-		privateKey = b.config.CertConfig.PrivateKey
-	} else if len(privateKeyBytes) == 32 {
-		// If the key was generated as length 32, we can correct for that here
-		publickeyBytes, _ := base64.StdEncoding.DecodeString(b.config.CertConfig.PublicKey)
-		privateKey = base64.StdEncoding.EncodeToString(append(privateKeyBytes, publickeyBytes...))
-	} else {
-		return fmt.Errorf("malformatted private key of incorrect length: %d", len(privateKeyBytes))
+	// The golang ed25519 library only generates and accepts ed25519 certificates that
+	// are in the form privatekey + publickey and therefore have length 64. The library
+	// we use to generate these in the zli (https://paulmillr.com/noble/) creates them
+	// with 32-bytes and so we correct that here
+	if len(privatekeyBytes) == 32 {
+		publicKeyBytes, err := base64.StdEncoding.DecodeString(b.config.CertConfig.PublicKey)
+		if err != nil {
+			return fmt.Errorf("public key is not base64 encoded: %w", err)
+		}
+		privatekey = base64.StdEncoding.EncodeToString(append(privatekeyBytes, publicKeyBytes...))
+	}
+
+	privateKey, err := keypair.PrivateKeyFromString(privatekey)
+	if err != nil {
+		return err
 	}
 
 	// Update all of our objects values

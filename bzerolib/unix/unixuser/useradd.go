@@ -61,7 +61,7 @@ func LookupOrCreateFromList(username string) (*UnixUser, error) {
 	var unknownUser user.UnknownUserError
 	if usr, err := Lookup(username); errors.As(err, &unknownUser) {
 		if opts, ok := managedUsers[username]; !ok {
-			return nil, fmt.Errorf("%s does not exist", username)
+			return nil, &UserNotFoundError{}
 		} else if err := userAdd(username, opts); err != nil {
 			return nil, err
 		} else {

@@ -35,3 +35,8 @@ type RestartAgentMessage struct {
 	RestartedBy string `json:"restartedBy"`
 	RestartedAt string `json:"restartedAt"`
 }
+
+type RetrieveAgentLogsMessage struct {
+	UserEmail           string `json:"userEmail"`
+	UploadLogsRequestId string `json:"uploadLogsRequestId"`
+}

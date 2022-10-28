@@ -15,7 +15,7 @@ RUN /bctl-agent-files/update-agent-version.sh
 
 # Build our exectuable
 RUN cd /bctl-agent-files/bctl/agent && \
-    go build agent.go
+    go build
 
 # Move the executable and make it runnable, make our log dir
 RUN mv /bctl-agent-files/bctl/agent/agent /bctl-agent && \

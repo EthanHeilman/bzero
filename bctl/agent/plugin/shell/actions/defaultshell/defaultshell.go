@@ -35,7 +35,7 @@ import (
 var NewPseudoTerminal = func(logger *logger.Logger, runAsUser string, command string) (IPseudoTerminal, error) {
 	// Create will create the user with the given username if it is allowed, or it will return the existing user
 	if usr, err := unixuser.LookupOrCreateFromList(runAsUser); err != nil {
-		return nil, fmt.Errorf("failed to use ssh as user %s: %s", runAsUser, err)
+		return nil, fmt.Errorf("failed to log in as user %s: %w", runAsUser, err)
 	} else {
 		return pseudoterminal.New(logger, usr, command)
 	}
