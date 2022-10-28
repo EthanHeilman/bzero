@@ -106,7 +106,7 @@ func (p *PortForwardAction) Err() error {
 	return p.err
 }
 
-func (p *PortForwardAction) ReceiveKeysplitting(actionPayload []byte) {}
+func (p *PortForwardAction) ReceiveMrtap(actionPayload []byte) {}
 
 func (p *PortForwardAction) ReceiveStream(stream smsg.StreamMessage) {
 

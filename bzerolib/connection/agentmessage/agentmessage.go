@@ -1,25 +1,30 @@
 /*
 This package defines all of the messages that are used at the AgentMessage level.
 It defines the different types of messages (MessageType) and correlated payload
-structs: the 4 types of keysplitting messages and agent output streams.
+structs: the 4 types of MrTAP messages and agent output streams.
 */
 package agentmessage
+
+import (
+	"encoding/json"
+)
 
 const CurrentVersion = "1.0"
 
 type AgentMessage struct {
-	ChannelId      string `json:"channelId"` // acts like a session id to tie messages to a keysplitting hash chain
-	MessageType    string `json:"messageType"`
-	SchemaVersion  string `json:"schemaVersion" default:"1.0"`
-	MessagePayload []byte `json:"messagePayload"`
+	ChannelId      string      `json:"channelId"` // acts like a session id to tie messages to a MrTAP hash chain
+	MessageType    MessageType `json:"messageType"`
+	SchemaVersion  string      `json:"schemaVersion" default:"1.0"`
+	MessagePayload []byte      `json:"messagePayload"`
 }
 
 // The different categories of messages we might send/receive
 type MessageType string
 
 const (
-	// All keysplittings messages: Syn, SynAck, Data, DataAck
-	Keysplitting MessageType = "keysplitting"
+	// All MrTAP messages: Syn, SynAck, Data, DataAck
+	Mrtap       MessageType = "mrtap"
+	MrtapLegacy MessageType = "keysplitting"
 
 	// Agent output stream message types
 	Stream MessageType = "stream"
@@ -52,3 +57,19 @@ const (
 	// message to trigger agent to send logs to bastion
 	RetrieveLogs MessageType = "retrievelogs"
 )
+
+// TODO: CWC-2183; remove this logic in the far future
+func (mt *MessageType) UnmarshalJSON(data []byte) error {
+	var t string
+	if err := json.Unmarshal(data, &t); err != nil {
+		return err
+	}
+
+	if MessageType(t) == MrtapLegacy {
+		*mt = Mrtap
+	} else {
+		*mt = MessageType(t)
+	}
+
+	return nil
+}

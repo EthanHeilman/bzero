@@ -27,3 +27,13 @@ func (e *CurrentIdTokenError) Error() string {
 }
 
 func (e *CurrentIdTokenError) Unwrap() error { return e.InnerError }
+
+type CertConfigError struct {
+	InnerError error
+}
+
+func (e *CertConfigError) Error() string {
+	return fmt.Sprintf("error parsing zli config: %s", e.InnerError)
+}
+
+func (e *CertConfigError) Unwrap() error { return e.InnerError }

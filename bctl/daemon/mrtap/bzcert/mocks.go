@@ -4,8 +4,8 @@ import (
 	"encoding/base64"
 
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 	mock "github.com/stretchr/testify/mock"
 )
 

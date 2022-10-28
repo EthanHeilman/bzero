@@ -109,6 +109,6 @@ func (s *SshDaemonPlugin) ReceiveStream(smessage smsg.StreamMessage) {
 	}
 }
 
-func (s *SshDaemonPlugin) ReceiveKeysplitting(action string, actionPayload []byte) error {
+func (s *SshDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
 	return nil
 }

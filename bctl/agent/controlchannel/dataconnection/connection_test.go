@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -44,9 +44,9 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	params := url.Values{}
 	headers := http.Header{}
 
-	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
-	mockKeysplittingConfig.On("GetPrivateKey").Return(privateKey)
-	mockKeysplittingConfig.On("GetPublicKey").Return(publicKey)
+	mockMrtapConfig := &mrtap.MockMrtapConfig{}
+	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
+	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
@@ -69,7 +69,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, err = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -87,7 +87,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				_, err = New(logger, malformedUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -100,12 +100,12 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 		When("a datachannel sends messages to the connection", func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
-				MessageType: "keysplitting",
+				MessageType: agentmessage.Mrtap,
 			}
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -123,7 +123,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
 				ChannelId:   testId,
-				MessageType: "keysplitting",
+				MessageType: agentmessage.Mrtap,
 			}
 
 			testAgentMessageBytes, _ := json.Marshal(testAgentMessage)
@@ -137,7 +137,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -159,7 +159,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -174,7 +174,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

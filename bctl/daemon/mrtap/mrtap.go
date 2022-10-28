@@ -1,4 +1,4 @@
-package keysplitting
+package mrtap
 
 import (
 	"encoding/base64"
@@ -9,12 +9,12 @@ import (
 	"github.com/Masterminds/semver"
 	orderedmap "github.com/wk8/go-ordered-map"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
-	rrr "bastionzero.com/bctl/v1/bzerolib/error"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
+	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 )
 
 // Max number of times we will try to resend after an error message
@@ -24,7 +24,7 @@ const maxErrorRecoveryTries = 3
 // received an ack
 const maxPipelineLimit = 8
 
-type Keysplitting struct {
+type Mrtap struct {
 	logger *logger.Logger
 
 	bzcert bzcert.IDaemonBZCert
@@ -35,14 +35,14 @@ type Keysplitting struct {
 	synAction string
 
 	// a channel for all the messages we give the datachannel to send
-	outboxQueue chan *ksmsg.KeysplittingMessage
+	outboxQueue chan *message.MrtapMessage
 
 	// stateLock mutex coordinates usage of state variables defined below
 	stateLock sync.Mutex
 	// pipelineOpen allows concurrent goroutines to wait for some specific
 	// condition of the stateLock protected state variables to be true
 	pipelineOpen *sync.Cond
-	// ordered hash map to keep track of sent keysplitting messages
+	// ordered hash map to keep track of sent MrTAP messages
 	pipelineMap    *orderedmap.OrderedMap
 	pipelineLength int
 
@@ -50,9 +50,9 @@ type Keysplitting struct {
 	// false during recovery
 	isHandshakeComplete bool
 	// not the last ack we've received but the last ack we've received
-	lastAck *ksmsg.KeysplittingMessage
+	lastAck *message.MrtapMessage
 	// Data msg that was last acked by the agent
-	lastAckedData *ksmsg.KeysplittingMessage
+	lastAckedData *message.MrtapMessage
 	// bool variable for letting the datachannel know when to start processing
 	// incoming messages again
 	recovering bool
@@ -69,43 +69,43 @@ func New(
 	logger *logger.Logger,
 	agentPubKey *keypair.PublicKey,
 	bzcert bzcert.IDaemonBZCert,
-) (*Keysplitting, error) {
+) (*Mrtap, error) {
 
-	keysplitter := &Keysplitting{
+	mt := &Mrtap{
 		logger:        logger,
 		bzcert:        bzcert,
 		agentPubKey:   agentPubKey,
 		pipelineMap:   orderedmap.New(),
-		outboxQueue:   make(chan *ksmsg.KeysplittingMessage, maxPipelineLimit),
+		outboxQueue:   make(chan *message.MrtapMessage, maxPipelineLimit),
 		synAction:     "initial",
 		pipelineLimit: maxPipelineLimit,
 	}
-	keysplitter.pipelineOpen = sync.NewCond(&keysplitter.stateLock)
+	mt.pipelineOpen = sync.NewCond(&mt.stateLock)
 
-	return keysplitter, nil
+	return mt, nil
 }
 
-func (k *Keysplitting) IsPipelineEmpty() bool {
-	return k.pipelineLength == 0
+func (m *Mrtap) IsPipelineEmpty() bool {
+	return m.pipelineLength == 0
 }
 
-func (k *Keysplitting) Recovering() bool {
-	k.stateLock.Lock()
-	defer k.stateLock.Unlock()
-	return k.recovering
+func (m *Mrtap) Recovering() bool {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
+	return m.recovering
 }
 
-func (k *Keysplitting) Release() {
-	k.pipelineOpen.Broadcast()
+func (m *Mrtap) Release() {
+	m.pipelineOpen.Broadcast()
 }
 
-func (k *Keysplitting) Outbox() <-chan *ksmsg.KeysplittingMessage {
-	return k.outboxQueue
+func (m *Mrtap) Outbox() <-chan *message.MrtapMessage {
+	return m.outboxQueue
 }
 
-func (k *Keysplitting) Recover(errMessage rrr.ErrorMessage) error {
-	k.stateLock.Lock()
-	defer k.stateLock.Unlock()
+func (m *Mrtap) Recover(errMessage bzerr.ErrorMessage) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 
 	// only recover from this error message if it corresponds to a message we've actually sent
 	// our old error messages weren't setting hpointers correctly
@@ -113,32 +113,32 @@ func (k *Keysplitting) Recover(errMessage rrr.ErrorMessage) error {
 	if errMessage.SchemaVersion != "" {
 		if errMessage.HPointer == "" {
 			return fmt.Errorf("error message hpointer empty")
-		} else if pair := k.pipelineMap.GetPair(errMessage.HPointer); pair == nil && !k.recovering {
-			k.logger.Infof("agent error is not on a message sent by this datachannel")
+		} else if pair := m.pipelineMap.GetPair(errMessage.HPointer); pair == nil && !m.recovering {
+			m.logger.Infof("agent error is not on a message sent by this datachannel")
 			return nil // not a fatal error
-		} else if k.recovering {
-			k.logger.Infof("ignoring error message because we're already in recovery")
+		} else if m.recovering {
+			m.logger.Infof("ignoring error message because we're already in recovery")
 			return nil // not a fatal error
 		}
 	}
 
-	if k.errorRecoveryAttempt >= maxErrorRecoveryTries {
+	if m.errorRecoveryAttempt >= maxErrorRecoveryTries {
 		return fmt.Errorf("retried too many times to fix error: %s", errMessage.Message)
 	} else {
-		k.errorRecoveryAttempt++
-		k.logger.Infof("Attempt #%d to recover from error: %s", k.errorRecoveryAttempt, errMessage.Message)
+		m.errorRecoveryAttempt++
+		m.logger.Infof("Attempt #%d to recover from error: %s", m.errorRecoveryAttempt, errMessage.Message)
 	}
 
-	k.recovering = true
-	if _, err := k.buildSyn("", []byte{}, true); err != nil {
+	m.recovering = true
+	if _, err := m.buildSyn("", []byte{}, true); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (k *Keysplitting) resend(nonce string) {
-	recoveryMap := *k.pipelineMap
-	k.pipelineMap = orderedmap.New()
+func (m *Mrtap) resend(nonce string) {
+	recoveryMap := *m.pipelineMap
+	m.pipelineMap = orderedmap.New()
 
 	// Check to see if we're talking with an agent that doesn't set SynAck's
 	// nonce correctly
@@ -146,23 +146,23 @@ func (k *Keysplitting) resend(nonce string) {
 	// TODO: CWC-2093: Remove this once all agents update
 	synAckNonceConstraint, err := semver.NewConstraint("> 2.0")
 	if err != nil {
-		k.logger.Errorf("Not resending any messages in pipeline because unable to create SynAck nonce versioning constraint")
+		m.logger.Errorf("Not resending any messages in pipeline because unable to create SynAck nonce versioning constraint")
 		return
 	}
 
-	shouldCheckNonce := synAckNonceConstraint.Check(k.schemaVersion)
+	shouldCheckNonce := synAckNonceConstraint.Check(m.schemaVersion)
 
 	// figure out where we need to start resending from
 	if pair := (&recoveryMap).GetPair(nonce); pair == nil {
 		if shouldCheckNonce {
 			// Get hash of last acked Data msg
-			if k.lastAckedData == nil {
-				k.logger.Info("Not resending any messages in pipeline because lastAckedData msg is nil")
+			if m.lastAckedData == nil {
+				m.logger.Info("Not resending any messages in pipeline because lastAckedData msg is nil")
 				return
 			}
-			lastAckedDataHash := k.lastAckedData.Hash()
+			lastAckedDataHash := m.lastAckedData.Hash()
 			if lastAckedDataHash == "" {
-				k.logger.Errorf("Not resending any messages in pipeline because failed to hash lastAckedData msg")
+				m.logger.Errorf("Not resending any messages in pipeline because failed to hash lastAckedData msg")
 				return
 			}
 
@@ -176,7 +176,7 @@ func (k *Keysplitting) resend(nonce string) {
 			// TODO: CWC-2093: Remove this check once all agents update, and
 			// update code to always check the nonce.
 			if nonce != lastAckedDataHash {
-				k.logger.Errorf("Not resending any messages in pipeline because nonce not equal to lastAckedDataHash")
+				m.logger.Errorf("Not resending any messages in pipeline because nonce not equal to lastAckedDataHash")
 				return
 			}
 		}
@@ -184,53 +184,53 @@ func (k *Keysplitting) resend(nonce string) {
 		// if the referenced message was acked, we won't have it in our map so
 		// we assume we have to resend everything
 		for lostPair := (&recoveryMap).Oldest(); lostPair != nil; lostPair = lostPair.Next() {
-			ksMessage := lostPair.Value.(ksmsg.KeysplittingMessage)
-			k.pipeline(ksMessage.GetAction(), ksMessage.GetActionPayload())
+			mrtapMessage := lostPair.Value.(message.MrtapMessage)
+			m.pipeline(mrtapMessage.GetAction(), mrtapMessage.GetActionPayload())
 		}
 	} else {
 		// if the hpointer references a message that hasn't been acked, we assume the ack
 		// dropped and resend all messages starting with the one immediately AFTER the one
 		// referenced by the hpointer
 		for lostPair := pair.Next(); lostPair != nil; lostPair = lostPair.Next() {
-			ksMessage := lostPair.Value.(ksmsg.KeysplittingMessage)
-			k.pipeline(ksMessage.GetAction(), ksMessage.GetActionPayload())
+			mrtapMessage := lostPair.Value.(message.MrtapMessage)
+			m.pipeline(mrtapMessage.GetAction(), mrtapMessage.GetActionPayload())
 		}
 	}
 }
 
-func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
+func (m *Mrtap) Validate(mrtapMessage *message.MrtapMessage) error {
 	// TODO: CWC-1553: Remove this code once all agents have updated
-	if msg, ok := ksMessage.KeysplittingPayload.(ksmsg.SynAckPayload); ok && k.ackPublicKey == nil {
+	if msg, ok := mrtapMessage.Payload.(message.SynAckPayload); ok && m.ackPublicKey == nil {
 		if publickey, err := keypair.PublicKeyFromString(msg.TargetPublicKey); err != nil {
 			return fmt.Errorf("invalid public key")
 		} else {
-			k.ackPublicKey = publickey
+			m.ackPublicKey = publickey
 		}
 	}
 
 	// Verify the agent's signature
-	if err := ksMessage.VerifySignature(k.agentPubKey); err != nil {
+	if err := mrtapMessage.VerifySignature(m.agentPubKey); err != nil {
 		// TODO: CWC-1553: Remove this inner conditional once all agents have updated
-		if innerErr := ksMessage.VerifySignature(k.ackPublicKey); innerErr != nil {
-			return fmt.Errorf("%w: failed to verify %v signature: inner error: %s outer error: %s", ErrInvalidSignature, ksMessage.Type, innerErr, err)
+		if innerErr := mrtapMessage.VerifySignature(m.ackPublicKey); innerErr != nil {
+			return fmt.Errorf("%w: failed to verify %v signature: inner error: %s outer error: %s", ErrInvalidSignature, mrtapMessage.Type, innerErr, err)
 		}
 	}
 
-	hpointer, err := ksMessage.GetHpointer()
+	hpointer, err := mrtapMessage.GetHpointer()
 	if err != nil {
 		return err
 	}
 
-	k.stateLock.Lock()
-	defer k.stateLock.Unlock()
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 
 	// Check this messages is in response to one we've sent
-	if ackedMsg, ok := k.pipelineMap.Get(hpointer); ok {
-		switch ksMessage.Type {
-		case ksmsg.SynAck:
-			if msg, ok := ksMessage.KeysplittingPayload.(ksmsg.SynAckPayload); ok {
-				k.lastAck = ksMessage
-				k.pipelineMap.Delete(hpointer) // delete syn from map
+	if ackedMsg, ok := m.pipelineMap.Get(hpointer); ok {
+		switch mrtapMessage.Type {
+		case message.SynAck:
+			if msg, ok := mrtapMessage.Payload.(message.SynAckPayload); ok {
+				m.lastAck = mrtapMessage
+				m.pipelineMap.Delete(hpointer) // delete syn from map
 
 				// Must set schema version first in case we're recovering and
 				// resend() has to rebuild Data messages. If we don't set
@@ -241,88 +241,88 @@ func (k *Keysplitting) Validate(ksMessage *ksmsg.KeysplittingMessage) error {
 				if err != nil {
 					return ErrFailedToParseVersion
 				}
-				k.schemaVersion = parsedSchemaVersion
+				m.schemaVersion = parsedSchemaVersion
 
 				// when we recover, we're recovering based on the nonce in the syn/ack because unless
 				// it's not in response to the initial syn, where the nonce is a true random number,
 				// it is an hpointer which refers to the agent's last received and validated message.
-				// aka it is the current state of the mrzap hash chain according to the agent and this
-				// recovery mechanism allows us to sync our mrzap state to that
-				k.recovering = false
-				k.resend(msg.Nonce)
+				// aka it is the current state of the MrTAP hash chain according to the agent and this
+				// recovery mechanism allows us to sync our MrTAP state to that
+				m.recovering = false
+				m.resend(msg.Nonce)
 
 				// check to see if we're talking with an agent that's using
-				// pre-2.0 keysplitting because we'll need to dirty the payload
+				// pre-2.0 MrTAP because we'll need to dirty the payload
 				// by adding extra quotes around it TODO: CWC-1820: remove once
 				// all daemon's are updated
 				if c, err := semver.NewConstraint("< 2.0"); err != nil {
 					return fmt.Errorf("unable to create versioning constraint")
 				} else {
-					k.prePipeliningAgent = c.Check(parsedSchemaVersion)
+					m.prePipeliningAgent = c.Check(parsedSchemaVersion)
 
-					if k.prePipeliningAgent {
+					if m.prePipeliningAgent {
 						// Override default
-						k.pipelineLimit = 1
+						m.pipelineLimit = 1
 					}
 				}
 
 				// We've received a SynAck, so the handshake is complete
-				k.isHandshakeComplete = true
+				m.isHandshakeComplete = true
 			}
-		case ksmsg.DataAck:
-			k.lastAck = ksMessage
-			k.pipelineMap.Delete(hpointer)
+		case message.DataAck:
+			m.lastAck = mrtapMessage
+			m.pipelineMap.Delete(hpointer)
 
 			// Store reference to last acked Data msg
-			ackedDataMsg := ackedMsg.(ksmsg.KeysplittingMessage)
-			k.lastAckedData = &ackedDataMsg
+			ackedDataMsg := ackedMsg.(message.MrtapMessage)
+			m.lastAckedData = &ackedDataMsg
 
 			// If we're here, it means that the previous data message that
 			// caused the error was accepted
-			k.errorRecoveryAttempt = 0
+			m.errorRecoveryAttempt = 0
 		}
 
 		// Condition variable changed. We must call Broadcast() to prevent deadlock
-		k.pipelineLength = k.pipelineMap.Len()
-		k.pipelineOpen.Broadcast()
+		m.pipelineLength = m.pipelineMap.Len()
+		m.pipelineOpen.Broadcast()
 	} else {
-		return fmt.Errorf("%w: %T message did not correspond to a previously sent message", ErrUnknownHPointer, ksMessage.KeysplittingPayload)
+		return fmt.Errorf("%w: %T message did not correspond to a previously sent message", ErrUnknownHPointer, mrtapMessage.Payload)
 	}
 
 	return nil
 }
 
-func (k *Keysplitting) Inbox(action string, actionPayload []byte) error {
-	k.stateLock.Lock()
-	defer k.stateLock.Unlock()
+func (m *Mrtap) Inbox(action string, actionPayload []byte) error {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 
 	// Wait if pipeline is full OR if handshake is not complete
-	for k.pipelineMap.Len() >= k.pipelineLimit || !k.isHandshakeComplete {
-		k.logger.Debugf("Pipeline full: %t, Handshake complete: %t. Waiting to send next message...", k.pipelineMap.Len() >= k.pipelineLimit, k.isHandshakeComplete)
-		k.pipelineOpen.Wait()
+	for m.pipelineMap.Len() >= m.pipelineLimit || !m.isHandshakeComplete {
+		m.logger.Debugf("Pipeline full: %t, Handshake complete: %t. Waiting to send next message...", m.pipelineMap.Len() >= m.pipelineLimit, m.isHandshakeComplete)
+		m.pipelineOpen.Wait()
 	}
 
-	return k.pipeline(action, actionPayload)
+	return m.pipeline(action, actionPayload)
 }
 
-func (k *Keysplitting) pipeline(action string, actionPayload []byte) error {
+func (m *Mrtap) pipeline(action string, actionPayload []byte) error {
 	if action == "" {
-		return fmt.Errorf("i'm not allowed to build a keysplitting message with empty action")
+		return fmt.Errorf("i'm not allowed to build a MrTAP message with empty action")
 	}
 
 	// get the ack we're going to be building our new message off of
-	var ack *ksmsg.KeysplittingMessage
-	if pair := k.pipelineMap.Newest(); pair == nil {
+	var ack *message.MrtapMessage
+	if pair := m.pipelineMap.Newest(); pair == nil {
 		// if our pipeline map is empty, we build off our last received ack
-		if k.lastAck != nil {
-			ack = k.lastAck
+		if m.lastAck != nil {
+			ack = m.lastAck
 		} else {
 			return fmt.Errorf("can't build message because there's nothing to build it off of")
 		}
 	} else {
 		// otherwise, we're going to need to predict the ack we're building off of
-		ksMessage := pair.Value.(ksmsg.KeysplittingMessage)
-		if newAck, err := ksMessage.BuildUnsignedDataAck([]byte{}, k.agentPubKey.String(), k.schemaVersion.String()); err != nil {
+		mrtapMessage := pair.Value.(message.MrtapMessage)
+		if newAck, err := mrtapMessage.BuildUnsignedDataAck([]byte{}, m.agentPubKey.String(), m.schemaVersion.String()); err != nil {
 			return fmt.Errorf("failed to predict ack: %s", err)
 		} else {
 			ack = &newAck
@@ -330,19 +330,19 @@ func (k *Keysplitting) pipeline(action string, actionPayload []byte) error {
 	}
 
 	// build our new data message and then ship it!
-	if newMessage, err := k.buildResponse(ack, action, actionPayload); err != nil {
+	if newMessage, err := m.buildResponse(ack, action, actionPayload); err != nil {
 		return fmt.Errorf("failed to build new message: %w", err)
-	} else if err := k.addToPipelineMap(newMessage); err != nil {
+	} else if err := m.addToPipelineMap(newMessage); err != nil {
 		return err
 	} else {
-		k.outboxQueue <- &newMessage
+		m.outboxQueue <- &newMessage
 		return nil
 	}
 }
 
-func (k *Keysplitting) buildResponse(ksMessage *ksmsg.KeysplittingMessage, action string, payload []byte) (ksmsg.KeysplittingMessage, error) {
+func (m *Mrtap) buildResponse(mrtapMessage *message.MrtapMessage, action string, payload []byte) (message.MrtapMessage, error) {
 	// TODO: CWC-1820: remove this if statement once all daemon's are updated
-	if k.prePipeliningAgent {
+	if m.prePipeliningAgent {
 		// if we're talking with an old agent, then we have to add extra quotes
 
 		// sometimes go will extra marshal big things, but because we need to compensate for an old
@@ -360,46 +360,46 @@ func (k *Keysplitting) buildResponse(ksMessage *ksmsg.KeysplittingMessage, actio
 	}
 
 	// Use the agreed upon schema version from the synack when building data messages
-	if responseMessage, err := ksMessage.BuildUnsignedData(action, payload, k.bzcert.Hash(), k.schemaVersion.String()); err != nil {
+	if responseMessage, err := mrtapMessage.BuildUnsignedData(action, payload, m.bzcert.Hash(), m.schemaVersion.String()); err != nil {
 		return responseMessage, err
-	} else if ok := responseMessage.Sign(k.bzcert.PrivateKey()); !ok {
+	} else if ok := responseMessage.Sign(m.bzcert.PrivateKey()); !ok {
 		return responseMessage, fmt.Errorf("%w: %s", ErrFailedToSign, err)
 	} else {
 		return responseMessage, nil
 	}
 }
 
-func (k *Keysplitting) addToPipelineMap(ksMessage ksmsg.KeysplittingMessage) error {
-	if hash := ksMessage.Hash(); hash == "" {
+func (m *Mrtap) addToPipelineMap(mrtapMessage message.MrtapMessage) error {
+	if hash := mrtapMessage.Hash(); hash == "" {
 		return fmt.Errorf("failed to hash message")
 	} else {
-		k.pipelineMap.Set(hash, ksMessage)
-		k.pipelineLength = k.pipelineMap.Len()
+		m.pipelineMap.Set(hash, mrtapMessage)
+		m.pipelineLength = m.pipelineMap.Len()
 		return nil
 	}
 }
 
-func (k *Keysplitting) BuildSyn(action string, payload interface{}, send bool) (*ksmsg.KeysplittingMessage, error) {
-	k.stateLock.Lock()
-	defer k.stateLock.Unlock()
+func (m *Mrtap) BuildSyn(action string, payload interface{}, send bool) (*message.MrtapMessage, error) {
+	m.stateLock.Lock()
+	defer m.stateLock.Unlock()
 
-	return k.buildSyn(action, payload, send)
+	return m.buildSyn(action, payload, send)
 }
 
 // It is the caller's responsibility to lock the stateLock mutex before calling this function
-func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (*ksmsg.KeysplittingMessage, error) {
+func (m *Mrtap) buildSyn(action string, payload interface{}, send bool) (*message.MrtapMessage, error) {
 	// Reset state
-	k.isHandshakeComplete = false
-	k.lastAck = nil
+	m.isHandshakeComplete = false
+	m.lastAck = nil
 
 	// Refresh our BZCert before rebuilding the syn in case the cert expired.
 	// This may still fail if the initialId Token is no longer valid
-	if err := k.bzcert.Refresh(); err != nil {
+	if err := m.bzcert.Refresh(); err != nil {
 		return nil, fmt.Errorf("failed to refresh BastionZero certificate: %w", err)
 	}
 
-	if k.synAction == "initial" {
-		k.synAction = action
+	if m.synAction == "initial" {
+		m.synAction = action
 	}
 
 	payloadBytes, err := json.Marshal(payload)
@@ -407,31 +407,31 @@ func (k *Keysplitting) buildSyn(action string, payload interface{}, send bool) (
 		return nil, fmt.Errorf("failed to marshal action params")
 	}
 
-	// Build the keysplitting message
-	synPayload := ksmsg.SynPayload{
-		SchemaVersion: ksmsg.SchemaVersion,
-		Type:          string(ksmsg.Syn),
-		Action:        k.synAction,
+	// Build the MrTAP message
+	synPayload := message.SynPayload{
+		SchemaVersion: message.SchemaVersion,
+		Type:          string(message.Syn),
+		Action:        m.synAction,
 		ActionPayload: payloadBytes,
-		TargetId:      k.agentPubKey.String(),
+		TargetId:      m.agentPubKey.String(),
 		Nonce:         util.Nonce(),
-		BZCert:        *k.bzcert.Cert(),
+		BZCert:        *m.bzcert.Cert(),
 	}
 
-	ksMessage := ksmsg.KeysplittingMessage{
-		Type:                ksmsg.Syn,
-		KeysplittingPayload: synPayload,
+	mrtapMessage := message.MrtapMessage{
+		Type:    message.Syn,
+		Payload: synPayload,
 	}
 
 	// Sign it and add it to our hash map
-	if ok := ksMessage.Sign(k.bzcert.PrivateKey()); !ok {
+	if ok := mrtapMessage.Sign(m.bzcert.PrivateKey()); !ok {
 		return nil, fmt.Errorf("%s: %w", ErrFailedToSign, err)
-	} else if err := k.addToPipelineMap(ksMessage); err != nil {
+	} else if err := m.addToPipelineMap(mrtapMessage); err != nil {
 		return nil, err
 	} else {
 		if send {
-			k.outboxQueue <- &ksMessage
+			m.outboxQueue <- &mrtapMessage
 		}
-		return &ksMessage, nil
+		return &mrtapMessage, nil
 	}
 }

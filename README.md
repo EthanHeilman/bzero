@@ -4,7 +4,7 @@
 
 ## Architecture
 
-The **bzero** Go library compiles to two different executables: an **agent** that runs on your remote targets and a **daemon** that runs locally. Both programs communicate with the BastionZero cloud service. Once the agent registers itself with BastionZero and establishes a control channel connection, it awaits incoming data channel connections. The daemon initiates these connections in tandem with the [ZLI](https://github.com/bastionzero/zli), a client CLI for BastionZero. The agent and daemon conduct secure data transmission using [MrZAP](https://github.com/bastionzero/whitepapers/blob/main/mrzap/README.md)
+The **bzero** Go library compiles to two different executables: an **agent** that runs on your remote targets and a **daemon** that runs locally. Both programs communicate with the BastionZero cloud service. Once the agent registers itself with BastionZero and establishes a control channel connection, it awaits incoming data channel connections. The daemon initiates these connections in tandem with the [ZLI](https://github.com/bastionzero/zli), a client CLI for BastionZero. The agent and daemon conduct secure data transmission using [MrTAP](https://github.com/bastionzero/whitepapers/blob/main/mrzap/README.md)
 
 ## Installation
 

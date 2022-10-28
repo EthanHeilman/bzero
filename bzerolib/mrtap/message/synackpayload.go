@@ -3,10 +3,10 @@ package message
 import (
 	"encoding/base64"
 
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 )
 
-// Repetition in Keysplitting messages is requires to maintain flat
+// Repetition in MrTAP messages is requires to maintain flat
 // structure which is important for hashing
 type SynAckPayload struct {
 	SchemaVersion         string `json:"schemaVersion"`

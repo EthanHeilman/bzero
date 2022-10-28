@@ -10,8 +10,8 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
@@ -145,14 +145,14 @@ func (ss *ShellServer) newDataChannel(action string) error {
 		TargetUser: ss.targetUser,
 	}
 
-	ksLogger := ss.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, ss.agentPubKey, ss.cert)
+	mtLogger := ss.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, ss.agentPubKey, ss.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "shell/" + action
-	ss.dc, err = datachannel.New(subLogger, ss.dataChannelId, ss.conn, keysplitter, plugin, action, synPayload, attach, false)
+	ss.dc, err = datachannel.New(subLogger, ss.dataChannelId, ss.conn, mt, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}

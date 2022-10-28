@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/exit"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dbserver"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/kubeserver"
@@ -24,8 +24,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/report"
 
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert/zliconfig"
 	bzlogger "bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert/zliconfig"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 )
 
@@ -118,7 +118,7 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	plugin := config[PLUGIN].Value
 	logger.Infof("Opening connection to the Connection Node: %s for %s plugin", config[CONNECTION_SERVICE_URL].Value, plugin)
 
-	// create our MrZAP object
+	// create our MrTAP object
 	zliConfig, err := zliconfig.New(config[CONFIG_PATH].Value, config[REFRESH_TOKEN_COMMAND].Value)
 	if err != nil {
 		errChan <- err
@@ -134,7 +134,7 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	// This validates the bzcert before creating the server so we can fail
 	// fast if the cert is no longer valid. This may result in prompting the
 	// user to login again if the cert contains expired IdP id tokens
-	logger.Debug("verifying bzcert")
+	logger.Debugf("verifying bzcert")
 	cert, err := bzcert.New(zliConfig)
 	if err != nil {
 		// don't attach a message here because we read this error type

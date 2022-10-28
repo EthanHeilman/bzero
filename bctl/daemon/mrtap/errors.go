@@ -1,4 +1,4 @@
-package keysplitting
+package mrtap
 
 import (
 	"errors"
