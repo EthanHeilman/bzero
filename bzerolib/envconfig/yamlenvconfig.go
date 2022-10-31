@@ -1,7 +1,9 @@
 package envconfig
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -24,7 +26,7 @@ func NewYamlEnvConfig(path string, fileLock *filelock.FileLock) (*YamlEnvConfig,
 	return &YamlEnvConfig{path, fileLock}, nil
 }
 
-func (y *YamlEnvConfig) Set(id string, entry *Entry) (string, error) {
+func (y *YamlEnvConfig) Set(id string, entry *ECEntry) (string, error) {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return "", fmt.Errorf("failed to create lock: %s", err)
@@ -34,17 +36,24 @@ func (y *YamlEnvConfig) Set(id string, entry *Entry) (string, error) {
 		if acquiredLock, err := lock.TryLock(); err != nil {
 			return "", fmt.Errorf("failed to acquire lock: %s", err)
 		} else if acquiredLock {
+			//fmt.Printf("%s: I got the lock ;)\n", id)
 			break
+		} else {
+			//fmt.Printf("%s: waiting for the lock :(\n", id)
 		}
 	}
 
-	defer lock.Unlock()
+	defer func() {
+		lock.Unlock()
+
+		//fmt.Printf("%s: I gave the lock back :D\n", id)
+	}()
 
 	// first, load entry into memory
 	em, err := y.load()
+	//fmt.Printf("1. %+v\n", em)
 	// FIXME: hey what happens if this is empty?
 	if err != nil {
-		// TODO: special
 		return "", err
 	}
 
@@ -53,6 +62,7 @@ func (y *YamlEnvConfig) Set(id string, entry *Entry) (string, error) {
 	}
 
 	em[id] = *entry
+	//fmt.Printf("2. %+v\n", em)
 
 	if err = y.save(em); err != nil {
 		return "", err
@@ -80,17 +90,17 @@ func (y *YamlEnvConfig) Get(id string) (string, error) {
 	// first, load entry into memory
 	em, err := y.load()
 	if err != nil {
-		// TODO: special
 		return "", err
 	}
 
 	entry, ok := em[id]
 	if !ok {
-		// TODO: special
-		return "", fmt.Errorf("TODO:")
+		return "", &KeyError{}
 	}
 
 	err = entry.Reconcile()
+	em[id] = entry
+	y.save(em)
 	return entry.Value, err
 }
 
@@ -113,21 +123,19 @@ func (y *YamlEnvConfig) Delete(id string, hard bool) error {
 	// first, load entry into memory
 	em, err := y.load()
 	if err != nil {
-		// TODO: special
 		return err
 	}
 
 	entry, ok := em[id]
 	if !ok {
-		// TODO: special
-		return err
+		return &KeyError{}
 	}
 
 	delete(em, id)
 
 	// finally hard delete, unset the env var
 	if hard {
-		os.Unsetenv(entry.EnvVar)
+		os.Unsetenv(entry.Env)
 	}
 
 	return y.save(em)
@@ -164,18 +172,18 @@ func (y *YamlEnvConfig) DeleteAll(hard bool) error {
 	// finally hard delete, unset the env vars
 	if hard {
 		for _, entry := range em {
-			os.Unsetenv(entry.EnvVar)
+			os.Unsetenv(entry.Env)
 		}
 	}
 
 	return nil
 }
 
-func (y *YamlEnvConfig) save(em EntryMap) error {
-	// FIXME: perms
-	file, err := os.OpenFile(y.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 700)
+func (y *YamlEnvConfig) save(em entryMap) error {
+	// create if not exists, else overwrite entirely
+	file, err := os.Create(y.path)
 	if err != nil {
-		return err
+		return &FileError{Path: y.path, InnerErr: err}
 	}
 
 	defer file.Close()
@@ -188,22 +196,34 @@ func (y *YamlEnvConfig) save(em EntryMap) error {
 
 	// write bytes to file in a complete overwrite
 	if _, err = file.Write(emBytes); err != nil {
-		return err
+		return &ValidationError{InnerErr: err}
 	}
 
 	return nil
 }
 
-func (y *YamlEnvConfig) load() (EntryMap, error) {
-	data, err := os.ReadFile("items.yaml")
-	if err != nil {
-		// TODO: look into special file not exist error
-		return nil, err
+func (y *YamlEnvConfig) load() (entryMap, error) {
+	var data []byte
+	var err error
+
+	// if file does not exist, create it and return an empty map
+	if _, err = os.Stat(y.path); errors.Is(err, fs.ErrNotExist) {
+		if _, cerr := os.Create(y.path); cerr != nil {
+			return nil, &FileError{Path: y.path, InnerErr: cerr}
+		}
+		return entryMap{}, nil
+	} else if err != nil {
+		return nil, &FileError{Path: y.path, InnerErr: err}
 	}
 
-	var em EntryMap
+	data, err = os.ReadFile(y.path)
+	if err != nil {
+		return nil, &FileError{Path: y.path, InnerErr: err}
+	}
+
+	var em entryMap
 	if err = yaml.Unmarshal(data, &em); err != nil {
-		return nil, err
+		return nil, &ValidationError{InnerErr: err}
 	}
 
 	return em, nil

@@ -3,7 +3,9 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path"
@@ -37,7 +39,7 @@ func NewSystemdClient(configDir string) (*SystemdClient, error) {
 	}
 
 	// check if file exists
-	if _, err := os.Stat(configPath); os.IsNotExist(err) { // our file does not exist
+	if _, err := os.Stat(configPath); errors.Is(err, fs.ErrNotExist) { // our file does not exist
 
 		// create our directory, if it doesn't exit
 		if err := os.MkdirAll(configDir, os.ModePerm); err != nil {
