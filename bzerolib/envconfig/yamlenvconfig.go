@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"gopkg.in/yaml.v3"
@@ -17,7 +18,7 @@ type YamlEnvConfig struct {
 	fileLock *filelock.FileLock
 }
 
-// TODO: should I check for anything that would merit an error here?
+// TODO: should I check for anything else that would merit an error here?
 func NewYamlEnvConfig(path string, fileLock *filelock.FileLock) (*YamlEnvConfig, error) {
 	// create path if needed
 	if err := os.MkdirAll(filepath.Dir(path), os.ModePerm); err != nil {
@@ -26,52 +27,7 @@ func NewYamlEnvConfig(path string, fileLock *filelock.FileLock) (*YamlEnvConfig,
 	return &YamlEnvConfig{path, fileLock}, nil
 }
 
-func (y *YamlEnvConfig) Set(id string, entry *ECEntry) (string, error) {
-	lock, err := y.fileLock.NewLock()
-	if err != nil {
-		return "", fmt.Errorf("failed to create lock: %s", err)
-	}
-
-	for {
-		if acquiredLock, err := lock.TryLock(); err != nil {
-			return "", fmt.Errorf("failed to acquire lock: %s", err)
-		} else if acquiredLock {
-			//fmt.Printf("%s: I got the lock ;)\n", id)
-			break
-		} else {
-			//fmt.Printf("%s: waiting for the lock :(\n", id)
-		}
-	}
-
-	defer func() {
-		lock.Unlock()
-
-		//fmt.Printf("%s: I gave the lock back :D\n", id)
-	}()
-
-	// first, load entry into memory
-	em, err := y.load()
-	//fmt.Printf("1. %+v\n", em)
-	// FIXME: hey what happens if this is empty?
-	if err != nil {
-		return "", err
-	}
-
-	if err = entry.Reconcile(); err != nil {
-		return "", err
-	}
-
-	em[id] = *entry
-	//fmt.Printf("2. %+v\n", em)
-
-	if err = y.save(em); err != nil {
-		return "", err
-	}
-
-	return entry.Value, nil
-}
-
-func (y *YamlEnvConfig) Get(id string) (string, error) {
+func (y *YamlEnvConfig) Set(id string, env string, entry *EnvEntry) (string, error) {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return "", fmt.Errorf("failed to create lock: %s", err)
@@ -93,18 +49,56 @@ func (y *YamlEnvConfig) Get(id string) (string, error) {
 		return "", err
 	}
 
-	entry, ok := em[id]
-	if !ok {
-		return "", &KeyError{}
+	idEnv := concat(id, env)
+
+	if err = entry.Reconcile(idEnv); err != nil {
+		return "", err
 	}
 
-	err = entry.Reconcile()
-	em[id] = entry
+	em = set(em, id, idEnv, entry)
+
+	if err = y.save(em); err != nil {
+		return "", err
+	}
+
+	return entry.Value, nil
+}
+
+func (y *YamlEnvConfig) Get(id string, env string) (string, error) {
+	lock, err := y.fileLock.NewLock()
+	if err != nil {
+		return "", fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return "", fmt.Errorf("failed to acquire lock: %s", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	defer lock.Unlock()
+
+	// first, load entry into memory
+	em, err := y.load()
+	if err != nil {
+		return "", err
+	}
+
+	idEnv := concat(id, env)
+	entry, err := get(em, id, idEnv)
+	if err != nil {
+		return "", err
+	}
+
+	err = entry.Reconcile(idEnv)
+	set(em, id, idEnv, entry)
 	y.save(em)
 	return entry.Value, err
 }
 
-func (y *YamlEnvConfig) Delete(id string, hard bool) error {
+func (y *YamlEnvConfig) Delete(id string, env string, hard bool) error {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return fmt.Errorf("failed to create lock: %s", err)
@@ -126,22 +120,22 @@ func (y *YamlEnvConfig) Delete(id string, hard bool) error {
 		return err
 	}
 
-	entry, ok := em[id]
-	if !ok {
-		return &KeyError{}
+	idEnv := concat(id, env)
+	if _, err = get(em, id, idEnv); err != nil {
+		return err
 	}
 
-	delete(em, id)
+	delete(em[id], idEnv)
 
 	// finally hard delete, unset the env var
 	if hard {
-		os.Unsetenv(entry.Env)
+		os.Unsetenv(idEnv)
 	}
 
 	return y.save(em)
 }
 
-func (y *YamlEnvConfig) DeleteAll(hard bool) error {
+func (y *YamlEnvConfig) DeleteAll(id string, hard bool) error {
 
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
@@ -164,17 +158,16 @@ func (y *YamlEnvConfig) DeleteAll(hard bool) error {
 		return err
 	}
 
-	// second, clear the config file
-	if err = os.Truncate(y.path, 0); err != nil {
-		return err
-	}
-
-	// finally hard delete, unset the env vars
+	// second, hard delete, unset the env vars
 	if hard {
-		for _, entry := range em {
-			os.Unsetenv(entry.Env)
+		for env := range em[id] {
+			os.Unsetenv(concat(id, env))
 		}
 	}
+
+	// finally clear the contents of id in the config file
+	delete(em, id)
+	y.save(em)
 
 	return nil
 }
@@ -227,4 +220,33 @@ func (y *YamlEnvConfig) load() (entryMap, error) {
 	}
 
 	return em, nil
+}
+
+// TODO:
+func concat(id string, env string) string {
+	cleanId := strings.ReplaceAll(id, "-", "_")
+	return fmt.Sprintf("%s__%s", cleanId, env)
+}
+
+// sets em[id][key] = entry, creating a new map if needed
+func set(em entryMap, id string, idEnv string, entry *EnvEntry) entryMap {
+	if _, ok := em[id]; !ok {
+		em[id] = make(map[string]*EnvEntry)
+	}
+
+	em[id][idEnv] = entry
+	return em
+}
+
+func get(em entryMap, id string, idEnv string) (*EnvEntry, error) {
+	if _, ok := em[id]; !ok {
+		return nil, &KeyError{Key: id}
+	}
+
+	entry, ok := em[id][idEnv]
+	if !ok {
+		return nil, &EnvKeyError{Key: idEnv}
+	}
+
+	return entry, nil
 }
