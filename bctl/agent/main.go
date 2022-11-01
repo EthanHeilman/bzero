@@ -218,7 +218,7 @@ func NewSystemdAgent(
 
 		// Regardless of the response, we're done here. Registration for the Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
-		if err = registration.Register(a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
 			return
 		}
 		os.Exit(0)
@@ -296,7 +296,7 @@ func NewKubeAgent(
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		if err = registration.Register(a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
 			return a, fmt.Errorf("failed to register kube agent: %w", err)
 		}
 
