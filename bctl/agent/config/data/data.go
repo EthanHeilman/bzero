@@ -130,19 +130,19 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 	val, ok := objmap["ShutdownState"]
 	if !ok {
 		v.ShutdownState = shutdownState
-	}
-
-	if string(val) == "null" || string(val) == `""` {
-		return nil
-	}
-
-	var legacyStateError *json.UnmarshalTypeError
-	if err := json.Unmarshal([]byte(val), &shutdownState); errors.As(err, &legacyStateError) {
-		v.ShutdownState = make(map[string]string)
-	} else if err != nil {
-		return fmt.Errorf("failed to unmarshal shutdown state %s: %s", string(val), err)
 	} else {
-		v.ShutdownState = shutdownState
+		if string(val) == "null" || string(val) == `""` {
+			return nil
+		}
+
+		var legacyStateError *json.UnmarshalTypeError
+		if err := json.Unmarshal([]byte(val), &shutdownState); errors.As(err, &legacyStateError) {
+			v.ShutdownState = make(map[string]string)
+		} else if err != nil {
+			return fmt.Errorf("failed to unmarshal shutdown state %s: %s", string(val), err)
+		} else {
+			v.ShutdownState = shutdownState
+		}
 	}
 
 	return nil
