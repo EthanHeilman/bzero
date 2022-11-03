@@ -71,10 +71,14 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 		v.AgentType = t
 	}
 
-	if err := json.Unmarshal(objmap["AgentIdentityToken"], &t); err != nil {
-		return fmt.Errorf("failed to unmarshal AgentIdentityToken: %s", err)
+	if val, ok := objmap["AgentIdentityToken"]; ok {
+		if err := json.Unmarshal(val, &t); err != nil {
+			return fmt.Errorf("failed to unmarshal AgentIdentityToken: %s", err)
+		} else {
+			v.AgentIdentityToken = t
+		}
 	} else {
-		v.AgentIdentityToken = t
+		v.AgentIdentityToken = ""
 	}
 
 	if err := json.Unmarshal(objmap["TargetId"], &t); err != nil {
@@ -95,10 +99,14 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 		v.IdpOrgId = t
 	}
 
-	if err := json.Unmarshal(objmap["ShutdownReason"], &t); err != nil {
-		return fmt.Errorf("failed to unmarshal ShutdownReason: %s", err)
+	if val, ok := objmap["ShutdownReason"]; ok {
+		if err := json.Unmarshal(val, &t); err != nil {
+			return fmt.Errorf("failed to unmarshal ShutdownReason: %s", err)
+		} else {
+			v.ShutdownReason = t
+		}
 	} else {
-		v.ShutdownReason = t
+		v.ShutdownReason = ""
 	}
 
 	var privateKey *keypair.PrivateKey
@@ -118,20 +126,23 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 	// Our old shutdown state was saved as a string via fmt.Sprintf. We just ignore those
 	// old states because if this code is reading such a state, then the user just updated
 	// their agent which is not restart we need to report.
-	val := objmap["ShutdownState"]
-
-	if string(val) == "null" || string(val) == `""` {
-		return nil
-	}
-
 	var shutdownState map[string]string
-	var legacyStateError *json.UnmarshalTypeError
-	if err := json.Unmarshal([]byte(val), &shutdownState); errors.As(err, &legacyStateError) {
-		v.ShutdownState = make(map[string]string)
-	} else if err != nil {
-		return fmt.Errorf("failed to unmarshal shutdown state %s: %s", string(val), err)
-	} else {
+	val, ok := objmap["ShutdownState"]
+	if !ok {
 		v.ShutdownState = shutdownState
+	} else {
+		if string(val) == "null" || string(val) == `""` {
+			return nil
+		}
+
+		var legacyStateError *json.UnmarshalTypeError
+		if err := json.Unmarshal([]byte(val), &shutdownState); errors.As(err, &legacyStateError) {
+			v.ShutdownState = make(map[string]string)
+		} else if err != nil {
+			return fmt.Errorf("failed to unmarshal shutdown state %s: %s", string(val), err)
+		} else {
+			v.ShutdownState = shutdownState
+		}
 	}
 
 	return nil
