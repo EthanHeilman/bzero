@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"io"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -18,7 +20,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 )
 
-func TestDefaultSsh(t *testing.T) {
+func TestOpaqueSsh(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Daemon OpaqueSsh Suite")
 }
@@ -101,23 +103,32 @@ var _ = Describe("Daemon OpaqueSsh action", func() {
 	})
 
 	Context("Happy path II: keys don't exist, closed by user", func() {
+		var doneChan chan struct{}
+		var outboxQueue chan plugin.ActionWrapper
+		var idFile *bzssh.IdentityFile
+		var khFile *bzssh.KnownHosts
+		var mockFileService bzio.MockBzFileIo
+		var mockIoService bzio.MockBzIo
 
-		doneChan := make(chan struct{})
-		outboxQueue := make(chan plugin.ActionWrapper, 1)
+		BeforeEach(func() {
+			doneChan = make(chan struct{})
+			outboxQueue = make(chan plugin.ActionWrapper, 1)
+			mockFileService = bzio.MockBzFileIo{}
+			// provide the action an invalid private key -- this will force it to generate a new one
+			mockFileService.On("ReadFile", identityFilePath).Return([]byte("invalid key"), nil)
+			// ...which we expect to be written out
+			mockFileService.On("WriteFile", identityFilePath).Return(nil)
+			// also expect a new entry in known_hosts
+			tempFilePath := filepath.Join(GinkgoT().TempDir(), "test-known_hosts")
+			tempFile, _ := os.Create(tempFilePath)
+			mockFileService.On("OpenFile", knownHostsFilePath).Return(tempFile, nil)
 
-		mockFileService := bzio.MockBzFileIo{}
-		// provide the action an invalid private key -- this will force it to generate a new one
-		mockFileService.On("ReadFile", identityFilePath).Return([]byte("invalid key"), nil)
-		// ...which we expect to be written out
-		mockFileService.On("WriteFile", identityFilePath).Return(nil)
-		// also expect a new entry in known_hosts
-		mockFileService.On("WriteFile", knownHostsFilePath).Return(nil)
+			idFile = bzssh.NewIdentityFile(identityFilePath, mockFileService)
+			khFile = bzssh.NewKnownHosts(knownHostsFilePath, []string{"testHost"}, mockFileService)
 
-		idFile := bzssh.NewIdentityFile(identityFilePath, mockFileService)
-		khFile := bzssh.NewKnownHosts(knownHostsFilePath, []string{"testHost"}, mockFileService)
-
-		mockIoService := bzio.MockBzIo{TestData: testData}
-		mockIoService.On("Read").Return(0, io.EOF)
+			mockIoService = bzio.MockBzIo{TestData: testData}
+			mockIoService.On("Read").Return(0, io.EOF)
+		})
 
 		// NOTE: we can't make extensive use of the hierarchy here because we're evaluating messages being passed as state changes
 		It("passes the SSH request to the agent and starts communicating with the local SSH process", func() {

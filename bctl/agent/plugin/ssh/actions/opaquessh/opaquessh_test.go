@@ -3,7 +3,9 @@ package opaquessh
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net"
+	"path/filepath"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,7 +19,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 )
 
-func TestDefaultSsh(t *testing.T) {
+func TestOpaqueSsh(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Agent OpaqueSsh Suite")
 }
@@ -45,7 +47,10 @@ var _ = Describe("Agent OpaqueSsh action", func() {
 		mockAuthKeyService.On("Add").Return(nil)
 
 		mockFileService := bzio.MockBzFileIo{}
-		mockFileService.On("ReadFile", rsaKeyPath).Return([]byte(testHostKey), nil)
+		mockFileService.On("ReadFile", filepath.Join(sshPubKeyDir, dsaKeyFile)).Return([]byte(testHostKey), nil)
+		mockFileService.On("ReadFile", filepath.Join(sshPubKeyDir, ecdsaKeyFile)).Return([]byte{}, fmt.Errorf(""))
+		mockFileService.On("ReadFile", filepath.Join(sshPubKeyDir, ed25519KeyFile)).Return([]byte{}, fmt.Errorf(""))
+		mockFileService.On("ReadFile", filepath.Join(sshPubKeyDir, rsaKeyFile)).Return([]byte{}, fmt.Errorf(""))
 
 		s := New(logger, doneChan, outboxQueue, dummyConn, mockAuthKeyService, mockFileService)
 
@@ -63,7 +68,7 @@ var _ = Describe("Agent OpaqueSsh action", func() {
 			Expect(err).To(BeNil())
 			Expect(returnBytes).To(Equal([]byte{}))
 
-			By("sending the host key to the daemon")
+			By("sending one host key to the daemon")
 			msg := <-outboxQueue
 			content, _ := base64.StdEncoding.DecodeString(msg.Content)
 			Expect(msg.Type).To(Equal(smsg.Data))

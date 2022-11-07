@@ -194,7 +194,6 @@ func (d *DataChannel) handshakeOrTimeout(attach bool, action string, synPayload 
 				// log the time it took to complete the handshake
 				diff := time.Since(start)
 				d.logger.Infof("It took %s to complete handshake", diff.Round(time.Millisecond).String())
-				d.logger.Infof("Right?")
 
 				if err := d.handleMrtap(agentMessage); err != nil {
 					return err

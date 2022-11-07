@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"fmt"
+	"os"
 
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
@@ -41,6 +42,13 @@ func (k *KnownHosts) AddHostKeyPrivate(privateKey []byte) error {
 
 func (k *KnownHosts) AddHostKeyPublic(publicKey gossh.PublicKey) error {
 	keyLine := knownhosts.Line(k.hosts, publicKey)
-	return k.fileIo.WriteFile(k.filePath, []byte(keyLine), 0600)
+	file, err := k.fileIo.OpenFile(k.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
 
+	defer file.Close()
+
+	_, err = file.Write([]byte(fmt.Sprintf("%s\n", keyLine)))
+	return err
 }

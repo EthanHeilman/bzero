@@ -102,15 +102,13 @@ func New(
 	// the error to the errChan. Using a tmb prevents any side-effects from
 	// server.Close from being called multiple times.
 	server.tmb.Go(func() error {
-		select {
-		case <-server.tmb.Dying():
-			err := server.tmb.Err()
-			if server.conn != nil {
-				server.conn.Close(err, connectionCloseTimeout)
-			}
-			server.errChan <- err
-			return err
+		<-server.tmb.Dying()
+		err := server.tmb.Err()
+		if server.conn != nil {
+			server.conn.Close(err, connectionCloseTimeout)
 		}
+		server.errChan <- err
+		return err
 	})
 
 	return server, nil
@@ -150,6 +148,11 @@ func (s *SshServer) newDataChannel(action string) error {
 	fileIo := bzio.OsFileIo{}
 
 	idFile := bzssh.NewIdentityFile(s.identityFile, fileIo)
+
+	// clear knownhosts file so that it only contains the key(s) from this session
+	if err := fileIo.Truncate(s.knownHostsFile, 0); err != nil {
+		s.logger.Errorf("failed to truncate known hosts file: %s", err)
+	}
 	khFile := bzssh.NewKnownHosts(s.knownHostsFile, s.hostNames, fileIo)
 
 	pluginLogger := subLogger.GetPluginLogger(bzplugin.Ssh)

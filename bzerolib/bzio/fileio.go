@@ -10,6 +10,8 @@ import (
 type BzFileIo interface {
 	ReadFile(name string) ([]byte, error)
 	WriteFile(name string, data []byte, perm fs.FileMode) error
+	OpenFile(name string, flag int, perm os.FileMode) (*os.File, error)
+	Truncate(name string, size int64) error
 }
 
 // the default implementation
@@ -21,4 +23,12 @@ func (f OsFileIo) ReadFile(name string) ([]byte, error) {
 
 func (f OsFileIo) WriteFile(name string, data []byte, perm fs.FileMode) error {
 	return os.WriteFile(name, data, perm)
+}
+
+func (f OsFileIo) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
+	return os.OpenFile(name, flag, perm)
+}
+
+func (f OsFileIo) Truncate(name string, size int64) error {
+	return os.Truncate(name, size)
 }
