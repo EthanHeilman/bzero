@@ -12,15 +12,16 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 )
 
-/*
-To test our systemd config, we need to create a bunch of config files that we want
-to keep separate for the purpose of test isolation. This requires us to have a universal
-BeforeEach and a universal AfterEach to make sure that the created file is always deleted.
-*/
-
-var _ = Describe("Systemd Client", func() {
+var _ = Describe("Systemd Client", Ordered, func() {
 	var configFile *os.File
 	var fileLock *flock.Flock
+	var tmpDir string
+
+	BeforeAll(func() {
+		// Gingko will give us a temp dir and then cleanup after itself so we don't have
+		// to worry about dangling files or test parallelization issues
+		tmpDir = GinkgoT().TempDir()
+	})
 
 	populateConfigFile := func(client *SystemdClient, mockV2 data.DataV2) error {
 		By("Fetching our file to set our last mod correctly")
@@ -36,7 +37,7 @@ var _ = Describe("Systemd Client", func() {
 
 		// Create our temp directory
 		By("Creating a temporary config file")
-		configFile, err = os.CreateTemp("", configFileName)
+		configFile, err = os.CreateTemp(tmpDir, configFileName)
 		Expect(err).ToNot(HaveOccurred())
 		By("Creating a new temp config file: " + configFile.Name())
 
@@ -45,12 +46,6 @@ var _ = Describe("Systemd Client", func() {
 		lock := filelock.NewFileLock(path.Join(dir, configFileLockName))
 		fileLock, err = lock.NewLock()
 		Expect(err).ToNot(HaveOccurred())
-	})
-
-	AfterEach(func() {
-		// Make sure we remove the file
-		os.Remove(configFile.Name())
-		By("Deleting the temp config file: " + configFile.Name())
 	})
 
 	Context("New", func() {

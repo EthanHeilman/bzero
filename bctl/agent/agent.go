@@ -14,7 +14,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
@@ -48,7 +48,7 @@ type IRegistration interface {
 }
 
 type AgentConfig interface {
-	keysplitting.IKeysplittingConfig
+	mrtap.MrtapConfig
 	registration.RegistrationConfig
 	agentidentity.IAgentIdentityTokenStore
 

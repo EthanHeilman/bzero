@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	bzcrt "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
+	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 )
 
-// Repetition in Keysplitting messages is requires to maintain flat
+// Repetition in MrTAP messages is requires to maintain flat
 // structure which is important for hashing
 type SynPayload struct {
 	SchemaVersion string `json:"schemaVersion"`

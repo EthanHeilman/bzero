@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/tomb.v2"
@@ -20,7 +21,16 @@ import (
 const (
 	chunkSize     = 64 * 1024
 	writeDeadline = 5 * time.Second
-	rsaKeyPath    = "/etc/ssh/ssh_host_rsa_key.pub"
+	sshPubKeyDir  = "/etc/ssh"
+
+	dsaKeyFile     = "ssh_host_dsa_key.pub"
+	ecdsaKeyFile   = "ssh_host_ecdsa_key.pub"
+	ed25519KeyFile = "ssh_host_ed25519_key.pub"
+	rsaKeyFile     = "ssh_host_rsa_key.pub"
+)
+
+var (
+	sshPubKeyFiles = []string{dsaKeyFile, ecdsaKeyFile, ed25519KeyFile, rsaKeyFile}
 )
 
 type OpaqueSsh struct {
@@ -113,10 +123,13 @@ func (s *OpaqueSsh) start(openRequest bzssh.SshOpenMessage, action string) ([]by
 	s.logger.Debugf("Setting stream message version: %s", s.streamMessageVersion)
 
 	// send an RSA key to the daemon if we can find it
-	if rsaKey, err := s.fileIo.ReadFile(rsaKeyPath); err != nil {
-		s.logger.Errorf("unable to read key file at %s: %s", rsaKeyPath, err)
-	} else {
-		s.sendStreamMessage(0, smsg.Data, false, rsaKey)
+	for _, keyFile := range sshPubKeyFiles {
+		fullKeyPath := filepath.Join(sshPubKeyDir, keyFile)
+		if keyContents, err := s.fileIo.ReadFile(fullKeyPath); err != nil {
+			s.logger.Errorf("unable to read key file at %s: %s", fullKeyPath, err)
+		} else {
+			s.sendStreamMessage(0, smsg.Data, false, keyContents)
+		}
 	}
 
 	// Setup a go routine to listen for messages coming from this local connection and send to daemon

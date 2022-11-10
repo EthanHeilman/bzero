@@ -129,7 +129,7 @@ func SetUpKeys(identityFile IIdentityFile, fileLock *filelock.FileLock, logger *
 	} else if publicKey, err = GeneratePublicKey(publicKeyRsa); err != nil {
 		logger.Errorf("failed to decode public key: %s", err)
 	} else {
-		logger.Errorf("using existing temporary keys")
+		logger.Debugf("using existing temporary keys")
 		useExistingKeys = true
 	}
 	if !useExistingKeys {

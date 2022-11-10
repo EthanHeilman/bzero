@@ -1,4 +1,4 @@
-package keysplitting
+package mrtap
 
 import (
 	"encoding/base64"
@@ -7,25 +7,25 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
-	rrr "bastionzero.com/bctl/v1/bzerolib/error"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
+	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	commonbzcert "bastionzero.com/bctl/v1/bzerolib/keysplitting/bzcert"
-	ksmsg "bastionzero.com/bctl/v1/bzerolib/keysplitting/message"
-	"bastionzero.com/bctl/v1/bzerolib/keysplitting/util"
 	log "bastionzero.com/bctl/v1/bzerolib/logger"
+	commonbzcert "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 
 	"github.com/Masterminds/semver"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-func TestDaemonKeysplitting(t *testing.T) {
+func TestDaemonMrtap(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Daemon keysplitting suite")
+	RunSpecs(t, "Daemon MrTAP suite")
 }
 
-var _ = Describe("Daemon keysplitting", func() {
+var _ = Describe("Daemon MrTAP", func() {
 	var logger *log.Logger
 	emptyPayload := []byte{}
 
@@ -49,7 +49,7 @@ var _ = Describe("Daemon keysplitting", func() {
 		}
 	}
 
-	createSUT := func() (*Keysplitting, error) {
+	createSUT := func() (*Mrtap, error) {
 		fakeBZCert := createFakeBzCert()
 		// Reset MockDaemonBZCert and set default mock returns
 		mockBZCert := &bzcert.MockDaemonBZCert{}
@@ -68,7 +68,7 @@ var _ = Describe("Daemon keysplitting", func() {
 		return parsedSchemaVersion
 	}
 
-	buildSynAckWithNonce := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string, nonce string) *ksmsg.KeysplittingMessage {
+	buildSynAckWithNonce := func(syn *message.MrtapMessage, agentSchemaVersion string, nonce string) *message.MrtapMessage {
 		synAck, _ := syn.BuildUnsignedSynAck(
 			emptyPayload,
 			agentPublicKey.String(),
@@ -78,14 +78,14 @@ var _ = Describe("Daemon keysplitting", func() {
 		synAck.Sign(agentPrivateKey)
 		return &synAck
 	}
-	buildSynAckWithVersion := func(syn *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
+	buildSynAckWithVersion := func(syn *message.MrtapMessage, agentSchemaVersion string) *message.MrtapMessage {
 		return buildSynAckWithNonce(syn, agentSchemaVersion, util.Nonce())
 	}
-	buildSynAck := func(syn *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
-		return buildSynAckWithVersion(syn, ksmsg.SchemaVersion)
+	buildSynAck := func(syn *message.MrtapMessage) *message.MrtapMessage {
+		return buildSynAckWithVersion(syn, message.SchemaVersion)
 	}
 
-	buildDataAckWithVersion := func(data *ksmsg.KeysplittingMessage, agentSchemaVersion string) *ksmsg.KeysplittingMessage {
+	buildDataAckWithVersion := func(data *message.MrtapMessage, agentSchemaVersion string) *message.MrtapMessage {
 		dataAck, _ := data.BuildUnsignedDataAck(
 			emptyPayload,
 			agentPublicKey.String(),
@@ -94,15 +94,15 @@ var _ = Describe("Daemon keysplitting", func() {
 		dataAck.Sign(agentPrivateKey)
 		return &dataAck
 	}
-	buildDataAck := func(data *ksmsg.KeysplittingMessage) *ksmsg.KeysplittingMessage {
-		return buildDataAckWithVersion(data, ksmsg.SchemaVersion)
+	buildDataAck := func(data *message.MrtapMessage) *message.MrtapMessage {
+		return buildDataAckWithVersion(data, message.SchemaVersion)
 	}
 
 	// SUT's logger
 	logger = log.MockLogger(GinkgoWriter)
 
 	Context("Creation", func() {
-		When("creating a new keysplitter", func() {
+		When("creating a new MrTAP instance", func() {
 			var err error
 
 			BeforeEach(func() {
@@ -117,8 +117,8 @@ var _ = Describe("Daemon keysplitting", func() {
 
 	Context("Send Syn", func() {
 		When("the bzcert is valid", func() {
-			var syn *ksmsg.KeysplittingMessage
-			var outboxSyn *ksmsg.KeysplittingMessage
+			var syn *message.MrtapMessage
+			var outboxSyn *message.MrtapMessage
 			var synErr error
 
 			testPayload := []byte("butt")
@@ -138,13 +138,13 @@ var _ = Describe("Daemon keysplitting", func() {
 
 			It("builds the syn correctly", func() {
 				By("Setting the correct type")
-				Expect(syn.Type).To(Equal(ksmsg.Syn))
+				Expect(syn.Type).To(Equal(message.Syn))
 
 				By("Validly signing the message")
 				Expect(syn.VerifySignature(daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating a SYN payload")
-				synPayload, ok := syn.KeysplittingPayload.(ksmsg.SynPayload)
+				synPayload, ok := syn.Payload.(message.SynPayload)
 				Expect(ok).To(BeTrue())
 
 				By("Setting the nonce")
@@ -182,8 +182,8 @@ var _ = Describe("Daemon keysplitting", func() {
 
 	Context("Send Data", func() {
 		When("the handshake is incomplete", func() {
-			var sut *Keysplitting
-			var syn *ksmsg.KeysplittingMessage
+			var sut *Mrtap
+			var syn *message.MrtapMessage
 
 			BeforeEach(func() {
 				var err error
@@ -194,7 +194,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				// clear our outbox
-				sut.outboxQueue = make(chan *ksmsg.KeysplittingMessage, maxPipelineLimit)
+				sut.outboxQueue = make(chan *message.MrtapMessage, maxPipelineLimit)
 			})
 
 			It("does not send the data message", func() {
@@ -205,7 +205,7 @@ var _ = Describe("Daemon keysplitting", func() {
 					By("Sending a message that causes Inbox() to block because handshake is not complete")
 					err := sut.Inbox(testAction, emptyPayload)
 					Expect(err).ShouldNot(HaveOccurred(), "sending Data should not error")
-					var dataMsg *ksmsg.KeysplittingMessage
+					var dataMsg *message.MrtapMessage
 					Expect(sut.Outbox()).Should(Receive(&dataMsg), "outbox should receive the Data message sent by Inbox()")
 
 					close(done)
@@ -224,8 +224,8 @@ var _ = Describe("Daemon keysplitting", func() {
 		})
 
 		When("the handshake it complete", func() {
-			var sut *Keysplitting
-			var synAck *ksmsg.KeysplittingMessage
+			var sut *Mrtap
+			var synAck *message.MrtapMessage
 
 			inboxErr := fmt.Errorf("has not sent our message yet")
 			testPayload := []byte("here")
@@ -239,7 +239,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				_, err = sut.BuildSyn(testAction, emptyPayload, true)
 				Expect(err).ShouldNot(HaveOccurred())
 
-				var syn *ksmsg.KeysplittingMessage
+				var syn *message.MrtapMessage
 				Expect(sut.Outbox()).Should(Receive(&syn))
 
 				synAck = buildSynAck(syn)
@@ -257,22 +257,22 @@ var _ = Describe("Daemon keysplitting", func() {
 			})
 
 			It("builds the data message correctly", func() {
-				var data *ksmsg.KeysplittingMessage
+				var data *message.MrtapMessage
 				Expect(sut.Outbox()).Should(Receive(&data))
 
 				By("Setting the correct type")
-				Expect(data.Type).To(Equal(ksmsg.Data))
+				Expect(data.Type).To(Equal(message.Data))
 
 				By("Signing with a valid signature")
 				Expect(data.VerifySignature(daemonPublicKey)).ShouldNot(HaveOccurred())
 
 				By("Creating the appropriate type of payload")
-				dataPayload, ok := data.KeysplittingPayload.(ksmsg.DataPayload)
+				dataPayload, ok := data.Payload.(message.DataPayload)
 				Expect(ok).To(BeTrue())
-				Expect(dataPayload.Type).To(BeEquivalentTo(ksmsg.Data))
+				Expect(dataPayload.Type).To(BeEquivalentTo(message.Data))
 
 				By("Setting the correct schema version")
-				Expect(dataPayload.SchemaVersion).To(Equal(getSchemaVersionAsSemVer(ksmsg.SchemaVersion).String()), "The schema version should match the agreed upon version found in the agent's SynAck")
+				Expect(dataPayload.SchemaVersion).To(Equal(getSchemaVersionAsSemVer(message.SchemaVersion).String()), "The schema version should match the agreed upon version found in the agent's SynAck")
 
 				By("Setting the hpointer equal to the hash of the previous message")
 				Expect(dataPayload.HPointer).Should(Equal(synAck.Hash()), "This Data message's HPointer should point to the syn ack")
@@ -285,7 +285,7 @@ var _ = Describe("Daemon keysplitting", func() {
 	})
 
 	Context("SynAck Validation", func() {
-		buildValidSynAck := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
+		buildValidSynAck := func(sut *Mrtap) *message.MrtapMessage {
 			syn, _ := sut.BuildSyn(testAction, emptyPayload, true)
 			return buildSynAck(syn)
 		}
@@ -298,9 +298,9 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				synAck := buildValidSynAck(sut)
 
-				synAckPayload, _ := synAck.KeysplittingPayload.(ksmsg.SynAckPayload)
+				synAckPayload, _ := synAck.Payload.(message.SynAckPayload)
 				synAckPayload.HPointer = "fake"
-				synAck.KeysplittingPayload = synAckPayload
+				synAck.Payload = synAckPayload
 
 				// sign again since we just changed a value
 				synAck.Sign(agentPrivateKey)
@@ -321,9 +321,9 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 				synAck := buildValidSynAck(sut)
 
-				synAckPayload, _ := synAck.KeysplittingPayload.(ksmsg.SynAckPayload)
+				synAckPayload, _ := synAck.Payload.(message.SynAckPayload)
 				synAckPayload.SchemaVersion = "bad-version"
-				synAck.KeysplittingPayload = synAckPayload
+				synAck.Payload = synAckPayload
 
 				// sign again since we just changed a value
 				synAck.Sign(agentPrivateKey)
@@ -392,11 +392,11 @@ var _ = Describe("Daemon keysplitting", func() {
 	})
 
 	Context("DataAck Validation", func() {
-		buildValidDataAck := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
+		buildValidDataAck := func(sut *Mrtap) *message.MrtapMessage {
 			_, err := sut.BuildSyn(testAction, emptyPayload, true)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			var syn *ksmsg.KeysplittingMessage
+			var syn *message.MrtapMessage
 			Expect(sut.Outbox()).Should(Receive(&syn))
 
 			synAck := buildSynAck(syn)
@@ -405,7 +405,7 @@ var _ = Describe("Daemon keysplitting", func() {
 			err = sut.Inbox(testAction, emptyPayload)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			var data *ksmsg.KeysplittingMessage
+			var data *message.MrtapMessage
 			Expect(sut.Outbox()).Should(Receive(&data))
 			return buildDataAck(data)
 		}
@@ -435,9 +435,9 @@ var _ = Describe("Daemon keysplitting", func() {
 				Expect(err).ShouldNot(HaveOccurred())
 
 				dataAck := buildValidDataAck(sut)
-				dataAckPayload, _ := dataAck.KeysplittingPayload.(ksmsg.DataAckPayload)
+				dataAckPayload, _ := dataAck.Payload.(message.DataAckPayload)
 				dataAckPayload.HPointer = "fake"
-				dataAck.KeysplittingPayload = dataAckPayload
+				dataAck.Payload = dataAckPayload
 
 				// sign again since we just changed a value
 				dataAck.Sign(agentPrivateKey)
@@ -472,20 +472,20 @@ var _ = Describe("Daemon keysplitting", func() {
 	Describe("pipelining", func() {
 		const timeToPollNothingReceivedOnOutbox time.Duration = 500 * time.Millisecond
 
-		sendData := func(sut *Keysplitting, payload []byte) *ksmsg.KeysplittingMessage {
+		sendData := func(sut *Mrtap, payload []byte) *message.MrtapMessage {
 			err := sut.Inbox(testAction, payload)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			var data *ksmsg.KeysplittingMessage
+			var data *message.MrtapMessage
 			Expect(sut.Outbox()).Should(Receive(&data))
 			return data
 		}
 
-		performHandshakeWithVersion := func(sut *Keysplitting, agentVersion string) *ksmsg.KeysplittingMessage {
+		performHandshakeWithVersion := func(sut *Mrtap, agentVersion string) *message.MrtapMessage {
 			_, err := sut.BuildSyn(testAction, emptyPayload, true)
 			Expect(err).ShouldNot(HaveOccurred())
 
-			var syn *ksmsg.KeysplittingMessage
+			var syn *message.MrtapMessage
 			Expect(sut.Outbox()).Should(Receive(&syn))
 
 			synAck := buildSynAckWithVersion(syn, agentVersion)
@@ -495,14 +495,14 @@ var _ = Describe("Daemon keysplitting", func() {
 			return synAck
 		}
 
-		// performHandshake completes the keysplitting handshake by sending a Syn
+		// performHandshake completes the MrTAP handshake by sending a Syn
 		// and receiving a valid SynAck. Returns the synAck message received.
-		performHandshake := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
-			return performHandshakeWithVersion(sut, ksmsg.SchemaVersion)
+		performHandshake := func(sut *Mrtap) *message.MrtapMessage {
+			return performHandshakeWithVersion(sut, message.SchemaVersion)
 		}
 
-		assertDataMsgIsCorrect := func(dataMsg *ksmsg.KeysplittingMessage, expectedPayload []byte, expectedPrevMessage *ksmsg.KeysplittingMessage, expectedSchemaVersion string) {
-			dataPayload, ok := dataMsg.KeysplittingPayload.(ksmsg.DataPayload)
+		assertDataMsgIsCorrect := func(dataMsg *message.MrtapMessage, expectedPayload []byte, expectedPrevMessage *message.MrtapMessage, expectedSchemaVersion string) {
+			dataPayload, ok := dataMsg.Payload.(message.DataPayload)
 			Expect(ok).To(BeTrue(), "passed in message must be a Data msg")
 			Expect(dataPayload.HPointer).Should(Equal(expectedPrevMessage.Hash()), fmt.Sprintf("This Data msg's HPointer should point to the previously received message: %#v", expectedPrevMessage))
 			Expect(dataPayload.ActionPayload).To(Equal(expectedPayload), "The Data's payload should match the expected payload")
@@ -513,9 +513,9 @@ var _ = Describe("Daemon keysplitting", func() {
 		Context("pipelining is disabled (CWC-1820)", func() {
 
 			When("a Data has been sent and we're waiting for a DataAck", func() {
-				var sut *Keysplitting
-				var synAck *ksmsg.KeysplittingMessage
-				var dataMsg *ksmsg.KeysplittingMessage
+				var sut *Mrtap
+				var synAck *message.MrtapMessage
+				var dataMsg *message.MrtapMessage
 
 				BeforeEach(func() {
 					var err error
@@ -533,7 +533,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 				It("doesn't send a new Data message until the DataAck is received", func() {
 					done := make(chan interface{})
-					var dataAck *ksmsg.KeysplittingMessage
+					var dataAck *message.MrtapMessage
 					go func() {
 						defer GinkgoRecover()
 
@@ -563,7 +563,7 @@ var _ = Describe("Daemon keysplitting", func() {
 		})
 
 		Context("pipelining is enabled", func() {
-			var sut *Keysplitting
+			var sut *Mrtap
 
 			BeforeEach(func() {
 				var err error
@@ -582,19 +582,19 @@ var _ = Describe("Daemon keysplitting", func() {
 		})
 
 		Context("recovery", func() {
-			buildErrorMessage := func(hPointer string) rrr.ErrorMessage {
-				return rrr.ErrorMessage{
-					SchemaVersion: rrr.CurrentVersion,
+			buildErrorMessage := func(hPointer string) bzerr.ErrorMessage {
+				return bzerr.ErrorMessage{
+					SchemaVersion: bzerr.CurrentVersion,
 					Timestamp:     time.Now().Unix(),
-					Type:          string(rrr.KeysplittingValidationError),
+					Type:          bzerr.MrtapValidationError,
 					Message:       "agent error message",
 					HPointer:      hPointer,
 				}
 			}
 
 			When("recovery handshake does not complete", func() {
-				var sut *Keysplitting
-				var synMsg *ksmsg.KeysplittingMessage
+				var sut *Mrtap
+				var synMsg *message.MrtapMessage
 
 				BeforeEach(func() {
 					var err error
@@ -614,7 +614,7 @@ var _ = Describe("Daemon keysplitting", func() {
 					// Grab the Syn that Recover() pushes to outbox, so
 					// that outbox remains empty for this context
 					Expect(sut.Outbox()).Should(Receive(&synMsg))
-					Expect(synMsg.Type).Should(Equal(ksmsg.Syn))
+					Expect(synMsg.Type).Should(Equal(message.Syn))
 				})
 
 				It("cannot send Data", func() {
@@ -642,13 +642,13 @@ var _ = Describe("Daemon keysplitting", func() {
 			})
 
 			When("recovery handshake completes", func() {
-				type sentKeysplittingData struct {
+				type sentMrtapData struct {
 					sentPayload []byte
-					sentMsg     *ksmsg.KeysplittingMessage
+					sentMsg     *message.MrtapMessage
 				}
 
 				// Holds *all* payloads and Data messages sent prior to recovery
-				var sentData []*sentKeysplittingData
+				var sentData []*sentMrtapData
 				var amountOfDataMsgsToSend int = 3
 				getSentPayloads := func() [][]byte {
 					sentPayloads := make([][]byte, 0)
@@ -658,13 +658,13 @@ var _ = Describe("Daemon keysplitting", func() {
 					return sentPayloads
 				}
 
-				assertRecoveryResendsData := func(sut *Keysplitting, sliceFromIndex int, recoverySynAck *ksmsg.KeysplittingMessage, agentSchemaVersion string) {
+				assertRecoveryResendsData := func(sut *Mrtap, sliceFromIndex int, recoverySynAck *message.MrtapMessage, agentSchemaVersion string) {
 					// prevMsg is set after first iteration of for loop below
-					var prevMsg *ksmsg.KeysplittingMessage
+					var prevMsg *message.MrtapMessage
 					for i, payload := range getSentPayloads()[sliceFromIndex:] {
-						var dataMsg *ksmsg.KeysplittingMessage
+						var dataMsg *message.MrtapMessage
 						Expect(sut.Outbox()).Should(Receive(&dataMsg))
-						Expect(dataMsg.Type).Should(Equal(ksmsg.Data))
+						Expect(dataMsg.Type).Should(Equal(message.Data))
 
 						By(fmt.Sprintf("Asserting Data msg containing payload %q is resent", payload))
 						if i == 0 {
@@ -691,9 +691,9 @@ var _ = Describe("Daemon keysplitting", func() {
 					Consistently(sut.Outbox(), timeToPollNothingReceivedOnOutbox).ShouldNot(Receive())
 				}
 
-				triggerRecovery := func(sut *Keysplitting) *ksmsg.KeysplittingMessage {
+				triggerRecovery := func(sut *Mrtap) *message.MrtapMessage {
 					// Initalize slice to prevent specs from leaking into one another
-					sentData = make([]*sentKeysplittingData, 0)
+					sentData = make([]*sentMrtapData, 0)
 
 					// Send some Data, so that recovery procedure has something to resend
 					for i := 0; i < amountOfDataMsgsToSend; i++ {
@@ -701,7 +701,7 @@ var _ = Describe("Daemon keysplitting", func() {
 						By(fmt.Sprintf("Sending Data(%v)", i))
 						dataMsg := sendData(sut, payload)
 
-						sentData = append(sentData, &sentKeysplittingData{
+						sentData = append(sentData, &sentMrtapData{
 							sentPayload: payload,
 							sentMsg:     dataMsg,
 						})
@@ -723,17 +723,17 @@ var _ = Describe("Daemon keysplitting", func() {
 
 					// Recover() sends a Syn
 					By("Pushing the Syn message created during recovery to the outbox")
-					var recoverySyn *ksmsg.KeysplittingMessage
+					var recoverySyn *message.MrtapMessage
 					Expect(sut.Outbox()).Should(Receive(&recoverySyn))
-					Expect(recoverySyn.Type).Should(Equal(ksmsg.Syn))
+					Expect(recoverySyn.Type).Should(Equal(message.Syn))
 
 					return recoverySyn
 				}
 
 				When("recovery SynAck's nonce references message not known by daemon's pipelineMap", func() {
-					var sut *Keysplitting
-					var recoverySynAck *ksmsg.KeysplittingMessage
-					var recoverySyn *ksmsg.KeysplittingMessage
+					var sut *Mrtap
+					var recoverySynAck *message.MrtapMessage
+					var recoverySyn *message.MrtapMessage
 
 					validateDataAckForFirstMsg := func() {
 						// This sets hashLastAckedDataMsg, and removes first
@@ -805,7 +805,7 @@ var _ = Describe("Daemon keysplitting", func() {
 						When("agent's recovery SynAck's schema version is the same as the one during handshake", func() {
 							BeforeEach(func() {
 								By("Building agent's recovery SynAck with nonce equal to last valid Data msg")
-								recoverySynAck = buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[0].sentMsg.Hash())
+								recoverySynAck = buildSynAckWithNonce(recoverySyn, message.SchemaVersion, sentData[0].sentMsg.Hash())
 							})
 
 							// We already received ack for first message.
@@ -816,7 +816,7 @@ var _ = Describe("Daemon keysplitting", func() {
 								err := sut.Validate(recoverySynAck)
 								Expect(err).ShouldNot(HaveOccurred())
 
-								assertRecoveryResendsData(sut, 1, recoverySynAck, ksmsg.SchemaVersion)
+								assertRecoveryResendsData(sut, 1, recoverySynAck, message.SchemaVersion)
 							})
 						})
 
@@ -825,7 +825,7 @@ var _ = Describe("Daemon keysplitting", func() {
 
 							BeforeEach(func() {
 								By("Building agent's recovery SynAck with a different schema version than before and nonce equal to last valid Data msg")
-								agentSchemaVersion = ksmsg.SchemaVersion + "-different"
+								agentSchemaVersion = message.SchemaVersion + "-different"
 								recoverySynAck = buildSynAckWithNonce(recoverySyn, agentSchemaVersion, sentData[0].sentMsg.Hash())
 							})
 
@@ -841,8 +841,8 @@ var _ = Describe("Daemon keysplitting", func() {
 				})
 
 				When("referenced message is first Data sent", func() {
-					var sut *Keysplitting
-					var recoverySynAck *ksmsg.KeysplittingMessage
+					var sut *Mrtap
+					var recoverySynAck *message.MrtapMessage
 
 					BeforeEach(func() {
 						var err error
@@ -853,7 +853,7 @@ var _ = Describe("Daemon keysplitting", func() {
 						recoverySyn := triggerRecovery(sut)
 
 						By("Building agent's recovery SynAck with nonce equal to first Data message sent")
-						recoverySynAck = buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[0].sentMsg.Hash())
+						recoverySynAck = buildSynAckWithNonce(recoverySyn, message.SchemaVersion, sentData[0].sentMsg.Hash())
 
 						By("Validating agent's recovery SynAck")
 						err = sut.Validate(recoverySynAck)
@@ -863,12 +863,12 @@ var _ = Describe("Daemon keysplitting", func() {
 					// Pass index 1 because the first payload (index 0)
 					// sent should not be resent
 					It("Resends every except the first previously pipelined data messages", func() {
-						assertRecoveryResendsData(sut, 1, recoverySynAck, ksmsg.SchemaVersion)
+						assertRecoveryResendsData(sut, 1, recoverySynAck, message.SchemaVersion)
 					})
 				})
 
 				When("referenced message is last Data sent", func() {
-					var sut *Keysplitting
+					var sut *Mrtap
 
 					BeforeEach(func() {
 						var err error
@@ -879,7 +879,7 @@ var _ = Describe("Daemon keysplitting", func() {
 						recoverySyn := triggerRecovery(sut)
 
 						By("Building agent's recovery SynAck with nonce equal to last Data message sent")
-						recoverySynAck := buildSynAckWithNonce(recoverySyn, ksmsg.SchemaVersion, sentData[len(sentData)-1].sentMsg.Hash())
+						recoverySynAck := buildSynAckWithNonce(recoverySyn, message.SchemaVersion, sentData[len(sentData)-1].sentMsg.Hash())
 
 						By("Validating agent's recovery SynAck")
 						err = sut.Validate(recoverySynAck)
@@ -894,14 +894,14 @@ var _ = Describe("Daemon keysplitting", func() {
 			})
 
 			When("recovery fails", func() {
-				sendDataAndBuildErrorMessage := func(sut *Keysplitting) rrr.ErrorMessage {
+				sendDataAndBuildErrorMessage := func(sut *Mrtap) bzerr.ErrorMessage {
 					By("Sending data and building an agent error message")
 					dataMsg := sendData(sut, []byte("agent fail on this data message"))
 					return buildErrorMessage(dataMsg.Hash())
 				}
 
 				When("the agent error message hpointer is empty", func() {
-					var sut *Keysplitting
+					var sut *Mrtap
 					var err error
 
 					BeforeEach(func() {
@@ -928,7 +928,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				})
 
 				When("the agent error message hpointer refers to message not sent by daemon", func() {
-					var sut *Keysplitting
+					var sut *Mrtap
 
 					BeforeEach(func() {
 						var err error
@@ -952,7 +952,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				})
 
 				When("the daemon is already recovering", func() {
-					var sut *Keysplitting
+					var sut *Mrtap
 
 					BeforeEach(func() {
 						var err error
@@ -969,9 +969,9 @@ var _ = Describe("Daemon keysplitting", func() {
 
 						// Grab the Syn message from the outbox, so that we
 						// can assert no extra Syn is sent in this Context.
-						var synMsg *ksmsg.KeysplittingMessage
+						var synMsg *message.MrtapMessage
 						Expect(sut.Outbox()).Should(Receive(&synMsg))
-						Expect(synMsg.Type).Should(Equal(ksmsg.Syn))
+						Expect(synMsg.Type).Should(Equal(message.Syn))
 
 						err = sut.Recover(agentErrorMessage)
 						Expect(err).ShouldNot(HaveOccurred())
@@ -987,7 +987,7 @@ var _ = Describe("Daemon keysplitting", func() {
 				})
 
 				When("recovery has already failed the max number of times", func() {
-					var sut *Keysplitting
+					var sut *Mrtap
 					var err error
 
 					BeforeEach(func() {
@@ -1003,9 +1003,9 @@ var _ = Describe("Daemon keysplitting", func() {
 							Expect(err).ShouldNot(HaveOccurred())
 
 							By("Pushing the Syn msg to the outbox")
-							var synMsg *ksmsg.KeysplittingMessage
+							var synMsg *message.MrtapMessage
 							Expect(sut.Outbox()).Should(Receive(&synMsg))
-							Expect(synMsg.Type).Should(Equal(ksmsg.Syn))
+							Expect(synMsg.Type).Should(Equal(message.Syn))
 
 							// Call Validate() with a SynAck to have
 							// recovering boolean reset allowing us to call

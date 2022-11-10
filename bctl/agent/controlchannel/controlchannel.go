@@ -15,7 +15,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
@@ -47,7 +47,7 @@ type ControlChannel struct {
 	tmb    tomb.Tomb
 	id     string
 
-	ksConfig              keysplitting.IKeysplittingConfig
+	mrtapConfig           mrtap.MrtapConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
 
@@ -85,7 +85,7 @@ func Start(logger *logger.Logger,
 	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
-	ksConfig keysplitting.IKeysplittingConfig,
+	mrtapConfig mrtap.MrtapConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -97,7 +97,7 @@ func Start(logger *logger.Logger,
 		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
-		ksConfig:              ksConfig,
+		mrtapConfig:           mrtapConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
 		agentPongChan:         make(chan bool),
@@ -247,7 +247,7 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 	} else {
 		agentMessage := am.AgentMessage{
 			ChannelId:      c.id,
-			MessageType:    string(messageType),
+			MessageType:    messageType,
 			SchemaVersion:  am.CurrentVersion,
 			MessagePayload: messageBytes,
 		}
@@ -267,7 +267,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.ksConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.mrtapConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
@@ -275,11 +275,9 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 		c.updateConnectionsMap(message.ConnectionId, conn)
 
 		// wait for this connection to close and then delete it from the map
-		select {
-		case <-conn.Done():
-			c.logger.Infof("Connection %s closed: %s.", message.ConnectionId, conn.Err())
-			c.deleteConnectionsMap(message.ConnectionId)
-		}
+		<-conn.Done()
+		c.logger.Infof("Connection %s closed: %s.", message.ConnectionId, conn.Err())
+		c.deleteConnectionsMap(message.ConnectionId)
 	}
 	return nil
 }

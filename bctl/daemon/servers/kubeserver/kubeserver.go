@@ -12,8 +12,8 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
@@ -184,15 +184,15 @@ func (k *KubeServer) newDataChannel(dcId string, action string, plugin *kube.Kub
 		TargetGroups: k.targetGroups,
 	}
 
-	ksLogger := k.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, k.agentPubKey, k.cert)
+	mtLogger := k.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, k.agentPubKey, k.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "kube/" + action
 	attach := false
-	_, err = datachannel.New(subLogger, dcId, k.conn, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, k.conn, mt, plugin, action, synPayload, attach, true)
 
 	if err != nil {
 		return err

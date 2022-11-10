@@ -44,7 +44,6 @@ const (
 	Microsoft ProviderType = "microsoft"
 	Okta      ProviderType = "okta"
 	// Custom    ProviderType = "custom" // plan for custom IdP support
-	None ProviderType = "None"
 )
 
 func NewVerifier(idpProvider string, idpOrgId string) (*BZCertVerifier, error) {
@@ -163,18 +162,21 @@ func (v *BZCertVerifier) getTokenClaims(idtoken string, config *oidc.Config) (*i
 		return nil, fmt.Errorf("error parsing the ID Token: %s", err)
 	}
 
-	// Only validate org claim if there is an orgId associated with this agent. This will be empty
-	// for orgs associated with a personal gsuite/microsoft account. We do not need to check against
-	// anything for Okta, because Okta creates a specific issuer url for every org meaning that by
-	// virtue of getting the claims, we are assured it's for the specific Okta tenant.
-	switch v.providerType {
-	case Google:
-		if v.orgId != claims.HD {
-			return nil, fmt.Errorf("user's OrgId %s does not match target's expected Google HD %s", claims.HD, v.orgId)
-		}
-	case Microsoft:
-		if v.orgId != claims.TID {
-			return nil, fmt.Errorf("user's OrgId %s does not match target's expected Microsoft tid %s", claims.TID, v.orgId)
+	// Only validate org claim if there is an orgId associated with this agent.
+	// This will be "None" for orgs associated with a personal gsuite/microsoft
+	// account. We do not need to check against anything for Okta, because Okta
+	// creates a specific issuer url for every org meaning that by virtue of
+	// getting the claims, we are assured it's for the specific Okta tenant.
+	if v.orgId != "None" {
+		switch v.providerType {
+		case Google:
+			if v.orgId != claims.HD {
+				return nil, fmt.Errorf("user's OrgId %s does not match target's expected Google HD %s", claims.HD, v.orgId)
+			}
+		case Microsoft:
+			if v.orgId != claims.TID {
+				return nil, fmt.Errorf("user's OrgId %s does not match target's expected Microsoft tid %s", claims.TID, v.orgId)
+			}
 		}
 	}
 

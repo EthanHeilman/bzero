@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
@@ -31,9 +31,9 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	connectionId := uuid.New().String()
 
-	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
-	mockKeysplittingConfig.On("GetPrivateKey").Return(privateKey)
-	mockKeysplittingConfig.On("GetPublicKey").Return(publicKey)
+	mockMrtapConfig := &mrtap.MockMrtapConfig{}
+	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
+	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
@@ -44,7 +44,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
+		conn, _ := New(logger, cnUrl, connectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
 
 		return conn
 	}

@@ -58,7 +58,7 @@ var _ = Describe("Daemon RestApi action", func() {
 					StatusCode: http.StatusOK,
 				})
 
-				r.ReceiveKeysplitting(payloadBytes)
+				r.ReceiveMrtap(payloadBytes)
 
 				By("writing the API response out to the user")
 				time.Sleep(1 * time.Second)
@@ -96,7 +96,7 @@ var _ = Describe("Daemon RestApi action", func() {
 					StatusCode: http.StatusNotFound,
 				})
 
-				r.ReceiveKeysplitting(payloadBytes)
+				r.ReceiveMrtap(payloadBytes)
 
 				// this checks that the Write function was called as expected
 				By("returning the error to the user")

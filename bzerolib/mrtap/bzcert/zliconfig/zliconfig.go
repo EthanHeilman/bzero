@@ -3,14 +3,14 @@ package zliconfig
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 )
 
 type ZLIConfig struct {
-	CertConfig BZCertConfig `json:"keySplitting"`
+	CertConfig BZCertConfig `json:"mrtap"`
 	TokenSet   IdPTokenSet  `json:"tokenSet"`
 
 	// unexported members
@@ -57,7 +57,7 @@ func (z *ZLIConfig) Load() error {
 
 	if configFile, err := os.Open(z.configPath); err != nil {
 		return fmt.Errorf("could not open config file %s: %w", z.configPath, err)
-	} else if configFileBytes, err := ioutil.ReadAll(configFile); err != nil {
+	} else if configFileBytes, err := io.ReadAll(configFile); err != nil {
 		return fmt.Errorf("failed to read config file %s: %w", z.configPath, err)
 	} else if err := json.Unmarshal(configFileBytes, z); err != nil {
 		return fmt.Errorf("could not unmarshal config file %s: %w", z.configPath, err)

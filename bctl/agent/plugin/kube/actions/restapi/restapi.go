@@ -51,7 +51,7 @@ func (r *RestApiAction) Receive(action string, actionPayload []byte) ([]byte, er
 
 	var apiRequest kuberest.KubeRestApiActionPayload
 	if err := json.Unmarshal(actionPayload, &apiRequest); err != nil {
-		rerr := fmt.Errorf("malformed Keysplitting Action payload %v", actionPayload)
+		rerr := fmt.Errorf("malformed MrTAP Action payload %v", actionPayload)
 		r.logger.Error(rerr)
 		return []byte{}, rerr
 	}

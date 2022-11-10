@@ -2,6 +2,7 @@ package bzio
 
 import (
 	"io/fs"
+	"os"
 
 	"github.com/stretchr/testify/mock"
 )
@@ -43,7 +44,12 @@ func (m MockBzFileIo) WriteFile(name string, data []byte, perm fs.FileMode) erro
 	return args.Error(0)
 }
 
-func (m MockBzFileIo) Remove(name string) error {
+func (m MockBzFileIo) OpenFile(name string, flag int, perm os.FileMode) (*os.File, error) {
 	args := m.Called(name)
+	return args.Get(0).(*os.File), args.Error(1)
+}
+
+func (m MockBzFileIo) Truncate(name string, size int64) error {
+	args := m.Called(name, size)
 	return args.Error(0)
 }

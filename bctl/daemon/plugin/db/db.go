@@ -100,10 +100,10 @@ func (d *DbDaemonPlugin) ReceiveStream(smessage smsg.StreamMessage) {
 	}
 }
 
-func (d *DbDaemonPlugin) ReceiveKeysplitting(action string, actionPayload []byte) error {
-	d.logger.Debugf("Received a keysplitting message with action: %s", action)
+func (d *DbDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
+	d.logger.Debugf("Received a MrTAP message with action: %s", action)
 
-	// the only keysplitting message that we would receive is the ack from the agent after stopping the dial action
+	// the only MrTAP message that we would receive is the ack from the agent after stopping the dial action
 	// we don't do anything with it on the daemon side, so we receive it here and it will get logged
 	// but no particular action will be taken
 	return nil

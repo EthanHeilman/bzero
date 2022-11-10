@@ -29,7 +29,7 @@ type WebDaemonPlugin struct {
 	doneChan chan struct{}
 	killed   bool
 
-	// keysplitting output
+	// MrTAP output
 	outboxQueue chan plugin.ActionWrapper
 
 	// Web-specific vars
@@ -112,10 +112,10 @@ func (w *WebDaemonPlugin) ReceiveStream(smessage smsg.StreamMessage) {
 	}
 }
 
-func (w *WebDaemonPlugin) ReceiveKeysplitting(action string, actionPayload []byte) error {
-	w.logger.Debugf("Received %s keysplitting message", action)
+func (w *WebDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
+	w.logger.Debugf("Received %s MrTAP message", action)
 
-	// the only keysplitting message that we would receive is the ack for our web action interrupt
+	// the only MrTAP message that we would receive is the ack for our web action interrupt
 	// we don't do anything with it on the daemon side, so we receive it here and it will get logged
 	// but no particular action will be taken
 	return nil
