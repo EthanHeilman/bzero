@@ -160,9 +160,10 @@ func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request
 	// This will work for http 1.1 and that is what we need to support
 	// Ref: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Upgrade
 	// Ref: https://datatracker.ietf.org/doc/html/rfc6455#section-1.7
-	w.logger.Infof("Received request with headers: %+v, req: %+v", request.Header, request)
+	w.logger.Infof("websocket Received request with headers: %+v, req: %+v", request.Header, request)
 	isWebsocketRequest := request.Header.Get("Upgrade")
 	if isWebsocketRequest == "websocket" {
+		w.logger.Infof("websocket RECEIVED!!!")
 		action = bzweb.Websocket
 	}
 
