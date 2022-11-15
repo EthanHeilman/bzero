@@ -307,7 +307,7 @@ func (d *DataConnection) sendRemainingMessages() {
 		if err := d.client.Send(*message); err != nil {
 			d.logger.Errorf("failed to send message: %s", err)
 		} else {
-			d.logger.Debugf("sent %s message", message.MessageType)
+			d.logger.Infof("Sent %s message", message.MessageType)
 		}
 	}
 

@@ -199,7 +199,7 @@ func (d *DataConnection) receive() {
 
 // Returns error on connection closed
 func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
-	d.logger.Infof("processing new inbound %s message", message.Target)
+	d.logger.Infof("Processing inbound %s message", message.Target)
 	switch message.Target {
 	case closeConnection:
 		var cdwMessage CloseDaemonWebsocketMessage

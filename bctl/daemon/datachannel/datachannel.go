@@ -406,7 +406,6 @@ func (d *DataChannel) handleStream(agentMessage *am.AgentMessage) error {
 
 func (d *DataChannel) handleMrtap(agentMessage *am.AgentMessage) error {
 	// unmarshal the MrTAP message
-	d.logger.Debugf("Handling MrTAP message")
 	var mrtapMessage message.MrtapMessage
 	if err := json.Unmarshal(agentMessage.MessagePayload, &mrtapMessage); err != nil {
 		return fmt.Errorf("malformed MrTAP message")
