@@ -187,7 +187,7 @@ func (w *WebServer) newDataChannel(dcId string, action bzweb.WebAction, plugin *
 		RemoteHost: w.targetHost,
 	}
 
-	mtLogger := w.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, w.agentPubKey, w.cert)
 	if err != nil {
 		return err

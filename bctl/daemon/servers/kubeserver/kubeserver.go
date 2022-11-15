@@ -184,7 +184,7 @@ func (k *KubeServer) newDataChannel(dcId string, action string, plugin *kube.Kub
 		TargetGroups: k.targetGroups,
 	}
 
-	mtLogger := k.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, k.agentPubKey, k.cert)
 	if err != nil {
 		return err

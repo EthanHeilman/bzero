@@ -145,7 +145,7 @@ func (ss *ShellServer) newDataChannel(action string) error {
 		TargetUser: ss.targetUser,
 	}
 
-	mtLogger := ss.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, ss.agentPubKey, ss.cert)
 	if err != nil {
 		return err

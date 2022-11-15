@@ -241,7 +241,7 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	d.logger.Infof("got new open data channel control message for id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
-	ksSubLogger := d.logger.GetComponentLogger("mrtap")
+	ksSubLogger := subLogger.GetComponentLogger("mrtap")
 
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err

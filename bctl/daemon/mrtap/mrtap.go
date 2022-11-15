@@ -136,7 +136,7 @@ func (m *Mrtap) Recover(errMessage bzerr.ErrorMessage) error {
 	return nil
 }
 
-func (m *Mrtap) resend(nonce string) {
+func (m *Mrtap) resend(nonce string) error {
 	recoveryMap := *m.pipelineMap
 	m.pipelineMap = orderedmap.New()
 
@@ -146,8 +146,7 @@ func (m *Mrtap) resend(nonce string) {
 	// TODO: CWC-2093: Remove this once all agents update
 	synAckNonceConstraint, err := semver.NewConstraint("> 2.0")
 	if err != nil {
-		m.logger.Errorf("Not resending any messages in pipeline because unable to create SynAck nonce versioning constraint")
-		return
+		return fmt.Errorf("unable to create nonce versioning constraint")
 	}
 
 	shouldCheckNonce := synAckNonceConstraint.Check(m.schemaVersion)
@@ -157,13 +156,12 @@ func (m *Mrtap) resend(nonce string) {
 		if shouldCheckNonce {
 			// Get hash of last acked Data msg
 			if m.lastAckedData == nil {
-				m.logger.Info("Not resending any messages in pipeline because lastAckedData msg is nil")
-				return
+				return fmt.Errorf("no data messages have been acked in this mrtap session")
 			}
+
 			lastAckedDataHash := m.lastAckedData.Hash()
 			if lastAckedDataHash == "" {
-				m.logger.Errorf("Not resending any messages in pipeline because failed to hash lastAckedData msg")
-				return
+				return fmt.Errorf("failed to hash the last acked data message")
 			}
 
 			// Extra check to prevent a replay attack where adversary replays
@@ -176,8 +174,7 @@ func (m *Mrtap) resend(nonce string) {
 			// TODO: CWC-2093: Remove this check once all agents update, and
 			// update code to always check the nonce.
 			if nonce != lastAckedDataHash {
-				m.logger.Errorf("Not resending any messages in pipeline because nonce not equal to lastAckedDataHash")
-				return
+				return fmt.Errorf("nonce not equal to hash of last acked data message")
 			}
 		}
 
@@ -196,6 +193,8 @@ func (m *Mrtap) resend(nonce string) {
 			m.pipeline(mrtapMessage.GetAction(), mrtapMessage.GetActionPayload())
 		}
 	}
+
+	return nil
 }
 
 func (m *Mrtap) Validate(mrtapMessage *message.MrtapMessage) error {
@@ -249,7 +248,9 @@ func (m *Mrtap) Validate(mrtapMessage *message.MrtapMessage) error {
 				// aka it is the current state of the MrTAP hash chain according to the agent and this
 				// recovery mechanism allows us to sync our MrTAP state to that
 				m.recovering = false
-				m.resend(msg.Nonce)
+				if err := m.resend(msg.Nonce); err != nil {
+					m.logger.Infof("Not resending any messages in pipeline: %s", err)
+				}
 
 				// check to see if we're talking with an agent that's using
 				// pre-2.0 MrTAP because we'll need to dirty the payload

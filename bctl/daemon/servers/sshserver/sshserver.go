@@ -167,7 +167,7 @@ func (s *SshServer) newDataChannel(action string) error {
 		RemotePort: s.remotePort,
 	}
 
-	mtLogger := s.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, s.agentPubKey, s.cert)
 	if err != nil {
 		return err
