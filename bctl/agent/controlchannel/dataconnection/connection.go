@@ -164,7 +164,7 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.logger.Debugf("sent %s message", message.MessageType)
+					conn.logger.Infof("Sent %s message", message.MessageType)
 				}
 			}
 		}

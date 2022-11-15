@@ -247,10 +247,12 @@ func (m *Mrtap) Validate(mrtapMessage *message.MrtapMessage) error {
 				// it is an hpointer which refers to the agent's last received and validated message.
 				// aka it is the current state of the MrTAP hash chain according to the agent and this
 				// recovery mechanism allows us to sync our MrTAP state to that
-				m.recovering = false
-				if err := m.resend(msg.Nonce); err != nil {
-					m.logger.Infof("Not resending any messages in pipeline: %s", err)
+				if m.recovering {
+					if err := m.resend(msg.Nonce); err != nil {
+						m.logger.Infof("Not resending any messages in pipeline: %s", err)
+					}
 				}
+				m.recovering = false
 
 				// check to see if we're talking with an agent that's using
 				// pre-2.0 MrTAP because we'll need to dirty the payload

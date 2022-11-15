@@ -110,7 +110,7 @@ func New(
 		go dc.zapPluginOutput()
 
 		// wait for the syn/ack to our intial syn message or an error
-		dc.logger.Debugf("wait for the syn/ack to our intial syn message or an error")
+		dc.logger.Infof("Waiting for the ack to our intial syn message or an error")
 		if err = dc.handshakeOrTimeout(attach, action, synPayload); err != nil {
 			dc.logger.Error(err)
 			return err
