@@ -113,6 +113,7 @@ func (w *WebWebsocketAction) handleWebsocketRequest(writer http.ResponseWriter, 
 				RequestId: w.requestId,
 			}
 			w.outbox(webwebsocket.DaemonStop, payload)
+			w.logger.Infof("failed to read from connection: %s", err)
 			return fmt.Errorf("failed to read from connection: %s", err)
 		} else {
 			// Convert the message to a string
