@@ -3,6 +3,7 @@ package webserver
 import (
 	"fmt"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"time"
@@ -92,17 +93,35 @@ func New(
 }
 
 func (w *WebServer) Start() error {
-	// Create HTTP Server listens for incoming kubectl commands
-	go func() {
-		// Define our http handlers
-		// library will automatically put each call in its own thread
-		http.HandleFunc("/", w.capRequestSize(w.handleHttp))
+	// url, err := url.Parse(fmt.Sprintf("%s:%v", w.targetHost, w.targetPort))
+	url, err := url.Parse("https://websocketstest.com/")
+	if err != nil {
+		return err
+	}
 
-		if err := http.ListenAndServe(fmt.Sprintf("%s:%s", w.localHost, w.localPort), nil); err != nil {
-			w.logger.Error(err)
-		}
-	}()
+	proxy := httputil.NewSingleHostReverseProxy(url)
+	// proxy.Transport = NewTransport(w.logger)
+
+	// handle all requests to your server using the proxy
+	// http.HandleFunc("/", w.capRequestSize(proxy, w.handleHttp))
+	http.HandleFunc("/", proxy.ServeHTTP)
+	if err := http.ListenAndServe(fmt.Sprintf("%s:%s", w.localHost, w.localPort), nil); err != nil {
+		w.logger.Error(err)
+	}
+
 	return nil
+
+	// // Create HTTP Server listens for incoming kubectl commands
+	// go func() {
+	// 	// Define our http handlers
+	// 	// library will automatically put each call in its own thread
+	// 	http.HandleFunc("/", w.capRequestSize(w.handleHttp))
+
+	// 	if err := http.ListenAndServe(fmt.Sprintf("%s:%s", w.localHost, w.localPort), nil); err != nil {
+	// 		w.logger.Error(err)
+	// 	}
+	// }()
+	// return nil
 }
 
 func (w *WebServer) Close(err error) {
@@ -120,7 +139,7 @@ func (w *WebServer) listenForConnectionDone() {
 
 // this function operates as middleware between the http handler and the handleHttp call below
 // it checks to see if someone is trying to send a request body that is far too large
-func (w *WebServer) capRequestSize(h http.HandlerFunc) http.HandlerFunc {
+func (w *WebServer) capRequestSize(proxy *httputil.ReverseProxy, h func(*httputil.ReverseProxy, http.ResponseWriter, *http.Request)) http.HandlerFunc {
 	return func(writer http.ResponseWriter, request *http.Request) {
 		if strings.HasPrefix(request.Header.Get("Content-Type"), "multipart") {
 			if request.ContentLength > maxFileUpload {
@@ -143,11 +162,15 @@ func (w *WebServer) capRequestSize(h http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 
-		h(writer, request)
+		h(proxy, writer, request)
 	}
 }
 
-func (w *WebServer) handleHttp(writer http.ResponseWriter, request *http.Request) {
+func (w *WebServer) handleHttp(proxy *httputil.ReverseProxy, writer http.ResponseWriter, request *http.Request) {
+	proxy.ServeHTTP(writer, request)
+
+	w.logger.Infof("AND THEN WE GET HERE")
+
 	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 	dcId := uuid.New().String()
 
