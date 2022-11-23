@@ -67,6 +67,7 @@ type Agent struct {
 	logger *logger.Logger
 
 	config       AgentConfig
+	userKeysDir  string
 	agentType    AgentType
 	version      string
 	osSignalChan <-chan os.Signal
@@ -165,7 +166,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, privateKey, a.config)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, privateKey, a.config, a.userKeysDir)
 	a.controlConn = conn
 
 	return err

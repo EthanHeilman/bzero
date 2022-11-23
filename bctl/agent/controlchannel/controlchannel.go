@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -16,10 +17,12 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
+	"bastionzero.com/bctl/v1/bctl/agent/userkeys"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 
@@ -75,6 +78,10 @@ type ControlChannel struct {
 	isSendingPongs bool
 
 	ClusterUserCache []string
+
+	// where split private keys are held
+	userKeys    userkeys.UserKeys
+	userKeysDir string
 }
 
 func Start(logger *logger.Logger,
@@ -86,6 +93,7 @@ func Start(logger *logger.Logger,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
 	mrtapConfig mrtap.MrtapConfig,
+	userKeysDir string,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -104,11 +112,17 @@ func Start(logger *logger.Logger,
 		runtimeErrChan:        make(chan error),
 		isSendingPongs:        conn.Ready(),
 		ClusterUserCache:      []string{},
+		userKeysDir:           userKeysDir,
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
 	// subscribing to the connection with a unique id. As long as we use the same one when we unsubscribe
 	conn.Subscribe("", control)
+
+	// initialize our user key storage
+	var err error
+	fileLock := filelock.NewFileLock(filepath.Join(userKeysDir, ".bzero.lock"))
+	control.userKeys, err = userkeys.NewYamlUserKeys(userKeysDir, fileLock)
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {

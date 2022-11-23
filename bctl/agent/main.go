@@ -153,6 +153,7 @@ func NewSystemdAgent(
 		osSignalChan: bzos.OsShutdownChan(),
 		version:      version,
 		agentType:    Systemd,
+		userKeysDir:  configDir,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -241,6 +242,7 @@ func NewKubeAgent(
 		version:      version,
 		osSignalChan: bzos.OsShutdownChan(),
 		agentType:    Kubernetes,
+		userKeysDir:  configDir,
 	}
 
 	// This context will allow us to cancel everything concisely
