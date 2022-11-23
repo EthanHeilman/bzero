@@ -1,7 +1,5 @@
 package userkeys
 
-// TODO: add mocks
-
 var mockTargetIds = []string{"targetId1", "targetId2"}
 
 var oldSplitPrivateKey = SplitPrivateKey{
