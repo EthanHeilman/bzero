@@ -474,7 +474,7 @@ func (c *ControlChannel) addKeyShard(shard userkeys.SplitPrivateKey, targetId st
 	hashFn.Write([]byte(keyStr))
 	hash := hashFn.Sum(nil)
 
-	// add it
+	// add this shard as the most recent mapping for these targets
 	return c.userKeys.Add(userkeys.KeyEntry{
 		Hash:      base64.StdEncoding.EncodeToString(hash),
 		Key:       shard,

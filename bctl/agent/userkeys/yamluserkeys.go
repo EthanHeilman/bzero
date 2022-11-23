@@ -314,27 +314,28 @@ func removeTarget(el entryList, targetId string, hard bool) (entryList, error) {
 	}
 
 	// we know the entry at el[idx] contains the target
-	matchIndex := -1
+	match := -1
 	for i := range el[idx].TargetIds {
 		if el[idx].TargetIds[i] == targetId {
-			matchIndex = i
+			match = i
 			break
 		}
 	}
-	if matchIndex == -1 {
-		// TODO:...
-		return nil, fmt.Errorf("SOMETHING REALLY BAD HAPPENED")
+	if match == -1 {
+		// this really shouldn't be possible; better to check it than panic though!
+		return nil, fmt.Errorf("underlying list corrupted; the lock may be violated")
 	}
 
 	// remove the target
-	// TODO: ick
-	// TODO: need to test this to make sure it's safe anyway
-	el[idx].TargetIds = append(el[idx].TargetIds[:matchIndex], el[idx].TargetIds[matchIndex+1:]...)
+	el[idx].TargetIds = append(el[idx].TargetIds[:match], el[idx].TargetIds[match+1:]...)
 
-	// recursive case: delete until we hit an error
+	// recursive case: delete until we hit a target error
 	if hard {
-		el, _ = removeTarget(el, targetId, hard)
-		// TODO: should make sure err is targetError...
+		el, err = removeTarget(el, targetId, hard)
+		var targetError *TargetError
+		if err != nil && !errors.As(err, &targetError) {
+			return nil, err
+		}
 	}
 
 	return el, nil
