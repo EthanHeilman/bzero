@@ -2,6 +2,7 @@ package controlchannel
 
 import (
 	"context"
+	"crypto/sha512"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -122,7 +124,10 @@ func Start(logger *logger.Logger,
 	// initialize our user key storage
 	var err error
 	fileLock := filelock.NewFileLock(filepath.Join(userKeysDir, ".bzero.lock"))
-	control.userKeys, err = userkeys.NewYamlUserKeys(userKeysDir, fileLock)
+	control.userKeys, err = userkeys.NewYamlUserKeys(filepath.Join(userKeysDir, "bzero-user-keys.yaml"), fileLock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup user key storage: %s", err)
+	}
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {
@@ -342,6 +347,17 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 				return fmt.Errorf("could not close non existent connection with id: %s", cwRequest.ConnectionId)
 			}
 		}
+	case am.RecieveShard:
+		var rsRequest ReceiveShardMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &rsRequest); err != nil {
+			return fmt.Errorf("malformed distribute shard request")
+		}
+
+		if err := c.addKeyShard(rsRequest.KeyShard, rsRequest.TargetId); err != nil {
+			return fmt.Errorf("failed to store key shard: %s", err)
+		}
+
+		c.logger.Infof("successfully stored key shard for target %s", rsRequest.TargetId)
 	default:
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}
@@ -448,6 +464,21 @@ func (c *ControlChannel) reportClusterUsers() error {
 	}
 
 	return nil
+}
+
+func (c *ControlChannel) addKeyShard(shard userkeys.SplitPrivateKey, targetId string) error {
+	// get the hash of the shard
+	keyStr := strconv.FormatUint(uint64(shard.D), 10)
+	hashFn := sha512.New()
+	hashFn.Write([]byte(keyStr))
+	hash := hashFn.Sum(nil)
+
+	// add it
+	return c.userKeys.Add(userkeys.KeyEntry{
+		Hash:      string(hash),
+		Key:       shard,
+		TargetIds: []string{targetId},
+	})
 }
 
 // Helper function so we avoid writing to this map at the same time

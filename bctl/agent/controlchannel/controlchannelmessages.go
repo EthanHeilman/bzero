@@ -1,5 +1,7 @@
 package controlchannel
 
+import "bastionzero.com/bctl/v1/bctl/agent/userkeys"
+
 type HeartbeatMessage struct {
 	Alive           bool   `json:"alive"`
 	NumDataChannels uint32 `json:"numDataChannels"`
@@ -39,4 +41,9 @@ type RestartAgentMessage struct {
 type RetrieveAgentLogsMessage struct {
 	UserEmail           string `json:"userEmail"`
 	UploadLogsRequestId string `json:"uploadLogsRequestId"`
+}
+
+type ReceiveShardMessage struct {
+	TargetId string                   `json:"virtualTargetId"`
+	KeyShard userkeys.SplitPrivateKey `json:"keyShard"`
 }
