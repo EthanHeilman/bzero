@@ -3,6 +3,7 @@ package controlchannel
 import (
 	"context"
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -475,7 +476,7 @@ func (c *ControlChannel) addKeyShard(shard userkeys.SplitPrivateKey, targetId st
 
 	// add it
 	return c.userKeys.Add(userkeys.KeyEntry{
-		Hash:      string(hash),
+		Hash:      base64.StdEncoding.EncodeToString(hash),
 		Key:       shard,
 		TargetIds: []string{targetId},
 	})
