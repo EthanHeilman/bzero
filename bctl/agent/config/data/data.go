@@ -38,6 +38,17 @@ type DataV2 struct {
 	// For reporting back to BastionZero why the agent shutdown
 	ShutdownReason string
 	ShutdownState  map[string]string
+
+	// If this agent is registered to AliceOrg, Eve can create a jwksUrl of her own and sign her 
+	// token with the correct privKey and pass that to the agent. The agent will check that, validate
+	// that the token is actually signed by the provided privKey/jwk and allow access. Obviously we should
+	// not allow this, so we need a way to let the agent know to allow only specific jwksUrls. The first naive
+	// step here would be okay, lets have the customers add one by one all of their jwksUrls to the agents and
+	// the agents should allow only jwksUrls that they have in their configuration to get through. A better UX
+	// is to store the pattern (https://www.googleapis.com/service_accounts/v1/jwk/*thanos-sa-test.iam.gserviceaccount.com for
+	// our example) of the jwksUrl instead, the first time a jwksUrl gets added. This way most customers will have
+	// to configure an agent only once.
+	JwksUrlPatterns []string
 }
 
 // In order to make the new config backwards compatible, we have to have some custom
@@ -122,6 +133,14 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 	} else {
 		v.PublicKey = publicKey
 	}
+
+	var jwksUrlPatterns []string
+	if val, ok := objmap["JwksUrlPatterns"]; ok {
+		if err := json.Unmarshal(val, &jwksUrlPatterns); err != nil {
+			return fmt.Errorf("failed to unmarshal jwksUrlPatterns: %s", err)
+			}
+	}
+	v.JwksUrlPatterns = jwksUrlPatterns
 
 	// Our old shutdown state was saved as a string via fmt.Sprintf. We just ignore those
 	// old states because if this code is reading such a state, then the user just updated
