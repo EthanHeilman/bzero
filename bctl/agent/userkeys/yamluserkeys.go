@@ -31,7 +31,7 @@ func NewYamlUserKeys(path string, fileLock *filelock.FileLock) (*YamlUserKeys, e
 	return &YamlUserKeys{path, fileLock}, nil
 }
 
-func (y *YamlUserKeys) Add(newEntry KeyEntry) error {
+func (y *YamlUserKeys) AddKey(newEntry KeyEntry) error {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return fmt.Errorf("failed to create lock: %s", err)

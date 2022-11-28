@@ -351,7 +351,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 			return fmt.Errorf("malformed distribute shard request")
 		}
 
-		if err := c.userKeys.Add(userkeys.KeyEntry{
+		if err := c.userKeys.AddKey(userkeys.KeyEntry{
 			Key:       rsRequest.KeyShard,
 			TargetIds: []string{rsRequest.TargetId},
 		}); err != nil {

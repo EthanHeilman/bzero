@@ -101,7 +101,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			BeforeAll(func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.Add(mockEntry)
+				err = uk.AddKey(mockEntry)
 			})
 
 			It("returns a nil error", func() {
@@ -121,7 +121,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleInvalid)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.Add(mockEntry)
+				err = uk.AddKey(mockEntry)
 			})
 
 			It("returns a ValidationError", func() {
@@ -137,7 +137,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleSmallOneTarget)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.Add(mockEntry)
+				err = uk.AddKey(mockEntry)
 			})
 
 			It("returns a nil error", func() {
@@ -157,7 +157,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleMediumSomeTargets)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.Add(mockEntry)
+				err = uk.AddKey(mockEntry)
 			})
 
 			It("returns a nil error", func() {
@@ -177,7 +177,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleMediumAllTargets)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.Add(mockEntry)
+				err = uk.AddKey(mockEntry)
 			})
 
 			It("Returns a NoOpError", func() {
@@ -193,7 +193,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				for i := 1; i <= 12; i++ {
 					newKey := mockSplitPrivateKey
 					newKey.D = int64(i)
-					go uk.Add(KeyEntry{
+					go uk.AddKey(KeyEntry{
 						Key:       newKey,
 						TargetIds: mockTargetIds,
 					})
@@ -221,7 +221,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
 				for i := 1; i <= 12; i++ {
-					go uk.Add(KeyEntry{
+					go uk.AddKey(KeyEntry{
 						Key:       mockSplitPrivateKey,
 						TargetIds: []string{fmt.Sprintf("targetId%d", i)},
 					})

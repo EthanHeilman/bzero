@@ -34,7 +34,7 @@ type UserKeys interface {
 	//
 	// If the entry already exists, any newEntry.TargetIds absent from the existing entry are added to it.
 	// If all of newEntry.TargetIds are already present in the existing entry, a NoOpError is returned.
-	Add(newEntry KeyEntry) error
+	AddKey(newEntry KeyEntry) error
 
 	// Add a target to the entry matching the key. If there is no such entry, a KeyError is returned.
 	// If the target is already present in that entry, a NoOpError is returned
