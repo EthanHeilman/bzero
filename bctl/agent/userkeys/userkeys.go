@@ -21,7 +21,6 @@ type SplitPrivateKey struct {
 }
 
 type KeyEntry struct {
-	Hash      string          `json:"hash" yaml:"hash"`
 	Key       SplitPrivateKey `json:"key" yaml:"key"`
 	TargetIds []string        `json:"targetIds" yaml:"targetIds"`
 }
@@ -30,22 +29,22 @@ type KeyEntry struct {
 type entryList []KeyEntry
 
 type UserKeys interface {
-	// Attempt to add a new key->targets entry to the configuration. If entry.Hash does not exist in the config,
+	// Attempt to add a new key->targets entry to the configuration. If the entry does not exist in the config,
 	// a new "last" entry is created. For all of newEntry.TargetIds, calling LastKey will return newEntry
 	//
-	// If newEntry.Hash already exists, any newEntry.TargetIds absent from the existing entry are added to it.
+	// If the entry already exists, any newEntry.TargetIds absent from the existing entry are added to it.
 	// If all of newEntry.TargetIds are already present in the existing entry, a NoOpError is returned.
 	Add(newEntry KeyEntry) error
 
-	// Add a target to the entry matching hash. If there is no such entry, a HashError is returned.
+	// Add a target to the entry matching the key. If there is no such entry, a KeyError is returned.
 	// If the target is already present in that entry, a NoOpError is returned
-	AddTarget(hash string, targetId string) error
+	AddTarget(key SplitPrivateKey, targetId string) error
 
 	// Get the most recent key data for the given target. If the target is not present in any entry, a TargetError is returned
 	LastKey(targetId string) (SplitPrivateKey, error)
 
-	// Remove an entire key->targets entry from the configuration. If there is no such entry, a HashError is returned
-	DeleteKey(hash string) error
+	// Remove an entire key->targets entry from the configuration. If there is no such entry, a KeyError is returned
+	DeleteKey(key SplitPrivateKey) error
 
 	// Remove a target from its most recent entry. If the target is not present in any entry, a TargetError is returned.
 	//

@@ -2,8 +2,6 @@ package controlchannel
 
 import (
 	"context"
-	"crypto/sha512"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +10,6 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -354,7 +351,10 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 			return fmt.Errorf("malformed distribute shard request")
 		}
 
-		if err := c.addKeyShard(rsRequest.KeyShard, rsRequest.TargetId); err != nil {
+		if err := c.userKeys.Add(userkeys.KeyEntry{
+			Key:       rsRequest.KeyShard,
+			TargetIds: []string{rsRequest.TargetId},
+		}); err != nil {
 			return fmt.Errorf("failed to store key shard: %s", err)
 		}
 
@@ -465,21 +465,6 @@ func (c *ControlChannel) reportClusterUsers() error {
 	}
 
 	return nil
-}
-
-func (c *ControlChannel) addKeyShard(shard userkeys.SplitPrivateKey, targetId string) error {
-	// get the hash of the shard
-	keyStr := strconv.FormatUint(uint64(shard.D), 10)
-	hashFn := sha512.New()
-	hashFn.Write([]byte(keyStr))
-	hash := hashFn.Sum(nil)
-
-	// add this shard as the most recent mapping for these targets
-	return c.userKeys.Add(userkeys.KeyEntry{
-		Hash:      base64.StdEncoding.EncodeToString(hash),
-		Key:       shard,
-		TargetIds: []string{targetId},
-	})
 }
 
 // Helper function so we avoid writing to this map at the same time

@@ -53,7 +53,7 @@ func (y *YamlUserKeys) Add(newEntry KeyEntry) error {
 	}
 
 	// if this entry already exists, check which targets it maps to
-	idx, err := findEntry(el, newEntry.Hash)
+	idx, err := findEntry(el, newEntry.Key)
 	if err == nil {
 		var addedSomeTargets bool
 		for _, targetId := range newEntry.TargetIds {
@@ -79,7 +79,7 @@ func (y *YamlUserKeys) Add(newEntry KeyEntry) error {
 	return nil
 }
 
-func (y *YamlUserKeys) AddTarget(hash string, targetId string) error {
+func (y *YamlUserKeys) AddTarget(key SplitPrivateKey, targetId string) error {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return fmt.Errorf("failed to create lock: %s", err)
@@ -100,7 +100,7 @@ func (y *YamlUserKeys) AddTarget(hash string, targetId string) error {
 		return err
 	}
 
-	idx, err := findEntry(el, hash)
+	idx, err := findEntry(el, key)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (y *YamlUserKeys) LastKey(targetId string) (SplitPrivateKey, error) {
 	return el[idx].Key, nil
 }
 
-func (y *YamlUserKeys) DeleteKey(hash string) error {
+func (y *YamlUserKeys) DeleteKey(key SplitPrivateKey) error {
 	lock, err := y.fileLock.NewLock()
 	if err != nil {
 		return fmt.Errorf("failed to create lock: %s", err)
@@ -168,7 +168,7 @@ func (y *YamlUserKeys) DeleteKey(hash string) error {
 		return err
 	}
 
-	idx, err := findEntry(el, hash)
+	idx, err := findEntry(el, key)
 	if err != nil {
 		return err
 	}
@@ -267,15 +267,15 @@ func (y *YamlUserKeys) load() (entryList, error) {
 	return el, nil
 }
 
-// get the entryList index matching the given hash
-func findEntry(el entryList, hash string) (int, error) {
+// get the entryList index matching the given key
+func findEntry(el entryList, key SplitPrivateKey) (int, error) {
 	for i := range el {
-		if el[i].Hash == hash {
+		if el[i].Key.D == key.D {
 			return i, nil
 		}
 	}
 	// not found
-	return -1, &HashError{Hash: hash}
+	return -1, &KeyError{Key: key}
 }
 
 // check if an entry contains a given targetId

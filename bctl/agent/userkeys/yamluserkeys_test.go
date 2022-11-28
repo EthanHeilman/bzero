@@ -19,7 +19,7 @@ func initializeConfigFile(path string, contents string) {
 	file.WriteString(contents)
 }
 
-func expectFileHashUnset(path string, hash string) {
+func expectFileKeyUnset(path string, key SplitPrivateKey) {
 	data, err := os.ReadFile(path)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to read config file %s: %s", path, err))
 
@@ -27,11 +27,11 @@ func expectFileHashUnset(path string, hash string) {
 	err = yaml.Unmarshal(data, &el)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse YAML: %s", err))
 
-	_, err = findEntry(el, hash)
-	Expect(errors.Is(err, &HashError{}), fmt.Sprintf("expected entry to be unset but got err: %s", err))
+	_, err = findEntry(el, key)
+	Expect(errors.Is(err, &KeyError{}), fmt.Sprintf("expected entry to be unset but got err: %s", err))
 }
 
-func expectFileHashSetTo(path string, hash string, expectedEntry KeyEntry) {
+func expectFileKeySetTo(path string, key SplitPrivateKey, expectedEntry KeyEntry) {
 	data, err := os.ReadFile(path)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to read config file %s: %s", path, err))
 
@@ -39,16 +39,15 @@ func expectFileHashSetTo(path string, hash string, expectedEntry KeyEntry) {
 	err = yaml.Unmarshal(data, &el)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse YAML: %s", err))
 
-	idx, err := findEntry(el, hash)
+	idx, err := findEntry(el, key)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to find entry: %s", err))
 
 	expectEntryToEqual(el[idx], expectedEntry)
 }
 
 func expectEntryToEqual(actual KeyEntry, expected KeyEntry) {
-	Expect(expected.Hash).To(Equal(actual.Hash), "Hashes do not match:\nActual: %s\nExpected: %s", actual.Hash, expected.Hash)
-	Expect(expected.Key).To(Equal(actual.Key), "(Entry %s) -- Keys do not match:\nActual: %+v\nExpected: %+v", actual.Hash, actual.Key, expected.Key)
-	Expect(expected.TargetIds).To(ContainElements(actual.TargetIds), "(Entry %s) TargetIds do not match:\nActual: %+v\nExpected: %+v", actual.Hash, actual.TargetIds, expected.TargetIds)
+	Expect(expected.Key).To(Equal(actual.Key), "Keys do not match:\nActual: %+v\nExpected: %+v", actual.Key, expected.Key)
+	Expect(expected.TargetIds).To(ContainElements(actual.TargetIds), "TargetIds do not match:\nActual: %+v\nExpected: %+v", actual.TargetIds, expected.TargetIds)
 }
 
 func TestYamlUserKeys(t *testing.T) {
@@ -110,7 +109,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("Creates a file with the provided value", func() {
-				expectFileHashSetTo(path, mockEntry.Hash, mockEntry)
+				expectFileKeySetTo(path, mockEntry.Key, mockEntry)
 			})
 		})
 
@@ -146,7 +145,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("Adds the provided entry to the file", func() {
-				expectFileHashSetTo(path, mockEntry.Hash, mockEntry)
+				expectFileKeySetTo(path, mockEntry.Key, mockEntry)
 			})
 		})
 
@@ -166,7 +165,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("Adds the new targets to the existing entry", func() {
-				expectFileHashSetTo(path, mockEntry.Hash, mockEntryAllTargets)
+				expectFileKeySetTo(path, mockEntry.Key, mockEntryAllTargets)
 			})
 		})
 
@@ -186,15 +185,16 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 		})
 
-		When("Adding many entries at once / different hashes", Ordered, func() {
+		When("Adding many entries at once / different keys", Ordered, func() {
 			BeforeAll(func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
 				for i := 1; i <= 12; i++ {
+					newKey := mockSplitPrivateKey
+					newKey.D = int64(i)
 					go uk.Add(KeyEntry{
-						Hash:      fmt.Sprintf("%d", i),
-						Key:       mockSplitPrivateKey,
+						Key:       newKey,
 						TargetIds: mockTargetIds,
 					})
 				}
@@ -205,23 +205,23 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 
 			It("Sets all values in the file", func() {
 				for i := 1; i <= 12; i++ {
-					expectFileHashSetTo(path, fmt.Sprintf("%d", i), KeyEntry{
-						Hash:      fmt.Sprintf("%d", i),
-						Key:       mockSplitPrivateKey,
+					newKey := mockSplitPrivateKey
+					newKey.D = int64(i)
+					expectFileKeySetTo(path, newKey, KeyEntry{
+						Key:       newKey,
 						TargetIds: mockTargetIds,
 					})
 				}
 			})
 		})
 
-		When("Adding many entries at once / same hash", Ordered, func() {
+		When("Adding many entries at once / same key", Ordered, func() {
 			BeforeAll(func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
 				for i := 1; i <= 12; i++ {
 					go uk.Add(KeyEntry{
-						Hash:      "one-hash",
 						Key:       mockSplitPrivateKey,
 						TargetIds: []string{fmt.Sprintf("targetId%d", i)},
 					})
@@ -237,8 +237,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 					expectedTargetIds = append(expectedTargetIds, fmt.Sprintf("targetId%d", i))
 				}
 
-				expectFileHashSetTo(path, "one-hash", KeyEntry{
-					Hash:      "one-hash",
+				expectFileKeySetTo(path, mockSplitPrivateKey, KeyEntry{
 					Key:       mockSplitPrivateKey,
 					TargetIds: expectedTargetIds,
 				})
@@ -254,7 +253,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.AddTarget("hash", "targetId")
+				err = uk.AddTarget(SplitPrivateKey{}, "targetId")
 			})
 
 			It("Returns a FileError", func() {
@@ -270,11 +269,11 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleSmall)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.AddTarget("hash", "targetId")
+				err = uk.AddTarget(SplitPrivateKey{}, "targetId")
 			})
 
-			It("Returns a HashError", func() {
-				Expect(errors.Is(err, &HashError{}), fmt.Sprintf("got wrong error type: %s", err))
+			It("Returns a KeyError", func() {
+				Expect(errors.Is(err, &KeyError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
@@ -286,7 +285,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleSmall)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.AddTarget("hash-of-mock-key", "targetId0")
+				err = uk.AddTarget(mockSplitPrivateKey, "targetId0")
 			})
 
 			It("returns a nil error", func() {
@@ -294,7 +293,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("adds the target to the entry", func() {
-				expectFileHashSetTo(path, mockEntry.Hash, mockEntryAllTargets)
+				expectFileKeySetTo(path, mockEntry.Key, mockEntryAllTargets)
 			})
 		})
 
@@ -306,7 +305,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleSmall)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.AddTarget("hash-of-mock-key", "targetId1")
+				err = uk.AddTarget(mockSplitPrivateKey, "targetId1")
 			})
 
 			It("Returns a NoOpError", func() {
@@ -320,8 +319,12 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleLargeNoTargets)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				for i := 1; i <= 12; i++ {
-					go uk.AddTarget(fmt.Sprintf("hash-%d", i%4), fmt.Sprintf("targetId%d", i))
+				for i := 1; i <= 4; i++ {
+					for j := 1; j <= 12; j++ {
+						if j%4 == i {
+							go uk.AddTarget(SplitPrivateKey{D: int64(i)}, fmt.Sprintf("targetId%d", i))
+						}
+					}
 				}
 
 				// let the adds happeen
@@ -329,7 +332,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("adds the targets", func() {
-				for i := 0; i <= 3; i++ {
+				for i := 1; i <= 4; i++ {
 					expectedTargetIds := []string{}
 					for j := 1; j <= 12; j++ {
 						if j%4 == i {
@@ -337,9 +340,10 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 						}
 					}
 
-					expectFileHashSetTo(path, fmt.Sprintf("hash-%d", i), KeyEntry{
-						Hash:      fmt.Sprintf("hash-%d", i),
-						Key:       mockSplitPrivateKey,
+					newKey := mockSplitPrivateKey
+					newKey.D = int64(i)
+					expectFileKeySetTo(path, newKey, KeyEntry{
+						Key:       newKey,
 						TargetIds: expectedTargetIds,
 					})
 				}
@@ -353,7 +357,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
 				for i := 1; i <= 12; i++ {
-					go uk.AddTarget("hash-of-mock-key", fmt.Sprintf("targetId%d", i))
+					go uk.AddTarget(mockSplitPrivateKey, fmt.Sprintf("targetId%d", i))
 				}
 
 				// let the adds happeen
@@ -366,8 +370,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 					expectedTargetIds = append(expectedTargetIds, fmt.Sprintf("targetId%d", i))
 				}
 
-				expectFileHashSetTo(path, "hash-of-mock-key", KeyEntry{
-					Hash:      "hash-of-mock-key",
+				expectFileKeySetTo(path, mockSplitPrivateKey, KeyEntry{
 					Key:       mockSplitPrivateKey,
 					TargetIds: expectedTargetIds,
 				})
@@ -445,7 +448,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("returns the correct key", func() {
-				Expect(key.D).To(Equal(int64(101)))
+				Expect(key.D).To(Equal(int64(1)))
 			})
 		})
 	})
@@ -458,7 +461,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.DeleteKey("hash")
+				err = uk.DeleteKey(SplitPrivateKey{})
 			})
 
 			It("Returns a FileError", func() {
@@ -474,11 +477,11 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleSmall)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.DeleteKey("hash")
+				err = uk.DeleteKey(SplitPrivateKey{})
 			})
 
-			It("Returns a HashError", func() {
-				Expect(errors.Is(err, &HashError{}), fmt.Sprintf("got wrong error type: %s", err))
+			It("Returns a KeyError", func() {
+				Expect(errors.Is(err, &KeyError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
@@ -490,7 +493,7 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				initializeConfigFile(path, exampleMediumSomeTargets)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
-				err = uk.DeleteKey("hash-of-mock-key")
+				err = uk.DeleteKey(mockSplitPrivateKey)
 			})
 
 			It("returns a nil error", func() {
@@ -498,18 +501,22 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("deletes the entry", func() {
-				expectFileHashUnset(path, "hash-of-mock-key")
+				expectFileKeyUnset(path, mockSplitPrivateKey)
 			})
 		})
 
 		When("Deleting many entries at once", Ordered, func() {
+
+			keyOne := oldSplitPrivateKey
+			keyOne.D = 1
+
 			BeforeAll(func() {
 				path = filepath.Join(GinkgoT().TempDir(), tmpConfigFile)
 				initializeConfigFile(path, exampleLargeWithTargets)
 
 				uk, _ := NewYamlUserKeys(path, fileLock)
 				for i := 1; i <= 3; i++ {
-					go uk.DeleteKey(fmt.Sprintf("hash-%d", i))
+					go uk.DeleteKey(SplitPrivateKey{D: int64(i)})
 				}
 
 				// let the deletes happeen
@@ -517,16 +524,20 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("deletes the entries", func() {
-				for i := 1; i <= 3; i++ {
-					expectFileHashUnset(path, fmt.Sprintf("hash-%d", i))
+				expectFileKeyUnset(path, keyOne)
+				for i := 2; i <= 3; i++ {
+					newKey := mockSplitPrivateKey
+					newKey.D = int64(i)
+					expectFileKeyUnset(path, newKey)
 				}
 			})
 
 			It("leaves the un-deleted entries", func() {
-				expectFileHashSetTo(path, "hash-0", KeyEntry{
-					Hash:      "hash-0",
-					Key:       oldSplitPrivateKey,
-					TargetIds: []string{"targetId0", "targetId1"},
+				newKey := mockSplitPrivateKey
+				newKey.D = 4
+				expectFileKeySetTo(path, newKey, KeyEntry{
+					Key:       newKey,
+					TargetIds: []string{"targetId6", "targetId7"},
 				})
 			})
 		})
@@ -580,16 +591,14 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("removes the target from the most recent entry", func() {
-				expectFileHashSetTo(path, "hash-of-mock-key", KeyEntry{
-					Hash:      "hash-of-mock-key",
+				expectFileKeySetTo(path, mockSplitPrivateKey, KeyEntry{
 					Key:       mockSplitPrivateKey,
 					TargetIds: []string{"targetId0"},
 				})
 			})
 
 			It("does not remove the target from other entries", func() {
-				expectFileHashSetTo(path, "hash-of-old-key", KeyEntry{
-					Hash:      "hash-of-old-key",
+				expectFileKeySetTo(path, oldSplitPrivateKey, KeyEntry{
 					Key:       oldSplitPrivateKey,
 					TargetIds: []string{"targetId0", "targetId1"},
 				})
@@ -612,14 +621,12 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 			})
 
 			It("removes the target from all entries", func() {
-				expectFileHashSetTo(path, "hash-of-mock-key", KeyEntry{
-					Hash:      "hash-of-mock-key",
+				expectFileKeySetTo(path, mockSplitPrivateKey, KeyEntry{
 					Key:       mockSplitPrivateKey,
 					TargetIds: []string{"targetId0"},
 				})
 
-				expectFileHashSetTo(path, "hash-of-old-key", KeyEntry{
-					Hash:      "hash-of-old-key",
+				expectFileKeySetTo(path, oldSplitPrivateKey, KeyEntry{
 					Key:       oldSplitPrivateKey,
 					TargetIds: []string{"targetId0"},
 				})
@@ -640,26 +647,30 @@ var _ = Describe("Yaml UserKeys", Ordered, func() {
 				time.Sleep(1 * time.Second)
 
 				It("deletes all the targets", func() {
-					expectFileHashSetTo(path, "hash-1", KeyEntry{
-						Hash:      "hash-1",
+					newKey := mockSplitPrivateKey
+					newKey.D = 2
+					expectFileKeySetTo(path, newKey, KeyEntry{
 						Key:       oldSplitPrivateKey,
 						TargetIds: []string{},
 					})
-					expectFileHashSetTo(path, "hash-2", KeyEntry{
-						Hash:      "hash-2",
+
+					newKey.D = 3
+					expectFileKeySetTo(path, newKey, KeyEntry{
 						Key:       oldSplitPrivateKey,
 						TargetIds: []string{},
 					})
-					expectFileHashSetTo(path, "hash-3", KeyEntry{
-						Hash:      "hash-3",
+
+					newKey.D = 4
+					expectFileKeySetTo(path, newKey, KeyEntry{
 						Key:       oldSplitPrivateKey,
 						TargetIds: []string{},
 					})
 				})
 
 				It("leaves the un-deleted target", func() {
-					expectFileHashSetTo(path, "hash-0", KeyEntry{
-						Hash:      "hash-0",
+					keyOne := oldSplitPrivateKey
+					keyOne.D = 1
+					expectFileKeySetTo(path, keyOne, KeyEntry{
 						Key:       oldSplitPrivateKey,
 						TargetIds: []string{"targetId0"},
 					})

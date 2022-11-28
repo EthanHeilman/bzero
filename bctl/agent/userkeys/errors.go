@@ -1,6 +1,11 @@
 package userkeys
 
-import "fmt"
+import (
+	"crypto/sha512"
+	"encoding/base64"
+	"fmt"
+	"strconv"
+)
 
 // FileError means the config file could not be opened
 type FileError struct {
@@ -22,11 +27,18 @@ type ValidationError struct {
 func (e *ValidationError) Error() string { return fmt.Sprintf("invalid config: %s", e.InnerErr) }
 func (e *ValidationError) Unwrap() error { return e.InnerErr }
 
-// HashError means the config is valid but there is no entry with the given hash
-type HashError struct{ Hash string }
+// KeyError means the config is valid but there is no entry with the given key -- key is hashed to prevent it being logged
+type KeyError struct{ Key SplitPrivateKey }
 
-func (e *HashError) Error() string { return fmt.Sprintf("no entry with hash: %s", e.Hash) }
-func (e *HashError) Unwrap() error { return nil }
+func (e *KeyError) Error() string {
+	keyStr := strconv.FormatUint(uint64(e.Key.D), 10)
+	hashFn := sha512.New()
+	hashFn.Write([]byte(keyStr))
+	hash := hashFn.Sum(nil)
+
+	return fmt.Sprintf("no entry with private key hash: %s", base64.StdEncoding.EncodeToString(hash))
+}
+func (e *KeyError) Unwrap() error { return nil }
 
 // TargetError means the config is valid but there is no entry with the given targetId
 type TargetError struct{ Target string }

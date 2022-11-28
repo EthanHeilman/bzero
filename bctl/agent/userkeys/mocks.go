@@ -21,13 +21,11 @@ var mockSplitPrivateKey = SplitPrivateKey{
 }
 
 var mockEntry = KeyEntry{
-	Hash:      "hash-of-mock-key",
 	Key:       mockSplitPrivateKey,
 	TargetIds: mockTargetIds,
 }
 
 var mockEntryAllTargets = KeyEntry{
-	Hash:      "hash-of-mock-key",
 	Key:       mockSplitPrivateKey,
 	TargetIds: append([]string{"targetId0"}, mockTargetIds...),
 }
@@ -39,8 +37,7 @@ z: 3
 `
 
 var exampleSmall = `
-- hash: hash-of-mock-key
-  key: 
+- key: 
     d: 123
     e: 45
     associatedPublicKey: 
@@ -52,8 +49,7 @@ var exampleSmall = `
 `
 
 var exampleSmallOneTarget = `
-- hash: hash-of-mock-key
-  key: 
+- key: 
     d: 123
     e: 45
     associatedPublicKey: 
@@ -64,16 +60,14 @@ var exampleSmallOneTarget = `
 `
 
 var exampleMediumSomeTargets = `
-- hash: hash-of-old-key
-  key:
+- key:
     d: 101
     e: 202
     associatedPublicKey:
       n: 303
       e: 404
   targetIds: ["targetId0", "targetId1"]
-- hash: hash-of-mock-key
-  key:
+- key:
     d: 123
     e: 45
     associatedPublicKey:
@@ -83,8 +77,7 @@ var exampleMediumSomeTargets = `
 `
 
 var exampleMediumAllTargets = `
-- hash: hash-of-old-key
-  key:
+- key:
     d: 101
     e: 202
     associatedPublicKey:
@@ -102,33 +95,29 @@ var exampleMediumAllTargets = `
 `
 
 var exampleLargeNoTargets = `
-- hash: hash-0
-  key:
-    d: 123
+- key:
+    d: 1
     e: 45
     associatedPublicKey:
       n: 678
       e: 90
   targetIds: []
-- hash: hash-1
-  key:
-    d: 123
+- key:
+    d: 2
     e: 45
     associatedPublicKey:
       n: 678
       e: 90
   targetIds: []
-- hash: hash-2
-  key:
-    d: 123
+- key:
+    d: 3
     e: 45
     associatedPublicKey:
       n: 678
       e: 90
   targetIds: []
-- hash: hash-3
-  key:
-    d: 123
+- key:
+    d: 4
     e: 45
     associatedPublicKey:
       n: 678
@@ -137,33 +126,29 @@ var exampleLargeNoTargets = `
 `
 
 var exampleLargeWithTargets = `
-- hash: hash-0
-  key:
-    d: 101
+- key:
+    d: 1
     e: 202
     associatedPublicKey:
       n: 303
       e: 404
   targetIds: ["targetId0", "targetId1"]
-- hash: hash-1
-  key:
-    d: 123
+- key:
+    d: 2
     e: 45
     associatedPublicKey:
       n: 678
       e: 90
   targetIds: ["targetId2", "targetId3"]
-- hash: hash-2
-  key:
-    d: 123
+- key:
+    d: 3
     e: 45
     associatedPublicKey:
       n: 678
       e: 90
   targetIds: ["targetId4", "targetId5"]
-- hash: hash-3
-  key:
-    d: 123
+- key:
+    d: 4
     e: 45
     associatedPublicKey:
       n: 678
