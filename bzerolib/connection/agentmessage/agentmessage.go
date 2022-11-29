@@ -54,6 +54,9 @@ const (
 	// poison pill message - an order from an admin to restart
 	Restart MessageType = "restart"
 
+	// not as poisonous message - an order from an admin to add a service account jwksUrlPattern in this agent
+	Configure MessageType = "configure"
+
 	// message to trigger agent to send logs to bastion
 	RetrieveLogs MessageType = "retrievelogs"
 )

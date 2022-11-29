@@ -65,3 +65,19 @@ func (_m *MockMrtapConfig) GetPublicKey() *keypair.PublicKey {
 
 	return r0
 }
+
+// GetServiceAccountJwksUrls provides a mock function with given fields:
+func (_m *MockMrtapConfig) GetServiceAccountJwksUrls() []string {
+	ret := _m.Called()
+
+	var r0 []string
+	if rf, ok := ret.Get(0).(func() []string); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+
+	return r0
+}

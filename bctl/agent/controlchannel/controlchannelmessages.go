@@ -1,5 +1,9 @@
 package controlchannel
 
+import (
+	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+)
+
 type HeartbeatMessage struct {
 	Alive           bool   `json:"alive"`
 	NumDataChannels uint32 `json:"numDataChannels"`
@@ -39,4 +43,14 @@ type RestartAgentMessage struct {
 type RetrieveAgentLogsMessage struct {
 	UserEmail           string `json:"userEmail"`
 	UploadLogsRequestId string `json:"uploadLogsRequestId"`
+}
+
+type ServiceAccountConfiguration struct {
+	JwksUrlPattern string `json:"jwksUrlPattern"`
+}
+
+type ConfigureServiceAccountMessage struct {
+	ServiceAccountConfiguration ServiceAccountConfiguration `json:"serviceAccountConfiguration"`
+	BZCert                      bzcrt.BZCert                `json:"bZCert"`
+	Signature                   string                      `json:"signature"`
 }

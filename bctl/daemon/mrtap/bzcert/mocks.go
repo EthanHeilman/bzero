@@ -19,7 +19,7 @@ func (m *MockDaemonBZCert) Cert() *bzcert.BZCert {
 	return args.Get(0).(*bzcert.BZCert)
 }
 
-func (m *MockDaemonBZCert) Verify(idpProvider string, idpOrgId string) error {
+func (m *MockDaemonBZCert) Verify(idpProvider string, idpOrgId string, serviceAccounts []string) error {
 	args := m.Called()
 	return args.Error(0)
 }

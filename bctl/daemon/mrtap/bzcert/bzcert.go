@@ -10,6 +10,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert/zliconfig"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 )
 
 type IDaemonBZCert interface {
@@ -102,19 +103,32 @@ func (b *DaemonBZCert) populateFromConfig() error {
 	b.SignatureOnRand = b.config.CertConfig.CerRandSignature
 	b.privateKey = privateKey
 
-	// Finally also check the bzcert is valid
-	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId); err != nil {
-		return err
-	}
+	jwksUrlPatterns := []string{}
 
 	// Track the expiration date for our current identity token
 	parser := jwt.Parser{SkipClaimsValidation: true}
 	claims := jwt.RegisteredClaims{}
-	if _, _, err := parser.ParseUnverified(b.CurrentIdToken, &claims); err != nil {
+	var jwt, _, jwtErr = parser.ParseUnverified(b.CurrentIdToken, &claims)
+	if jwtErr != nil {
 		return fmt.Errorf("error trying to parse our jwt: %s", err)
-	} else {
-		b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
 	}
+
+	if jku, ok := jwt.Header["jku"]; ok {
+		jkuStr := fmt.Sprintf("%v", jku)
+		jwksUrlPattern, _, err := util.ExtractJwksUrlPattern(jkuStr)
+		if err != nil {
+			return fmt.Errorf("error trying to parse JWKS URL pattern from badly formatted JWKS URL: %s", err)
+		}
+		jwksUrlPatterns = append(jwksUrlPatterns, jwksUrlPattern)
+	}
+
+	// Finally also check the bzcert is valid
+	if err := b.Verify(b.config.CertConfig.OrgProvider, b.config.CertConfig.OrgIssuerId, jwksUrlPatterns); err != nil {
+		return err
+	}
+
+	// Track the expiration date for our current identity token
+	b.currentIdTokenExpiration = claims.ExpiresAt.UTC().Unix() // Unix UTC timestamp
 
 	return b.HashCert()
 }

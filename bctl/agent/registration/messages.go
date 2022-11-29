@@ -23,9 +23,10 @@ type RegistrationRequest struct {
 }
 
 type RegistrationResponse struct {
-	TargetName  string `json:"targetName"`
-	OrgID       string `json:"externalOrganizationId"`
-	OrgProvider string `json:"externalOrganizationProvider"`
+	TargetName      string   `json:"targetName"`
+	OrgID           string   `json:"externalOrganizationId"`
+	OrgProvider     string   `json:"externalOrganizationProvider"`
+	JwksUrlPatterns []string `json:"allowedJwksUrlPatterns"`
 }
 
 type GetConnectionServiceResponse struct {

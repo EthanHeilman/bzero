@@ -1,6 +1,8 @@
 package config
 
 import (
+	"fmt"
+	"net/url"
 	"sync"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
@@ -76,6 +78,13 @@ func (c *Config) GetIdpProvider() string {
 	defer c.lock.RUnlock()
 
 	return c.data.IdpProvider
+}
+
+func (c *Config) GetServiceAccountJwksUrls() []string {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+
+	return c.data.JwksUrlPatterns
 }
 
 func (c *Config) GetAgentIdentityToken() string {
@@ -161,6 +170,35 @@ func (c *Config) SetAgentIdentityToken(token string) error {
 	return nil
 }
 
+func (c *Config) SetServiceAccountJwksUrl(jwksUrlPattern string) error {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	current, err := c.client.Fetch()
+	if err != nil {
+		return configFetchError(err.Error())
+	}
+
+	if parsedJwksUrlPattern, err := url.ParseRequestURI(jwksUrlPattern); err != nil {
+		return fmt.Errorf("failed to parse as url the provided jwks url %s: %w", jwksUrlPattern, err)
+	} else {
+		// Ensure that this pattern does not exist already
+		for _, existingJwksUrl := range current.JwksUrlPatterns {
+			if existingJwksUrl == parsedJwksUrlPattern.String() {
+				return nil
+			}
+		}
+
+		current.JwksUrlPatterns = append(current.JwksUrlPatterns, parsedJwksUrlPattern.String())
+	}
+
+	c.data = current
+	if err := c.client.Save(c.data); err != nil {
+		return configSaveError(err.Error())
+	}
+	return nil
+}
+
 func (c *Config) SetRegistrationData(
 	serviceUrl string,
 	publickey *keypair.PublicKey,
@@ -168,6 +206,7 @@ func (c *Config) SetRegistrationData(
 	idpProvider string,
 	idpOrgId string,
 	targetId string,
+	jwksUrlPatterns []string,
 ) error {
 
 	c.lock.Lock()
@@ -184,6 +223,15 @@ func (c *Config) SetRegistrationData(
 	current.IdpProvider = idpProvider
 	current.IdpOrgId = idpOrgId
 	current.TargetId = targetId
+
+	// Sanitize jwksUrlPatterns before adding them to config
+	for _, jwksUrl := range jwksUrlPatterns {
+		if parsedJwksUrl, err := url.ParseRequestURI(jwksUrl); err != nil {
+			return fmt.Errorf("failed to parse as url provided jwks url %s: %w", jwksUrl, err)
+		} else {
+			current.JwksUrlPatterns = append(current.JwksUrlPatterns, parsedJwksUrl.String())
+		}
+	}
 
 	// Vacate our agent identity token because a new registration means we need a new
 	// one even if the previous one remains verifiable

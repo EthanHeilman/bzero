@@ -37,3 +37,15 @@ func (e *CertConfigError) Error() string {
 }
 
 func (e *CertConfigError) Unwrap() error { return e.InnerError }
+
+const ServiceAccountNotConfiguredMsg = "service account config error"
+
+type ServiceAccountError struct {
+	InnerError error
+}
+
+func (e *ServiceAccountError) Error() string { 
+	return fmt.Sprintf("%s: %s", ServiceAccountNotConfiguredMsg, e.InnerError)
+ }
+
+func (e *ServiceAccountError) Unwrap() error { return e.InnerError }

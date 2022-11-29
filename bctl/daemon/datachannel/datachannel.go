@@ -13,6 +13,7 @@ import (
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
@@ -437,6 +438,12 @@ func (d *DataChannel) handleMrtap(agentMessage *am.AgentMessage) error {
 func checkForKnownErrors(errString string) error {
 	if strings.Contains(errString, unixuser.UserNotFoundErrMsg) {
 		return &unixuser.UserNotFoundError{}
+	}
+
+	if strings.Contains(errString, bzcert.ServiceAccountNotConfiguredMsg) {
+		serviceAccountConfigErrTokenized := strings.Split(errString, bzcert.ServiceAccountNotConfiguredMsg)
+		serviceAccountConfigErr := serviceAccountConfigErrTokenized[len(serviceAccountConfigErrTokenized)-1]
+		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf("%s", serviceAccountConfigErr)}
 	}
 
 	// base case, we didn't find anything special

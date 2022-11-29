@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"golang.org/x/crypto/sha3"
@@ -42,4 +43,25 @@ func Nonce() string {
 	b := make([]byte, 32) // 32-length byte array, to make it same length as hash pointer
 	rand.Read(b)          // populate with random bytes
 	return base64.StdEncoding.EncodeToString(b)
+}
+
+// Parses the provided jku and returns the pattern and the email for this service account 
+func ExtractJwksUrlPattern(jku string) (string, string, error) {
+	if len(strings.Split(jku, "@")) != 2 {
+		return "", "", fmt.Errorf("jku value in ID Token does not contain exactly one @. Supplied jku value %s", jku)
+	}
+
+	tokenizedJku := strings.Split(jku, "/")
+	if len(tokenizedJku) <= 1 {
+		return "", "", fmt.Errorf("jku value in ID Token is not a valid jku. Supplied jku value %s", jku)
+	}
+
+	jwksEmail := tokenizedJku[len(tokenizedJku)-1]
+	if len(strings.Split(jwksEmail, "@")) != 2 {
+		return "", "", fmt.Errorf("jku value in ID Token does not contain exactly one @ in email address. Supplied jku value %s", jku)
+	}
+
+	emailDomain := strings.Split(jwksEmail, "@")[1]
+	jwksURLPattern := fmt.Sprintf("%s/*%s", strings.Join(tokenizedJku[0:len(tokenizedJku)-1], "/"), emailDomain)
+	return jwksURLPattern, jwksEmail, nil
 }
