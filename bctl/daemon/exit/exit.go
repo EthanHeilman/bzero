@@ -14,12 +14,13 @@ import (
 
 // Daemon Exit Codes
 const (
-	Success            = 0
-	UnspecifiedError   = 1
-	BZCertIdTokenError = 2
-	CancelledByUser    = 3
-	UserNotFound       = 4
-	ZliConfigError     = 5
+	Success                     = 0
+	UnspecifiedError            = 1
+	BZCertIdTokenError          = 2
+	CancelledByUser             = 3
+	UserNotFound                = 4
+	ZliConfigError              = 5
+	ServiceAccountNotConfigured = 6
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -40,6 +41,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var sshStdinClosedError *bzssh.SshStdinClosedError
 	var userNotFoundError *unixuser.UserNotFoundError
 	var certConfigError *bzcert.CertConfigError
+	var serviceAccountError *bzcert.ServiceAccountError
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
@@ -52,6 +54,9 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 		logger.Errorf("Error parsing zli config file: %s", err)
 		logger.Errorf("Please try to re-login with the zli")
 		os.Exit(ZliConfigError)
+	} else if errors.As(err, &serviceAccountError) {
+		logger.Errorf(err.Error())
+		os.Exit(ServiceAccountNotConfigured)
 	} else if errors.As(err, &userNotFoundError) {
 		logger.Errorf(err.Error())
 		os.Exit(UserNotFound)

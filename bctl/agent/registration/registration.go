@@ -33,6 +33,7 @@ type RegistrationConfig interface {
 		idpProvider string,
 		idpOrgId string,
 		targetId string,
+		jwksUrlPatterns []string,
 	) error
 }
 
@@ -50,6 +51,7 @@ type Registration struct {
 	targetName      string
 	idpProvider     string
 	idpOrgId        string
+	jwksUrlPatterns []string
 }
 
 func New(
@@ -64,6 +66,7 @@ func New(
 	idpProvider string,
 	idpOrgId string,
 ) *Registration {
+	var jwksUrlPatterns []string
 	return &Registration{
 		serviceUrl:      serviceUrl,
 		activationToken: activationToken,
@@ -75,6 +78,7 @@ func New(
 		targetName:      targetName,
 		idpProvider:     idpProvider,
 		idpOrgId:        idpOrgId,
+		jwksUrlPatterns: jwksUrlPatterns,
 	}
 }
 
@@ -105,7 +109,7 @@ func (r *Registration) Register(ctx context.Context, logger *logger.Logger, conf
 	r.logger.Info("Agent successfully Registered.  BastionZero says hi.")
 
 	// If the registration went ok, save the config
-	if err := config.SetRegistrationData(r.serviceUrl, publicKey, privateKey, r.idpProvider, r.idpOrgId, r.targetId); err != nil {
+	if err := config.SetRegistrationData(r.serviceUrl, publicKey, privateKey, r.idpProvider, r.idpOrgId, r.targetId, r.jwksUrlPatterns); err != nil {
 		return fmt.Errorf("failed to persist new registration data: %w", err)
 	}
 
@@ -139,6 +143,9 @@ func (r *Registration) phoneHome(publickey string) error {
 
 	// set our remaining values
 	r.targetName = resp.TargetName
+
+	r.logger.Infof("Setting up this agent to accept service accounts from the following JWKS URL patterns %v", resp.JwksUrlPatterns)
+	r.jwksUrlPatterns = resp.JwksUrlPatterns
 
 	return nil
 }

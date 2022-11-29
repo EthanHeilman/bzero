@@ -25,6 +25,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 
 	"gopkg.in/tomb.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -36,12 +37,17 @@ const (
 	HeartRate    = 1 * time.Minute
 	closeTimeout = 10 * time.Second
 
-	ManualRestartMsg = "received manual restart from user"
+	ManualRestartMsg = "received manual restart from subject"
 )
 
 type AgentDatachannelConnection interface {
 	connection.Connection
 	NumDataChannels() int
+}
+
+type ControlChannelConfig interface {
+	mrtap.MrtapConfig
+	SetServiceAccountJwksUrl(jwksUrlPattern string) error
 }
 
 type ControlChannel struct {
@@ -50,7 +56,7 @@ type ControlChannel struct {
 	tmb    tomb.Tomb
 	id     string
 
-	mrtapConfig           mrtap.MrtapConfig
+	cConfig               ControlChannelConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
 
@@ -92,8 +98,8 @@ func Start(logger *logger.Logger,
 	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
-	mrtapConfig mrtap.MrtapConfig,
 	userKeysDir string,
+	cConfig ControlChannelConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -105,7 +111,7 @@ func Start(logger *logger.Logger,
 		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
-		mrtapConfig:           mrtapConfig,
+		cConfig:               cConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
 		agentPongChan:         make(chan bool),
@@ -284,7 +290,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.mrtapConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.cConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary
@@ -326,6 +332,14 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 				c.logger.Infof("Successfully sent agent logs to Bastion")
 			}
 		}
+	case am.Configure:
+		var configureRequest ConfigureServiceAccountMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &configureRequest); err != nil {
+			return fmt.Errorf("malformed configure agent request: %s", err)
+		}
+		if err := c.configureServiceAccount(configureRequest); err != nil {
+			return fmt.Errorf("error while configuring agent with jwksUrlPattern %s : %s", configureRequest.ServiceAccountConfiguration.JwksUrlPattern, err)
+		}
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {
@@ -363,6 +377,39 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}
 
+	return nil
+}
+
+func (c *ControlChannel) configureServiceAccount(configureRequest ConfigureServiceAccountMessage) (err error) {
+	bzcert := configureRequest.BZCert
+
+	// Verify the BZCert
+	if err := bzcert.Verify(c.cConfig.GetIdpProvider(), c.cConfig.GetIdpOrgId(), c.cConfig.GetServiceAccountJwksUrls()); err != nil {
+		return fmt.Errorf("failed to verify configure's BZCert: %w", err)
+	}
+
+	// Verify the signature
+	var pubkey *keypair.PublicKey
+	if pubkey, err = keypair.PublicKeyFromString(bzcert.ClientPublicKey); err != nil {
+		return fmt.Errorf("malformed public key: %s", bzcert.ClientPublicKey)
+	}
+
+	// Verify the signature
+	var hashBits []byte
+	var ok bool
+	if hashBits, ok = util.HashPayload(configureRequest.ServiceAccountConfiguration); !ok {
+		return fmt.Errorf("failed to hash the mrtap payload")
+	}
+	if ok := pubkey.Verify(hashBits, configureRequest.Signature); !ok {
+		return fmt.Errorf("invalid signature for payload: %+v", configureRequest.ServiceAccountConfiguration)
+	}
+
+	// Configure the agent
+	jwksUrlPattern := configureRequest.ServiceAccountConfiguration.JwksUrlPattern
+	if err := c.cConfig.SetServiceAccountJwksUrl(jwksUrlPattern); err != nil {
+		return fmt.Errorf("error adding new jwksUrlPattern to the config: %s", err)
+	}
+	c.logger.Infof("Successfully configured this agent to allow access to service accounts originating from JWKS URLs following the %s pattern", jwksUrlPattern)
 	return nil
 }
 

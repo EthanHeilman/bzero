@@ -1,6 +1,9 @@
 package controlchannel
 
-import "bastionzero.com/bctl/v1/bctl/agent/userkeys"
+import (
+	"bastionzero.com/bctl/v1/bctl/agent/userkeys"
+	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+)
 
 type HeartbeatMessage struct {
 	Alive           bool   `json:"alive"`
@@ -46,4 +49,14 @@ type RetrieveAgentLogsMessage struct {
 type ReceiveShardMessage struct {
 	TargetId string                   `json:"virtualTargetId"`
 	KeyShard userkeys.SplitPrivateKey `json:"keyShard"`
+}
+
+type ServiceAccountConfiguration struct {
+	JwksUrlPattern string `json:"jwksUrlPattern"`
+}
+
+type ConfigureServiceAccountMessage struct {
+	ServiceAccountConfiguration ServiceAccountConfiguration `json:"serviceAccountConfiguration"`
+	BZCert                      bzcrt.BZCert                `json:"bZCert"`
+	Signature                   string                      `json:"signature"`
 }
