@@ -53,7 +53,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.CI_AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.CI_AWS_ACCESS_KEY_SECRET }}
-          role-to-assume: arn:aws:iam::238681891460:role/cwcdev/system_test_github_action_role
+          role-to-assume: arn:aws:iam::134895913440:role/cwcprod/system_test_github_action_role
           aws-region: us-east-1
           # Skip session tagging (enabling this requires sts:TagSession iam permission)
           # https://github.com/aws-actions/configure-aws-credentials#session-tagging
