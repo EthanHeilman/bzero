@@ -135,8 +135,16 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 	d.streamMessageVersion = dialActionRequest.StreamMessageVersion
 	d.logger.Infof("Setting stream message version: %s", d.streamMessageVersion)
 
+	var remoteConnection net.Conn
+	var err error
+	if dialActionRequest.TargetUser == "" {
+		remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
+	} else {
+		remoteConnection, err = d.Connect(d.remoteAddress.String())
+	}
+
 	// For each start, call the dial the TCP address
-	if remoteConnection, err := d.Connect(d.remoteAddress.String()); err != nil {
+	if err != nil {
 		d.logger.Errorf("Failed to dial remote address: %s", err)
 		return []byte{}, err
 	} else {
