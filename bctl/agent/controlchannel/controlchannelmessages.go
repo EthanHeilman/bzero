@@ -1,7 +1,7 @@
 package controlchannel
 
 import (
-	"bastionzero.com/bctl/v1/bctl/agent/userkeys"
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 )
 
@@ -46,9 +46,9 @@ type RetrieveAgentLogsMessage struct {
 	UploadLogsRequestId string `json:"uploadLogsRequestId"`
 }
 
-type ReceiveShardMessage struct {
-	TargetId string                   `json:"virtualTargetId"`
-	KeyShard userkeys.SplitPrivateKey `json:"keyShard"`
+type KeyShardMessage struct {
+	TargetId string               `json:"virtualTargetId"`
+	KeyShard data.SplitPrivateKey `json:"keyShard"`
 }
 
 type ServiceAccountConfiguration struct {

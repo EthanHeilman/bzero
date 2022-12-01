@@ -65,11 +65,11 @@ type Agent struct {
 	tmb    tomb.Tomb
 	logger *logger.Logger
 
-	config       AgentConfig
-	userKeysDir  string
-	agentType    AgentType
-	version      string
-	osSignalChan <-chan os.Signal
+	agentConfig    AgentConfig
+	keyShardConfig controlchannel.KeyShardConfig
+	agentType      AgentType
+	version        string
+	osSignalChan   <-chan os.Signal
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -92,7 +92,7 @@ func (a *Agent) Run() (err error) {
 	go a.reportQualifiedShutdown()
 
 	// Make sure our agent version is up-to-date
-	if err = a.config.SetVersion(a.version); err != nil {
+	if err = a.agentConfig.SetVersion(a.version); err != nil {
 		return
 	}
 
@@ -129,16 +129,16 @@ func (a *Agent) Run() (err error) {
 }
 
 func (a *Agent) startControlChannel() error {
-	targetId := a.config.GetTargetId()
-	privateKey := a.config.GetPrivateKey()
-	serviceUrl := a.config.GetServiceUrl()
+	targetId := a.agentConfig.GetTargetId()
+	privateKey := a.agentConfig.GetPrivateKey()
+	serviceUrl := a.agentConfig.GetServiceUrl()
 
 	aipLogger := a.logger.GetComponentLogger("AgentIdentityProvider")
 	agentIdentityProvider := agentidentity.New(
 		aipLogger,
 		serviceUrl,
 		targetId,
-		a.config,
+		a.agentConfig,
 		privateKey,
 	)
 
@@ -152,7 +152,7 @@ func (a *Agent) startControlChannel() error {
 
 	headers := http.Header{}
 	params := url.Values{
-		"public_key": {a.config.GetPublicKey().String()},
+		"public_key": {a.agentConfig.GetPublicKey().String()},
 		"version":    {a.version},
 		"target_id":  {targetId},
 		"agent_type": {string(Systemd)},
@@ -165,7 +165,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.config.GetTargetId(), agentIdentityProvider, privateKey, a.config, a.userKeysDir)
+	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.agentConfig.GetTargetId(), agentIdentityProvider, privateKey, a.agentConfig, a.keyShardConfig)
 	a.controlConn = conn
 
 	return err
@@ -187,7 +187,7 @@ func (a *Agent) Close(reason error) {
 		return
 	}
 
-	a.config.SetShutdownInfo(reason.Error(), a.state())
+	a.agentConfig.SetShutdownInfo(reason.Error(), a.state())
 }
 
 // report early errors to the bastion so we have greater visibility
@@ -203,24 +203,24 @@ func (a *Agent) reportError(reason error) {
 	// We want to give this code a fair chance of reporting our error
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
-	if err := report.ReportError(ctx, a.config.GetServiceUrl(), errReport); err != nil {
+	if err := report.ReportError(ctx, a.agentConfig.GetServiceUrl(), errReport); err != nil {
 		a.logger.Errorf("failed to report error: %s", err)
 	}
 }
 
 // check whether we're restarting after a qualifying event, and thus need to tell Bastion about it
 func (a *Agent) reportQualifiedShutdown() {
-	shutdownReason, shutdownState := a.config.GetShutdownInfo()
+	shutdownReason, shutdownState := a.agentConfig.GetShutdownInfo()
 
 	if shutdownReason == stoppedProcessingPongsMsg || strings.Contains(shutdownReason, controlchannel.ManualRestartMsg) {
 		a.logger.Infof("Notifying Bastion that we restarted because: %s", shutdownReason)
 
 		if err := agentreport.ReportRestart(
 			a.ctx,
-			a.config.GetServiceUrl(),
+			a.agentConfig.GetServiceUrl(),
 			agentreport.RestartReport{
-				TargetId:       a.config.GetTargetId(),
-				AgentPublicKey: a.config.GetPublicKey().String(),
+				TargetId:       a.agentConfig.GetTargetId(),
+				AgentPublicKey: a.agentConfig.GetPublicKey().String(),
 				Timestamp:      fmt.Sprint(time.Now().UTC().Unix()),
 				Message:        shutdownReason,
 				State:          shutdownState,
@@ -271,7 +271,7 @@ func (a *Agent) state() map[string]string {
 	return map[string]string{
 		"version":        a.version,
 		"targetType":     string(a.agentType),
-		"targetId":       a.config.GetTargetId(),
+		"targetId":       a.agentConfig.GetTargetId(),
 		"targetHostName": hostname,
 		"goos":           runtime.GOOS,
 		"goarch":         runtime.GOARCH,

@@ -9,12 +9,17 @@ type MockClient struct {
 	mock.Mock
 }
 
-func (m *MockClient) Fetch() (data.DataV2, error) {
+func (m *MockClient) FetchAgentData() (data.AgentDataV2, error) {
 	args := m.Called()
-	return args.Get(0).(data.DataV2), args.Error(1)
+	return args.Get(0).(data.AgentDataV2), args.Error(1)
 }
 
-func (m *MockClient) Save(d data.DataV2) error {
+func (m *MockClient) FetchKeyShardData() (data.KeyShardData, error) {
 	args := m.Called()
+	return args.Get(0).(data.KeyShardData), args.Error(1)
+}
+
+func (m *MockClient) Save(d interface{}) error {
+	args := m.Called(d)
 	return args.Error(0)
 }

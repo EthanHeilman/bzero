@@ -5,7 +5,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 
-	. "github.com/onsi/ginkgo/v2"
+	// we can't import ginkgo here since it adds Ginkgo's help options to bzero's
 	. "github.com/onsi/gomega"
 )
 
@@ -35,10 +35,44 @@ var (
 
 	// Only used by V1
 	mockShutdownStateV1 = fmt.Sprintf("%+v", mockShutdownState)
+
+	// KeyShard examples
+	mockSplitPrivateKeyDefault = SplitPrivateKey{
+		D: "123",
+		E: "45",
+		PublicKey: PublicKey{
+			N: "678",
+			E: 90,
+		},
+	}
+
+	mockSplitPrivateKeyAlt = SplitPrivateKey{
+		D: "101",
+		E: "202",
+		PublicKey: PublicKey{
+			N: "303",
+			E: 404,
+		},
+	}
+
+	mockEntryDefault = KeyEntry{
+		Key:       mockSplitPrivateKeyDefault,
+		TargetIds: []string{"targetId1", "targetId2"},
+	}
+
+	mockEntryDefaultPlusTarget = KeyEntry{
+		Key:       mockSplitPrivateKeyDefault,
+		TargetIds: []string{"targetId1", "targetId2", "targetId3"},
+	}
+
+	mockEntryAlt = KeyEntry{
+		Key:       mockSplitPrivateKeyAlt,
+		TargetIds: []string{"targetId1", "targetId2"},
+	}
 )
 
-func NewMockDataV1() DataV1 {
-	return DataV1{
+func NewMockDataV1() AgentDataV1 {
+	return AgentDataV1{
 		Version:            mockVersion,
 		PublicKey:          mockPublickey.String(),
 		PrivateKey:         mockPrivatekey.String(),
@@ -57,12 +91,12 @@ func NewMockDataV1() DataV1 {
 	}
 }
 
-func (mockV1 *DataV1) AssertMatchesV2(v2Data DataV2) {
+func (mockV1 *AgentDataV1) AssertMatchesV2(v2Data AgentDataV2) {
 	// Since shutdown state has changed, we make sure that it's empty here
-	By("making sure the shutdown state is empty")
+	// making sure the shutdown state is empty
 	Expect(v2Data.ShutdownState).To(Equal(map[string]string{}))
 
-	By("matching all remaining fields are parsed verbatim")
+	// matching all remaining fields are parsed verbatim
 	Expect(v2Data.Version).To(Equal(mockV1.Version), fmt.Sprintf(`"%s" != "%s"`, v2Data.Version, mockV1.Version))
 	Expect(v2Data.PublicKey.String()).To(Equal(mockV1.PublicKey), fmt.Sprintf(`"%s" != "%s"`, v2Data.PublicKey.String(), mockV1.PublicKey))
 	Expect(v2Data.PrivateKey.String()).To(Equal(mockV1.PrivateKey), fmt.Sprintf(`"%s" != "%s"`, v2Data.PrivateKey.String(), mockV1.PrivateKey))
@@ -75,8 +109,8 @@ func (mockV1 *DataV1) AssertMatchesV2(v2Data DataV2) {
 	Expect(v2Data.ShutdownReason).To(Equal(mockV1.ShutdownReason), fmt.Sprintf(`"%s" != "%s"`, v2Data.ShutdownReason, mockV1.ShutdownReason))
 }
 
-func NewMockDataV2() DataV2 {
-	return DataV2{
+func NewMockDataV2() AgentDataV2 {
+	return AgentDataV2{
 		Version:            mockVersion,
 		PublicKey:          mockPublickey,
 		PrivateKey:         mockPrivatekey,
@@ -91,8 +125,8 @@ func NewMockDataV2() DataV2 {
 	}
 }
 
-func (mockV2 *DataV2) AssertMatchesV2(v2Data DataV2) {
-	By("making sure all fields are parsed verbatim")
+func (mockV2 *AgentDataV2) AssertMatchesV2(v2Data AgentDataV2) {
+	//making sure all fields are parsed verbatim
 	Expect(v2Data.Version).To(Equal(mockV2.Version), fmt.Sprintf(`"%s" != "%s"`, v2Data.Version, mockV2.Version))
 	Expect(v2Data.PublicKey.String()).To(Equal(mockV2.PublicKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PublicKey.String(), mockV2.PublicKey.String()))
 	Expect(v2Data.PrivateKey.String()).To(Equal(mockV2.PrivateKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PrivateKey.String(), mockV2.PrivateKey.String()))
@@ -104,4 +138,166 @@ func (mockV2 *DataV2) AssertMatchesV2(v2Data DataV2) {
 	Expect(v2Data.IdpOrgId).To(Equal(mockV2.IdpOrgId), fmt.Sprintf(`"%s" != "%s"`, v2Data.IdpOrgId, mockV2.IdpOrgId))
 	Expect(v2Data.ShutdownReason).To(Equal(mockV2.ShutdownReason), fmt.Sprintf(`"%s" != "%s"`, v2Data.ShutdownReason, mockV2.ShutdownReason))
 	Expect(v2Data.ShutdownState).To(Equal(mockV2.ShutdownState), fmt.Sprintf(`"%s" != "%s"`, v2Data.ShutdownState, mockV2.ShutdownState))
+}
+
+func DefaultMockKeyShardDataSmall() KeyShardData {
+	return []KeyEntry{mockEntryDefault}
+}
+
+func AltMockKeyShardDataSmall() KeyShardData {
+	return []KeyEntry{mockEntryAlt}
+}
+
+func DefaultMockKeyEntry3Target() KeyEntry {
+	return KeyEntry{
+		Key:       mockSplitPrivateKeyDefault,
+		TargetIds: []string{"targetId1", "targetId2", "targetId3"},
+	}
+}
+
+func DefaultMockSplitPrivateKey() SplitPrivateKey {
+	return SplitPrivateKey{
+		D: "123",
+		E: "45",
+		PublicKey: PublicKey{
+			N: "678",
+			E: 90,
+		},
+	}
+}
+
+func AltMockSplitPrivateKey() SplitPrivateKey {
+	return SplitPrivateKey{
+		D: "101",
+		E: "202",
+		PublicKey: PublicKey{
+			N: "303",
+			E: 404,
+		},
+	}
+}
+
+func DefaultMockTargetIds() []string {
+	return []string{"targetId1", "targetId2"}
+}
+
+func MockKeyShardDataMedium() KeyShardData {
+	return []KeyEntry{
+		mockEntryDefault,
+		mockEntryAlt,
+	}
+}
+
+func MockKeyShardLargeNoTargetsRaw() string {
+	return `
+[
+  {
+    "key": {
+      "d": "1",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": []
+  },
+  {
+    "key": {
+      "d": "2",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": []
+  },
+  {
+    "key": {
+      "d": "3",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": []
+  },
+  {
+    "key": {
+      "d": "4",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": []
+  }
+]
+`
+}
+
+func MockKeyShardLargeWithTargetsRaw() string {
+	return `
+[
+  {
+    "key": {
+      "d": "1",
+      "e": "202",
+      "associatedPublicKey": {
+        "n": "303",
+        "e": 404
+      }
+    },
+    "targetIds": [
+      "targetId0",
+      "targetId1"
+    ]
+  },
+  {
+    "key": {
+      "d": "2",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": [
+      "targetId2",
+      "targetId3"
+    ]
+  },
+  {
+    "key": {
+      "d": "3",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": [
+      "targetId4",
+      "targetId5"
+    ]
+  },
+  {
+    "key": {
+      "d": "4",
+      "e": "45",
+      "associatedPublicKey": {
+        "n": "678",
+        "e": 90
+      }
+    },
+    "targetIds": [
+      "targetId6",
+      "targetId7"
+    ]
+  }
+]
+`
 }

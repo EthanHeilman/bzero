@@ -17,7 +17,7 @@ var _ = Describe("Config Data", func() {
 	Context("json-encoded", func() {
 		When("Stored config data is json-encoded DataV1", func() {
 			var jsonErr error
-			var v2Data DataV2
+			var v2Data AgentDataV2
 
 			mockV1 := NewMockDataV1()
 
@@ -39,7 +39,7 @@ var _ = Describe("Config Data", func() {
 
 		When("Stored config data is json-encoded dataV2", func() {
 			var jsonErr error
-			var v2Data DataV2
+			var v2Data AgentDataV2
 
 			mockV2 := NewMockDataV2()
 

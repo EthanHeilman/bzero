@@ -61,7 +61,7 @@ const (
 	RetrieveLogs MessageType = "retrievelogs"
 
 	// control channel message to distribute key shards for passwordless connections
-	RecieveShard MessageType = "receiveshard"
+	KeyShard MessageType = "keyshard"
 )
 
 // TODO: CWC-2183; remove this logic in the far future

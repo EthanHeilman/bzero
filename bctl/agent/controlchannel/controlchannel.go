@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"sort"
@@ -14,15 +13,14 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
-	"bastionzero.com/bctl/v1/bctl/agent/userkeys"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
@@ -50,6 +48,11 @@ type ControlChannelConfig interface {
 	SetServiceAccountJwksUrl(jwksUrlPattern string) error
 }
 
+type KeyShardConfig interface {
+	AddKey(newEntry data.KeyEntry) error
+	LastKey(targetId string) (data.SplitPrivateKey, error)
+}
+
 type ControlChannel struct {
 	conn   connection.Connection
 	logger *logger.Logger
@@ -57,6 +60,7 @@ type ControlChannel struct {
 	id     string
 
 	cConfig               ControlChannelConfig
+	keyShardConfig        KeyShardConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
 
@@ -84,10 +88,6 @@ type ControlChannel struct {
 	isSendingPongs bool
 
 	ClusterUserCache []string
-
-	// where split private keys are held
-	userKeys    userkeys.UserKeys
-	userKeysDir string
 }
 
 func Start(logger *logger.Logger,
@@ -98,8 +98,8 @@ func Start(logger *logger.Logger,
 	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
-	userKeysDir string,
 	cConfig ControlChannelConfig,
+	keyShardConfig KeyShardConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -112,13 +112,13 @@ func Start(logger *logger.Logger,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
 		cConfig:               cConfig,
+		keyShardConfig:        keyShardConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
 		agentPongChan:         make(chan bool),
 		runtimeErrChan:        make(chan error),
 		isSendingPongs:        conn.Ready(),
 		ClusterUserCache:      []string{},
-		userKeysDir:           userKeysDir,
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
@@ -127,8 +127,6 @@ func Start(logger *logger.Logger,
 
 	// initialize our user key storage
 	var err error
-	fileLock := filelock.NewFileLock(filepath.Join(userKeysDir, ".bzero.lock"))
-	control.userKeys, err = userkeys.NewYamlUserKeys(filepath.Join(userKeysDir, "bzero-user-keys.yaml"), fileLock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to setup user key storage: %s", err)
 	}
@@ -359,20 +357,20 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 				return fmt.Errorf("could not close non existent connection with id: %s", cwRequest.ConnectionId)
 			}
 		}
-	case am.RecieveShard:
-		var rsRequest ReceiveShardMessage
-		if err := json.Unmarshal(agentMessage.MessagePayload, &rsRequest); err != nil {
-			return fmt.Errorf("malformed distribute shard request")
+	case am.KeyShard:
+		var ksRequest KeyShardMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &ksRequest); err != nil {
+			return fmt.Errorf("malformed distribute shard request: %s", err)
 		}
 
-		if err := c.userKeys.AddKey(userkeys.KeyEntry{
-			Key:       rsRequest.KeyShard,
-			TargetIds: []string{rsRequest.TargetId},
+		if err := c.keyShardConfig.AddKey(data.KeyEntry{
+			Key:       ksRequest.KeyShard,
+			TargetIds: []string{ksRequest.TargetId},
 		}); err != nil {
-			return fmt.Errorf("failed to store key shard: %s", err)
+			return fmt.Errorf("failed to add key shard to config: %s", err)
 		}
 
-		c.logger.Infof("successfully stored key shard for target %s", rsRequest.TargetId)
+		c.logger.Infof("successfully stored key shard for target %s", ksRequest.TargetId)
 	default:
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}

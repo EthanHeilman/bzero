@@ -153,7 +153,6 @@ func NewSystemdAgent(
 		osSignalChan: bzos.OsShutdownChan(),
 		version:      version,
 		agentType:    Systemd,
-		userKeysDir:  configDir,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -188,13 +187,17 @@ func NewSystemdAgent(
 		}
 	}()
 
-	sysdClient, err := client.NewSystemdClient(configDir)
+	agentClient, err := client.NewSystemdClient(configDir, client.Agent)
 	if err != nil {
-		return a, fmt.Errorf("failed to initialize systemd client: %s", err)
+		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
+	} else if a.agentConfig, err = config.LoadAgentConfig(agentClient); err != nil {
+		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
-	if a.config, err = config.Load(sysdClient); err != nil {
-		return a, fmt.Errorf("failed to load systemd config: %s", err)
+	if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
+		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
+	} else if a.keyShardConfig, err = config.LoadKeyShardConfig(keyShardClient); err != nil {
+		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 
 	a.logger.Info("Starting up the BastionZero Agent")
@@ -202,13 +205,13 @@ func NewSystemdAgent(
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
 	// registration and then it we load it before proceeding
-	isRegistered := !a.config.GetPublicKey().IsEmpty()
+	isRegistered := !a.agentConfig.GetPublicKey().IsEmpty()
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-		sysdClient.WaitForRegistration(a.ctx)
+		agentClient.WaitForRegistration(a.ctx)
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if err := a.config.Reload(); err != nil {
+		if err := a.agentConfig.Reload(); err != nil {
 			return a, fmt.Errorf("failed to reload config after new registration detected: %w", err)
 		}
 	}
@@ -219,12 +222,12 @@ func NewSystemdAgent(
 
 		// Regardless of the response, we're done here. Registration for the Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
-		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return
 		}
 		os.Exit(0)
 	} else {
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return
@@ -242,7 +245,6 @@ func NewKubeAgent(
 		version:      version,
 		osSignalChan: bzos.OsShutdownChan(),
 		agentType:    Kubernetes,
-		userKeysDir:  configDir,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -277,10 +279,16 @@ func NewKubeAgent(
 	}()
 
 	// Initialize our config
-	if kubeClient, err := client.NewKubernetesClient(ctx, namespace, targetName); err != nil {
-		return a, fmt.Errorf("failed to initialize our kube config client: %w", err)
-	} else if a.config, err = config.Load(kubeClient); err != nil {
-		return a, fmt.Errorf("failed to load kubernetes config: %w", err)
+	if agentClient, err := client.NewKubernetesClient(ctx, namespace, client.Agent); err != nil {
+		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
+	} else if a.agentConfig, err = config.LoadAgentConfig(agentClient); err != nil {
+		return a, fmt.Errorf("failed to load agent config: %w", err)
+	}
+
+	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, client.KeyShard); err != nil {
+		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
+	} else if a.keyShardConfig, err = config.LoadKeyShardConfig(keyShardClient); err != nil {
+		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 
 	a.logger.Infof("Starting up the BastionZero Agent")
@@ -294,20 +302,20 @@ func NewKubeAgent(
 
 	// The kube agent registers itself (if requested) and then reloads the config
 	// to continue running. There is no restart after registration.
-	isRegistered := !a.config.GetPublicKey().IsEmpty()
+	isRegistered := !a.agentConfig.GetPublicKey().IsEmpty()
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return a, fmt.Errorf("failed to register kube agent: %w", err)
 		}
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if err = a.config.Reload(); err != nil {
+		if err = a.agentConfig.Reload(); err != nil {
 			return
 		}
 	} else {
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return

@@ -124,18 +124,10 @@ func (a *AuthorizedKeys) buildAuthorizedKeyEntry(pubkey string) (string, error) 
 
 func (a *AuthorizedKeys) addKeyToFile(contents string) error {
 	// wait to acquire a lock on the authorized_keys file
-	lock, err := a.fileLock.NewLock()
+	lock, err := a.fileLock.AcquireLock()
 	if err != nil {
-		return fmt.Errorf("failed to obtain lock: %s", err)
+		return err
 	}
-	for {
-		if acquiredLock, err := lock.TryLock(); err != nil {
-			return fmt.Errorf("error acquiring lock: %s", err)
-		} else if acquiredLock {
-			break
-		}
-	}
-
 	defer lock.Unlock()
 
 	file, err := a.usr.OpenFile(a.keyFilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, authorizedKeysFilePermission)
@@ -179,18 +171,10 @@ func (a *AuthorizedKeys) addKeyToFile(contents string) error {
 // cleaning up the file and not the user attempting to delete the key themselves
 func (a *AuthorizedKeys) cleanAuthorizedKeys(currentKey string) error {
 	// wait to acquire a lock on the authorized_keys file
-	lock, err := a.fileLock.NewLock()
+	lock, err := a.fileLock.AcquireLock()
 	if err != nil {
-		return fmt.Errorf("failed to obtain lock: %s", err)
+		return err
 	}
-	for {
-		if acquiredLock, err := lock.TryLock(); err != nil {
-			return fmt.Errorf("error acquiring lock: %s", err)
-		} else if acquiredLock {
-			break
-		}
-	}
-
 	defer lock.Unlock()
 
 	// read the authorized key file

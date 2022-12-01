@@ -20,18 +20,19 @@ import (
 const (
 	configKey          = "secret"
 	defaultSecretValue = "coolbeans"
-	secretName         = "bctl-%s-secret" // used for formatting with the target name
+	secretName         = "bctl-%s-secret" // used for formatting with the config type
 )
 
 type kubernetesClient struct {
 	client     coreV1Types.SecretInterface
 	secretName string
+	configType ConfigType
 
 	// Used to keep track of changes between fetches and saves
 	lastVersion string
 }
 
-func NewKubernetesClient(ctx context.Context, namespace string, targetName string) (*kubernetesClient, error) {
+func NewKubernetesClient(ctx context.Context, namespace string, configType ConfigType) (*kubernetesClient, error) {
 	// Create our api object
 	kubeConf, err := rest.InClusterConfig()
 	if err != nil {
@@ -46,15 +47,25 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	// Create our secrets client
 	config := kubernetesClient{
 		client:     clientset.CoreV1().Secrets(namespace),
-		secretName: fmt.Sprintf(secretName, targetName),
+		secretName: fmt.Sprintf(secretName, configType),
+		configType: configType,
 	}
 
 	// Get our secrets object
 	if _, err := config.client.Get(ctx, config.secretName, metaV1.GetOptions{}); err != nil {
 		// If there is no secret there, create it
-		emptyData, err := json.Marshal(data.DataV2{})
+		var emptyData []byte
+		switch configType {
+		case Agent:
+			emptyData, err = json.Marshal(data.AgentDataV2{})
+		case KeyShard:
+			emptyData, err = json.Marshal(data.KeyShardData{})
+		default:
+			return nil, fmt.Errorf("unsupported config type: %s", configType)
+		}
+
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal empty data: %w", err)
+			return nil, fmt.Errorf("failed to marshal empty %s config data: %w", configType, err)
 		}
 
 		configData := map[string][]byte{
@@ -72,35 +83,60 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	return &config, nil
 }
 
-func (k *kubernetesClient) Fetch() (data.DataV2, error) {
+func (k *kubernetesClient) FetchAgentData() (data.AgentDataV2, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	secret, err := k.client.Get(ctx, k.secretName, metaV1.GetOptions{})
 	if err != nil {
-		return data.DataV2{}, fmt.Errorf("config secret %s does not exist", k.secretName)
+		return data.AgentDataV2{}, fmt.Errorf("config secret %s does not exist", k.secretName)
 	}
 
 	k.lastVersion = secret.ResourceVersion
 
 	rawData, ok := secret.Data[configKey]
 	if !ok {
-		return data.DataV2{}, fmt.Errorf("config does not exist")
+		return data.AgentDataV2{}, fmt.Errorf("config does not exist")
 	}
 
 	if bytes.Equal(rawData, []byte(defaultSecretValue)) {
-		return data.DataV2{}, nil
+		return data.AgentDataV2{}, nil
 	}
 
 	// Grab and decode the data from the secrets store
-	if config, err := decode(rawData); err != nil {
-		return data.DataV2{}, err
+	if config, err := decodeAgentData(rawData); err != nil {
+		return data.AgentDataV2{}, err
 	} else {
 		return config, nil
 	}
 }
 
-func (k *kubernetesClient) Save(d data.DataV2) error {
+func (k *kubernetesClient) FetchKeyShardData() (data.KeyShardData, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	secret, err := k.client.Get(ctx, k.secretName, metaV1.GetOptions{})
+	if err != nil {
+		return data.KeyShardData{}, fmt.Errorf("config secret %s does not exist", k.secretName)
+	}
+
+	k.lastVersion = secret.ResourceVersion
+
+	rawData, ok := secret.Data[configKey]
+	if !ok {
+		return data.KeyShardData{}, fmt.Errorf("config does not exist")
+	}
+
+	if bytes.Equal(rawData, []byte(defaultSecretValue)) {
+		return data.KeyShardData{}, nil
+	}
+
+	var config data.KeyShardData
+	err = json.Unmarshal(rawData, &config)
+	return config, err
+}
+
+func (k *kubernetesClient) Save(d interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
@@ -130,9 +166,9 @@ func (k *kubernetesClient) Save(d data.DataV2) error {
 	return nil
 }
 
-func decode(s []byte) (data.DataV2, error) {
-	var old data.DataV1
-	var new data.DataV2
+func decodeAgentData(s []byte) (data.AgentDataV2, error) {
+	var old data.AgentDataV1
+	var new data.AgentDataV2
 
 	// first we try to gob decode, it only speaks old
 	dec := gob.NewDecoder(bytes.NewReader(s))
