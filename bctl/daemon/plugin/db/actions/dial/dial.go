@@ -22,9 +22,10 @@ const (
 )
 
 type DialAction struct {
-	logger    *logger.Logger
-	tmb       tomb.Tomb
-	requestId string
+	logger     *logger.Logger
+	tmb        tomb.Tomb
+	requestId  string
+	targetUser string
 
 	// input and output channels relative to this plugin
 	outputChan      chan plugin.ActionWrapper
@@ -38,14 +39,15 @@ type DialAction struct {
 func New(
 	logger *logger.Logger,
 	requestId string,
+	targetUser string,
 	outboxQueue chan plugin.ActionWrapper,
 	doneChan chan struct{},
 ) *DialAction {
 
 	dial := &DialAction{
-		logger:    logger,
-		requestId: requestId,
-
+		logger:     logger,
+		requestId:  requestId,
+		targetUser: targetUser,
 		outputChan: outboxQueue,
 		// TODO: CWC-2015: reduce this buffer size when we have improved the websocket queue model
 		streamInputChan: make(chan smsg.StreamMessage, 256),
@@ -59,6 +61,7 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 	// Build and send the action payload to start the tcp connection on the agent
 	payload := dial.DialActionPayload{
 		RequestId:            d.requestId,
+		TargetUser:           d.targetUser,
 		StreamMessageVersion: smsg.CurrentSchema,
 	}
 	d.sendOutputMessage(dial.DialStart, payload)

@@ -280,6 +280,7 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 
 	params["connectionType"] = []string{string(dataconnection.Db)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
+	params["target_user"] = []string{config[TARGET_USER].Value}
 
 	return dbserver.New(
 		subLogger,
@@ -289,6 +290,7 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 		remotePort,
 		config[REMOTE_HOST].Value,
 		cert,
+		config[TARGET_USER].Value,
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,
