@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -174,7 +175,7 @@ func (c *KeyShardConfig) DeleteTarget(targetId string, hard bool) error {
 // get the index matching the given key
 func findEntry(keyShards data.KeyShardData, key data.SplitPrivateKey) (int, error) {
 	for i := range keyShards {
-		if keyShards[i].Key.D == key.D {
+		if bytes.Equal(keyShards[i].Key.D, key.D) {
 			return i, nil
 		}
 	}

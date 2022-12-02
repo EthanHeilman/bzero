@@ -38,19 +38,19 @@ var (
 
 	// KeyShard examples
 	mockSplitPrivateKeyDefault = SplitPrivateKey{
-		D: "123",
-		E: "45",
+		D: []byte("123"),
+		E: []byte("45"),
 		PublicKey: PublicKey{
-			N: "678",
+			N: []byte("678"),
 			E: 90,
 		},
 	}
 
 	mockSplitPrivateKeyAlt = SplitPrivateKey{
-		D: "101",
-		E: "202",
+		D: []byte("101"),
+		E: []byte("202"),
 		PublicKey: PublicKey{
-			N: "303",
+			N: []byte("303"),
 			E: 404,
 		},
 	}
@@ -157,10 +157,10 @@ func DefaultMockKeyEntry3Target() KeyEntry {
 
 func DefaultMockSplitPrivateKey() SplitPrivateKey {
 	return SplitPrivateKey{
-		D: "123",
-		E: "45",
+		D: []byte("123"),
+		E: []byte("45"),
 		PublicKey: PublicKey{
-			N: "678",
+			N: []byte("678"),
 			E: 90,
 		},
 	}
@@ -168,10 +168,10 @@ func DefaultMockSplitPrivateKey() SplitPrivateKey {
 
 func AltMockSplitPrivateKey() SplitPrivateKey {
 	return SplitPrivateKey{
-		D: "101",
-		E: "202",
+		D: []byte("101"),
+		E: []byte("202"),
 		PublicKey: PublicKey{
-			N: "303",
+			N: []byte("303"),
 			E: 404,
 		},
 	}
@@ -193,10 +193,10 @@ func MockKeyShardLargeNoTargetsRaw() string {
 [
   {
     "key": {
-      "d": "1",
-      "e": "45",
+      "d": "MQ==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -204,10 +204,10 @@ func MockKeyShardLargeNoTargetsRaw() string {
   },
   {
     "key": {
-      "d": "2",
-      "e": "45",
+      "d": "Mg==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -215,10 +215,10 @@ func MockKeyShardLargeNoTargetsRaw() string {
   },
   {
     "key": {
-      "d": "3",
-      "e": "45",
+      "d": "Mw==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -226,10 +226,10 @@ func MockKeyShardLargeNoTargetsRaw() string {
   },
   {
     "key": {
-      "d": "4",
-      "e": "45",
+      "d": "NA==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -244,10 +244,10 @@ func MockKeyShardLargeWithTargetsRaw() string {
 [
   {
     "key": {
-      "d": "1",
-      "e": "202",
+      "d": "MQ==",
+      "e": "MjAy",
       "associatedPublicKey": {
-        "n": "303",
+        "n": "MzAz",
         "e": 404
       }
     },
@@ -258,10 +258,10 @@ func MockKeyShardLargeWithTargetsRaw() string {
   },
   {
     "key": {
-      "d": "2",
-      "e": "45",
+      "d": "Mg==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -272,10 +272,10 @@ func MockKeyShardLargeWithTargetsRaw() string {
   },
   {
     "key": {
-      "d": "3",
-      "e": "45",
+      "d": "Mw==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },
@@ -286,10 +286,10 @@ func MockKeyShardLargeWithTargetsRaw() string {
   },
   {
     "key": {
-      "d": "4",
-      "e": "45",
+      "d": "NA==",
+      "e": "NDU=",
       "associatedPublicKey": {
-        "n": "678",
+        "n": "Njc4",
         "e": 90
       }
     },

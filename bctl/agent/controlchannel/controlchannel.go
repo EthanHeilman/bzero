@@ -358,10 +358,13 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 			}
 		}
 	case am.KeyShard:
+		c.logger.Infof("raw: %s", agentMessage.MessagePayload)
 		var ksRequest KeyShardMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &ksRequest); err != nil {
 			return fmt.Errorf("malformed distribute shard request: %s", err)
 		}
+
+		c.logger.Infof("got: %+v", ksRequest)
 
 		if err := c.keyShardConfig.AddKey(data.KeyEntry{
 			Key:       ksRequest.KeyShard,
