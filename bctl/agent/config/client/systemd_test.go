@@ -193,6 +193,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				sysdClient := &SystemdClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
+					configType: Agent,
 				}
 
 				saveErr = populateAgentConfigFiile(sysdClient, mockV2)
@@ -221,6 +222,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				sysdClient := &SystemdClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
+					configType: Agent,
 				}
 
 				v2Data, err = sysdClient.FetchAgentData()
@@ -245,6 +247,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				sysdClient := &SystemdClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
+					configType: Agent,
 				}
 
 				err = populateAgentConfigFiile(sysdClient, mockV2)
@@ -271,6 +274,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				sysdClient := &SystemdClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
+					configType: Agent,
 				}
 
 				By("Saving data to our config file")
