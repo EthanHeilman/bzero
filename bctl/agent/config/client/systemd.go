@@ -66,7 +66,6 @@ func NewSystemdClient(configDir string, configType ConfigType) (*SystemdClient, 
 	return config, nil
 }
 
-// TODO: with go 1.18 we can consolidate these into one function with a type check
 func (s *SystemdClient) FetchAgentData() (data.AgentDataV2, error) {
 	var config data.AgentDataV2
 
@@ -102,7 +101,6 @@ func (s *SystemdClient) FetchAgentData() (data.AgentDataV2, error) {
 	return config, nil
 }
 
-// TODO: with go 1.18 we can consolidate these into one function with a type check
 func (s *SystemdClient) FetchKeyShardData() (data.KeyShardData, error) {
 	var config data.KeyShardData
 

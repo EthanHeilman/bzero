@@ -279,13 +279,13 @@ func NewKubeAgent(
 	}()
 
 	// Initialize our config
-	if agentClient, err := client.NewKubernetesClient(ctx, namespace, client.Agent); err != nil {
+	if agentClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.Agent); err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
 	} else if a.agentConfig, err = config.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
-	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = config.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
