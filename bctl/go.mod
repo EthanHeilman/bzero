@@ -13,7 +13,6 @@ require (
 	github.com/coreos/go-oidc/v3 v3.0.0
 	github.com/creack/pty v1.1.15
 	github.com/fsnotify/fsnotify v1.5.1
-	github.com/gofrs/flock v0.8.1
 	github.com/golang-jwt/jwt/v4 v4.4.2
 	github.com/google/uuid v1.2.0
 	github.com/gorilla/websocket v1.4.2

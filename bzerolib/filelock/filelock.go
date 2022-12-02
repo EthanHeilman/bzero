@@ -8,8 +8,7 @@ import (
 )
 
 /*
-	we need to implement a small client layer on top of flock to make sure we manage
-
+we need to implement a small client layer on top of flock to make sure we manage
 the proper deletion of the lock file it creates, and so that parent processes can
 require that all of their children use the same underlying lock file
 
