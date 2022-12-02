@@ -9,7 +9,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (

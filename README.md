@@ -15,9 +15,9 @@ See our documentation for more information on how to get started with the [agent
 With Go 1.18 or later installed, you can build the agent and daemon locally:
 ```sh
 # to build the agent, starting from repo root
-cd bctl/agent && go build .
+cd bctl/agent && go build -buildvcs=false .
 # to build the daemon, starting from repo root
-cd bctl/daemon && go build .
+cd bctl/daemon && go build -buildvcs=false .
 ```
 
 You can then run the agent and daemon by running the executable.
