@@ -13,6 +13,7 @@ import (
 	"github.com/crunchydata/crunchy-proxy/protocol"
 	"gopkg.in/tomb.v2"
 
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/certificate"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/dial"
@@ -263,65 +264,90 @@ func (d *Dial) Connect(host string) (net.Conn, error) {
 	} else {
 		d.logger.Debug("SSL connections are allowed by PostgreSQL.")
 		d.logger.Debug("Attempting to upgrade connection.")
-		connection = d.UpgradeClientConnection(host, connection)
+		connection, err = d.UpgradeClientConnection(host, connection)
+		if err != nil {
+			return nil, err
+		}
 		d.logger.Debug("Connection successfully upgraded.")
 	}
 
 	return connection, nil
 }
 
-func (d *Dial) UpgradeClientConnection(hostPort string, connection net.Conn) net.Conn {
+func (d *Dial) UpgradeClientConnection(hostPort string, connection net.Conn) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
 		InsecureSkipVerify: true,
+		RootCAs:            x509.NewCertPool(),
 	}
 
+	// Get our certificates from bastion
+	certProvider, err := certificate.New(d.logger, "fakefornow")
+	if err != nil {
+		return nil, err
+	}
+
+	d.logger.Debug("Loading client SSL certificate and key")
+	if cert, err := certProvider.TLSKeyPair(); err != nil {
+		d.logger.Info("WE'RE GETTING HERE")
+		return nil, err
+	} else {
+		tlsConfig.Certificates = []tls.Certificate{cert}
+	}
+
+	d.logger.Debug("Loading root CA")
+	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(certProvider.CACert))
+
+	d.logger.Info("Upgrading to SSL connection")
+	client := tls.Client(connection, &tlsConfig)
+	return client, nil
+
 	/* Add client SSL certificate and key. */
-	d.logger.Debug("Loading SSL certificate and key")
-	cert, _ := tls.LoadX509KeyPair("/home/ec2-user/certs/client.crt", "/home/ec2-user/certs/client.key")
-	tlsConfig.Certificates = []tls.Certificate{cert}
+	// d.logger.Debug("Loading SSL certificate and key")
+	// cert, _ := tls.LoadX509KeyPair("/home/ec2-user/certs/client.crt", "/home/ec2-user/certs/client.key")
+	// tlsConfig.Certificates = []tls.Certificate{cert}
 
 	/* Add root CA certificate. */
-	d.logger.Debug("Loading root CA.")
-	tlsConfig.RootCAs = x509.NewCertPool()
-	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(`
-	-----BEGIN CERTIFICATE-----
-	MIIFczCCA1ugAwIBAgIRAOS3pZlUykM5zgm1N+pm0CswDQYJKoZIhvcNAQELBQAw
-	UzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1NYXNzYWNodXNldHRzMQ8wDQYDVQQH
-	EwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25aZXJvLCBJbmMuMB4XDTIyMTAxOTIw
-	MzgzMloXDTIzMTAxOTIwMzgzMlowUzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1N
-	YXNzYWNodXNldHRzMQ8wDQYDVQQHEwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25a
-	ZXJvLCBJbmMuMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA08XAuaYR
-	w/ge3apqxgFyK0x15NE+bwVYwwR18qT3E5qjwsHWpO84W8O0naerc96ktuy77Q/3
-	ozT0ILKb1Zm/k7evxTRC0riV6vLRH+S5EsPPMwKRy3j682K4i4upeeZi1YlCOPCj
-	I4l2gBrHr3KCTzrkuijS0xVrBAM5zOuurg7SNfL3enflODDbKFLGheIOyyrl3JnU
-	epGkVo7oZmZVF+dGoaO4OaZOEtUIgm9Dij0rtPrwQsXQzRTGYdlFYsKyrL3UnEyI
-	jhPVSY0CAcrsgPcsLroXcK9oojk6oQ36n5divX83RgI2dGHsmnC7z/MweeZ2dmXS
-	ZqsjPUgLHSBq5hFgXEV1gGNtPJIvOKNOn4kFtbAmg3upyBjGiA2bmNZPFg4Etglv
-	8axK8RmF2sLud1soMtZiC78xlg++vmrfp71rp5ymWVmQucR5rmJChslke1sNMltQ
-	V8xOnShYuIx9ttdEGukEHRAEptwF4yTfpwn+T0zhLJnTU9Ea2D+TMMqeOaD9JfMd
-	DHpN5/CKvk1weJWe5cmphTcPMg1x/7fnMv2MUIZKSEEyTHAiCBxkZRrN3My+klil
-	I+vShM7zS7c1XLPFZn6VN25TU4De8m6UcY3qg7JR5yXIHsR1f4Fazk2WJF03TiqI
-	SRz9Vwe5qZiXBxK3eP4xYYZY9yhif6YVyXcCAwEAAaNCMEAwDgYDVR0PAQH/BAQD
-	AgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFL1w3h1kRkJnusxK4itJmQ8d
-	QuF7MA0GCSqGSIb3DQEBCwUAA4ICAQBNIDmPPgMNwdgW/9nPwZlo2zlZ1EFWEHwA
-	cXN/1aqVWXVSzir5gtz2s/zqBG07XjP1VvbiDGVhhRI6+/sq4iU3lW/+atFGCgLJ
-	N4ojOncqPNj2tyVBn//4X2/GsW8D7jxfqgtP2tX0140iCZpy9Vs6Gv3hyVfjZPRD
-	xtl74eZDITjnMcvAv+Wl7Dn3xV/4lRPQHMVyH2egs6ga+C+GcmWke7tc4JRI2A/c
-	QBYsFlZlYy5/E9Is8jydTqdiQR/AVDo4wg60RGnuwap9YFXpKWn43hdUgBs3esoM
-	oJSYNtJjCA3Z0ERc6uAa5/44o9dMaQN58EWkjfILF7jlSTgs9SYIzD0gO2HChHY5
-	UIUIaHP8dedso7EFVIZ5/X0ROFOpGO5PD7PtneS22tSl69Z9Ekv4ZoFAVWLcerLd
-	YnPJ6gGE8rClZc9BfQ8VgKiLB3Qw07WS5Y6QTIXnz/xWHXM0KeHgk+HDEjbhs5AZ
-	N/e2NxZJZjunrMrZtiD/DYmFyyEjKFq9h3O3+UWsSQU8WHXBBz5R5t2UarFHBS2M
-	eWog7yoRYOfhaJqqu04+iOg23UIxqCYnW5wQ7jtEeC7bGwp9G8Cj/5zXTVYMAR8l
-	Ffa3KOUlrfEXIIkFUm4/np9kBAA9P0e8OPNAi5BgDrr+wW4J6wA5hZzmeJJb0S7U
-	dT3KFaOUug==
-	-----END CERTIFICATE-----
-`))
+	// 	d.logger.Debug("Loading root CA.")
+	// 	tlsConfig.RootCAs = x509.NewCertPool()
+	// 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(`
+	// 	-----BEGIN CERTIFICATE-----
+	// 	MIIFczCCA1ugAwIBAgIRAOS3pZlUykM5zgm1N+pm0CswDQYJKoZIhvcNAQELBQAw
+	// 	UzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1NYXNzYWNodXNldHRzMQ8wDQYDVQQH
+	// 	EwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25aZXJvLCBJbmMuMB4XDTIyMTAxOTIw
+	// 	MzgzMloXDTIzMTAxOTIwMzgzMlowUzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1N
+	// 	YXNzYWNodXNldHRzMQ8wDQYDVQQHEwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25a
+	// 	ZXJvLCBJbmMuMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA08XAuaYR
+	// 	w/ge3apqxgFyK0x15NE+bwVYwwR18qT3E5qjwsHWpO84W8O0naerc96ktuy77Q/3
+	// 	ozT0ILKb1Zm/k7evxTRC0riV6vLRH+S5EsPPMwKRy3j682K4i4upeeZi1YlCOPCj
+	// 	I4l2gBrHr3KCTzrkuijS0xVrBAM5zOuurg7SNfL3enflODDbKFLGheIOyyrl3JnU
+	// 	epGkVo7oZmZVF+dGoaO4OaZOEtUIgm9Dij0rtPrwQsXQzRTGYdlFYsKyrL3UnEyI
+	// 	jhPVSY0CAcrsgPcsLroXcK9oojk6oQ36n5divX83RgI2dGHsmnC7z/MweeZ2dmXS
+	// 	ZqsjPUgLHSBq5hFgXEV1gGNtPJIvOKNOn4kFtbAmg3upyBjGiA2bmNZPFg4Etglv
+	// 	8axK8RmF2sLud1soMtZiC78xlg++vmrfp71rp5ymWVmQucR5rmJChslke1sNMltQ
+	// 	V8xOnShYuIx9ttdEGukEHRAEptwF4yTfpwn+T0zhLJnTU9Ea2D+TMMqeOaD9JfMd
+	// 	DHpN5/CKvk1weJWe5cmphTcPMg1x/7fnMv2MUIZKSEEyTHAiCBxkZRrN3My+klil
+	// 	I+vShM7zS7c1XLPFZn6VN25TU4De8m6UcY3qg7JR5yXIHsR1f4Fazk2WJF03TiqI
+	// 	SRz9Vwe5qZiXBxK3eP4xYYZY9yhif6YVyXcCAwEAAaNCMEAwDgYDVR0PAQH/BAQD
+	// 	AgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFL1w3h1kRkJnusxK4itJmQ8d
+	// 	QuF7MA0GCSqGSIb3DQEBCwUAA4ICAQBNIDmPPgMNwdgW/9nPwZlo2zlZ1EFWEHwA
+	// 	cXN/1aqVWXVSzir5gtz2s/zqBG07XjP1VvbiDGVhhRI6+/sq4iU3lW/+atFGCgLJ
+	// 	N4ojOncqPNj2tyVBn//4X2/GsW8D7jxfqgtP2tX0140iCZpy9Vs6Gv3hyVfjZPRD
+	// 	xtl74eZDITjnMcvAv+Wl7Dn3xV/4lRPQHMVyH2egs6ga+C+GcmWke7tc4JRI2A/c
+	// 	QBYsFlZlYy5/E9Is8jydTqdiQR/AVDo4wg60RGnuwap9YFXpKWn43hdUgBs3esoM
+	// 	oJSYNtJjCA3Z0ERc6uAa5/44o9dMaQN58EWkjfILF7jlSTgs9SYIzD0gO2HChHY5
+	// 	UIUIaHP8dedso7EFVIZ5/X0ROFOpGO5PD7PtneS22tSl69Z9Ekv4ZoFAVWLcerLd
+	// 	YnPJ6gGE8rClZc9BfQ8VgKiLB3Qw07WS5Y6QTIXnz/xWHXM0KeHgk+HDEjbhs5AZ
+	// 	N/e2NxZJZjunrMrZtiD/DYmFyyEjKFq9h3O3+UWsSQU8WHXBBz5R5t2UarFHBS2M
+	// 	eWog7yoRYOfhaJqqu04+iOg23UIxqCYnW5wQ7jtEeC7bGwp9G8Cj/5zXTVYMAR8l
+	// 	Ffa3KOUlrfEXIIkFUm4/np9kBAA9P0e8OPNAi5BgDrr+wW4J6wA5hZzmeJJb0S7U
+	// 	dT3KFaOUug==
+	// 	-----END CERTIFICATE-----
+	// `))
 
 	/* Upgrade the connection. */
-	d.logger.Info("Upgrading to SSL connection.")
-	client := tls.Client(connection, &tlsConfig)
+	// d.logger.Info("Upgrading to SSL connection.")
+	// client := tls.Client(connection, &tlsConfig)
 
 	// err := d.verifyCertificateAuthority(client, &tlsConfig)
 	// if err != nil {
@@ -331,7 +357,7 @@ func (d *Dial) UpgradeClientConnection(hostPort string, connection net.Conn) net
 	// 	d.logger.Info("Successfully verified CA")
 	// }
 
-	return client
+	// return client
 }
 
 /*
