@@ -122,7 +122,7 @@ func (s *SystemdClient) FetchKeyShardData() (data.KeyShardData, error) {
 	if info, err := os.Stat(s.configPath); err != nil {
 		return config, fmt.Errorf("failed to get key shard config file info %s: %w", s.configPath, err)
 	} else {
-		s.lastMod = info.ModTime().Unix()
+		s.lastMod = info.ModTime().UnixMilli()
 	}
 
 	if len(file) == 0 {
@@ -150,7 +150,7 @@ func (s *SystemdClient) Save(d interface{}) error {
 	if info, err := os.Stat(s.configPath); err != nil {
 		return fmt.Errorf("failed to get config file info %s: %w", s.configPath, err)
 	} else if s.lastMod != info.ModTime().UnixMilli() {
-		return fmt.Errorf("config has changed since it was last fetched")
+		return fmt.Errorf("config has changed since it was last fetched: our last mod")
 	}
 
 	// empty out our file

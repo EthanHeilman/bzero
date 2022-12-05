@@ -25,7 +25,7 @@ func expectFileKeyUnset(path string, key data.SplitPrivateKey) {
 
 	var actual data.KeyShardData
 	err = json.Unmarshal(rawData, &actual)
-	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse JSON: %s", err))
+	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse JSON: %s -- raw data: '%s'", err, rawData))
 
 	_, err = findEntry(actual, key)
 	Expect(errors.Is(err, &KeyError{}), fmt.Sprintf("expected entry to be unset but got err: %s", err))
@@ -37,7 +37,7 @@ func expectFileKeySetTo(path string, key data.SplitPrivateKey, expectedEntry dat
 
 	var actual data.KeyShardData
 	err = json.Unmarshal(rawData, &actual)
-	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse JSON: %s", err))
+	Expect(err).To(BeNil(), fmt.Sprintf("failed to parse JSON: %s -- raw data: '%s'", err, rawData))
 
 	idx, err := findEntry(actual, key)
 	Expect(err).To(BeNil(), fmt.Sprintf("failed to find entry: %s", err))
@@ -344,7 +344,6 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 					expectedTargetIds := []string{}
 					for j := 1; j <= 12; j++ {
 						if j%4 == i {
-							fmt.Printf("%d\n", i)
 							expectedTargetIds = append(expectedTargetIds, fmt.Sprintf("targetId%d", j))
 						}
 					}
