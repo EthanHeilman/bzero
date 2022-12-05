@@ -282,7 +282,7 @@ func (d *Dial) UpgradeClientConnection(hostPort string, connection net.Conn) (ne
 	}
 
 	// Get our certificates from bastion
-	certProvider, err := certificate.New(d.logger, "fakefornow")
+	certProvider, err := certificate.New(d.logger, "postgres")
 	if err != nil {
 		return nil, err
 	}
