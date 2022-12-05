@@ -87,7 +87,7 @@ func (s *SystemdClient) FetchAgentData() (data.AgentDataV2, error) {
 	if info, err := os.Stat(s.configPath); err != nil {
 		return config, fmt.Errorf("failed to get agent config file info %s: %w", s.configPath, err)
 	} else {
-		s.lastMod = info.ModTime().Unix()
+		s.lastMod = info.ModTime().UnixMilli()
 	}
 
 	if len(file) == 0 {
@@ -149,7 +149,7 @@ func (s *SystemdClient) Save(d interface{}) error {
 	// 1000% sure we will not be overwriting anything
 	if info, err := os.Stat(s.configPath); err != nil {
 		return fmt.Errorf("failed to get config file info %s: %w", s.configPath, err)
-	} else if s.lastMod != info.ModTime().Unix() {
+	} else if s.lastMod != info.ModTime().UnixMilli() {
 		return fmt.Errorf("config has changed since it was last fetched")
 	}
 
