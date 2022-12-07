@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -368,12 +369,12 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 
 		if err := c.keyShardConfig.AddKey(data.KeyEntry{
 			Key:       ksRequest.KeyShard,
-			TargetIds: []string{ksRequest.TargetId},
+			TargetIds: ksRequest.TargetIds,
 		}); err != nil {
 			return fmt.Errorf("failed to add key shard to config: %s", err)
 		}
 
-		c.logger.Infof("successfully stored key shard for target %s", ksRequest.TargetId)
+		c.logger.Infof("successfully stored key shard for targets %s", strings.Join(ksRequest.TargetIds, ", "))
 	default:
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}
