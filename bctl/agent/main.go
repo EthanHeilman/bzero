@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"runtime/debug"
 	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config"
@@ -29,6 +28,7 @@ var (
 	wait                             bool
 	printVersion                     bool
 	listLogFile                      bool
+	attemptedRegistration            bool
 )
 
 const (
@@ -86,7 +86,7 @@ func main() {
 	}
 
 	if err != nil {
-		fmt.Printf("ERROR: failed to start agent: %s\n %+v\n", err, string(debug.Stack()))
+		fmt.Printf("ERROR: failed to start agent: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -140,6 +140,8 @@ func parseFlags() {
 		namespace = os.Getenv("NAMESPACE")
 		registrationKey = os.Getenv("API_KEY")
 	}
+
+	attemptedRegistration = activationToken != "" || registrationKey != ""
 }
 
 func NewSystemdAgent(
@@ -223,6 +225,12 @@ func NewSystemdAgent(
 		}
 		os.Exit(0)
 	} else {
+		// we're already registered. If another attempt was made to register, exit
+		if attemptedRegistration {
+			err = fmt.Errorf("BastionZero Agent is already registered. To force re-register, use the -y flag")
+			return
+		}
+
 		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
 	}
 
@@ -305,6 +313,12 @@ func NewKubeAgent(
 			return
 		}
 	} else {
+		// we're already registered. If another attempt was made to register, exit
+		if attemptedRegistration {
+			err = fmt.Errorf("BastionZero Agent is already registered. To force re-register, use the -y flag")
+			return
+		}
+
 		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
 	}
 
