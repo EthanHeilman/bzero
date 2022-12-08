@@ -32,7 +32,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )
 
