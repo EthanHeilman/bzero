@@ -123,6 +123,10 @@ func parseFlags() {
 	flag.StringVar(&environmentId, "environmentId", "", "Policy environment ID to associate with agent")
 	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
 
+	// new env flags
+	flag.StringVar(&environmentId, "envId", "", "(Deprecated) Please use environmentId")
+	flag.StringVar(&environmentName, "envName", "", "(Deprecated) Policy environment Name to associate with agent")
+
 	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
 	// Parse any flag
