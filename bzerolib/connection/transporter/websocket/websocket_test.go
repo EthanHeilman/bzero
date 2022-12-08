@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
+	"bastionzero.com/bctl/v1/bzerolib/connection/monitor"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 )

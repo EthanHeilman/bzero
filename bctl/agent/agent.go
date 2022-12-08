@@ -148,14 +148,6 @@ func (a *Agent) startControlChannel() error {
 
 	// Make our connection
 	client := signalr.New(srLogger, nil, websocket.New(wsLogger, nil))
-	ms, err := a.config.GetMessageSigner()
-	agentIdentityProvider := agentidentity.New(
-		aipLogger,
-		a.config.Data.ServiceUrl,
-		a.config.Data.TargetId,
-		a.config,
-		ms,
-	)
 
 	headers := http.Header{}
 	params := url.Values{

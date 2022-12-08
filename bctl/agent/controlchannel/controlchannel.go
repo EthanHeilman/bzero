@@ -15,11 +15,11 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/monitor"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -402,6 +402,7 @@ func (c *ControlChannel) configureServiceAccount(configureRequest ConfigureServi
 	if err := c.cConfig.SetServiceAccountJwksUrl(jwksUrlPattern); err != nil {
 		return fmt.Errorf("error adding new jwksUrlPattern to the config: %s", err)
 	}
+
 	c.logger.Infof("Successfully configured this agent to allow access to service accounts originating from JWKS URLs following the %s pattern", jwksUrlPattern)
 	return nil
 }

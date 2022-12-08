@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/connection/monitor"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -45,7 +45,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		wsLogger := logger.GetComponentLogger("Websocket")
 		srLogger := logger.GetComponentLogger("SignalR")
 
-		client := signalr.New(srLogger, websocket.New(wsLogger))
+		client := signalr.New(srLogger, stats, websocket.New(wsLogger, stats))
 		conn, _ := New(logger, cnUrl, connectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, client, stats)
 
 		return conn
