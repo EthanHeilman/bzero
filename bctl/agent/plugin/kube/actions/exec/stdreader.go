@@ -1,12 +1,7 @@
 package exec
 
 import (
-	"bytes"
 	"io"
-)
-
-var (
-	EndStreamBytes = []byte{0x62, 0x61, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x7a, 0x65, 0x72, 0x6f} // "BastionZero"
 )
 
 // Stdin
@@ -33,15 +28,15 @@ func (r *StdReader) Close() {
 }
 
 func (r *StdReader) Read(p []byte) (int, error) {
-	// Listen for data on our stdinChannel
-	if bytes.Equal(p, EndStreamBytes) {
-		return 1, io.EOF
-	}
 	select {
-	case stdin := <-r.stdinChannel:
-		n := copy(p, stdin)
-		return n, nil
+	case stdin, more := <-r.stdinChannel:
+		if !more {
+			return 0, io.EOF
+		} else {
+			n := copy(p, stdin)
+			return n, nil
+		}
 	case <-r.doneChannel:
-		return 1, io.EOF
+		return 0, io.EOF
 	}
 }

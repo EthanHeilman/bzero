@@ -51,6 +51,10 @@ func New(
 	keyLifetime time.Duration,
 ) (*AuthorizedKeys, error) {
 
+	if usr == nil {
+		return nil, fmt.Errorf("user is nil")
+	}
+
 	if usr.HomeDir == "" {
 		return nil, fmt.Errorf("user does not have an associated home directory")
 	}

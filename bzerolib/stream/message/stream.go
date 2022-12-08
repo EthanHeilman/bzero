@@ -19,9 +19,8 @@ type StreamMessage struct {
 	Content        string        `json:"content"`
 }
 
-// Type restriction on our different kinds of agent
-// output streams. StdIn will come in the form of a
-// Keysplitting DataMessage
+// Type restriction on our different kinds of agent output streams.
+// StdIn will come in the form of a MrTAP DataMessage
 type StreamType string
 
 const (

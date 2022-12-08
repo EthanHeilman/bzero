@@ -1,7 +1,6 @@
 package httpclient
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,8 +9,7 @@ import (
 	"path"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (
@@ -20,14 +18,20 @@ const (
 
 type HTTPOptions struct {
 	Endpoint string
-	Body     []byte
+	Body     io.Reader
 	Headers  http.Header
 	Params   url.Values
+
+	// Ref: https://github.com/cenkalti/backoff/blob/a78d3804c2c84f0a3178648138442c9b07665bda/exponential.go#L76
+	// DefaultInitialInterval     = 500 * time.Millisecond
+	// DefaultRandomizationFactor = 0.5
+	// DefaultMultiplier          = 1.5
+	// DefaultMaxInterval         = 60 * time.Second
+	// DefaultMaxElapsedTime      = 15 * time.Minute
+	ExponentialBackoff *backoff.ExponentialBackOff
 }
 
 type HttpClient struct {
-	logger *logger.Logger
-
 	backoffParams *backoff.ExponentialBackOff
 
 	targetUrl string
@@ -37,7 +41,6 @@ type HttpClient struct {
 }
 
 func New(
-	logger *logger.Logger,
 	serviceUrl string,
 	options HTTPOptions,
 ) (*HttpClient, error) {
@@ -60,32 +63,12 @@ func New(
 	}
 
 	return &HttpClient{
-		logger:    logger,
-		targetUrl: serviceUrl,
-		body:      bytes.NewBuffer(options.Body),
-		headers:   options.Headers,
-		params:    options.Params,
+		backoffParams: options.ExponentialBackoff,
+		targetUrl:     serviceUrl,
+		body:          options.Body,
+		headers:       options.Headers,
+		params:        options.Params,
 	}, nil
-}
-
-func NewWithBackoff(
-	logger *logger.Logger,
-	serviceUrl string,
-	options HTTPOptions,
-) (*HttpClient, error) {
-	backoffParams := backoff.NewExponentialBackOff()
-
-	// Ref: https://github.com/cenkalti/backoff/blob/a78d3804c2c84f0a3178648138442c9b07665bda/exponential.go#L76
-	// DefaultInitialInterval     = 500 * time.Millisecond
-	// DefaultRandomizationFactor = 0.5
-	// DefaultMultiplier          = 1.5
-	// DefaultMaxInterval         = 60 * time.Second
-	// DefaultMaxElapsedTime      = 15 * time.Minute
-
-	backoffParams.MaxInterval = 15 * time.Minute
-	backoffParams.MaxElapsedTime = 72 * time.Hour
-
-	return New(logger, serviceUrl, options)
 }
 
 func (h *HttpClient) Post(ctx context.Context) (*http.Response, error) {
@@ -107,6 +90,7 @@ func (h *HttpClient) execute(method string, ctx context.Context) (*http.Response
 	}
 
 	// Keep looping through our ticker, waiting for it to tell us when to retry
+	var lastErr error
 	ticker := backoff.NewTicker(h.backoffParams)
 	defer ticker.Stop()
 	for {
@@ -115,12 +99,11 @@ func (h *HttpClient) execute(method string, ctx context.Context) (*http.Response
 			return nil, fmt.Errorf("context cancelled before successful http response")
 		case _, ok := <-ticker.C:
 			if !ok {
-				return nil, fmt.Errorf("failed to get successful http response after %s", h.backoffParams.MaxElapsedTime.Round(time.Second))
+				return nil, fmt.Errorf("failed to get successful http response to %s after %s. The most recent error was: %s", h.targetUrl, h.backoffParams.MaxElapsedTime.Round(time.Second), lastErr)
 			}
 
 			if response, err := h.request(method, ctx); err != nil {
-				nextRequestTime := h.backoffParams.NextBackOff().Round(time.Second)
-				h.logger.Errorf("retrying in %s: %s", nextRequestTime, err)
+				lastErr = err
 			} else {
 				return response, err
 			}
@@ -135,7 +118,11 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 	}
 
 	// Build our Request
-	request, _ := http.NewRequestWithContext(ctx, string(method), h.targetUrl, h.body)
+	request, err := http.NewRequestWithContext(ctx, method, h.targetUrl, h.body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build http request: %w", err)
+	}
+
 	request.Header = http.Header(h.headers)
 
 	// Add params to request URL
@@ -144,12 +131,12 @@ func (h *HttpClient) request(method string, ctx context.Context) (*http.Response
 	// Make our Request
 	response, err := client.Do(request)
 	if err != nil {
-		return response, fmt.Errorf("%s request failed: %w", string(method), err)
+		return response, fmt.Errorf("%s request to %s failed: %w", method, h.targetUrl, err)
 	}
 
 	// Check if request was successful
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return response, fmt.Errorf("%s request failed with status code %d", string(method), response.StatusCode)
+		return response, fmt.Errorf("%s request failed to %s with status %s", method, h.targetUrl, response.Status)
 	}
 
 	return response, err

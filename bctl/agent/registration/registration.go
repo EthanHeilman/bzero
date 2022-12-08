@@ -1,16 +1,19 @@
 package registration
 
 import (
-	ed "crypto/ed25519"
-	"encoding/base64"
+	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
+	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (
@@ -22,127 +25,164 @@ const (
 	getConnectionServiceEndpoint = "/api/v2/connection-service/url"
 )
 
+type RegistrationConfig interface {
+	SetRegistrationData(
+		serviceUrl string,
+		publicKey *keypair.PublicKey,
+		privateKey *keypair.PrivateKey,
+		idpProvider string,
+		idpOrgId string,
+		targetId string,
+		jwksUrlPatterns []string,
+	) error
+}
+
 type Registration struct {
-	logger     *logger.Logger
-	config     *vault.Vault
-	serviceUrl string
+	ctx    context.Context
+	logger *logger.Logger
+
+	serviceUrl      string
+	activationToken string
+	registrationKey string
+	targetId        string
+	version         string
+	environmentId   string
+	environmentName string
+	targetName      string
+	idpProvider     string
+	idpOrgId        string
+	jwksUrlPatterns []string
 }
 
-func Register(logger *logger.Logger, serviceUrl string, activationToken string, apiKey string, targetId string) error {
-	if config, err := vault.LoadVault(); err != nil {
-		return fmt.Errorf("could not load vault: %s", err)
-
-	} else {
-		// Check we have all our requried args
-		if activationToken == "" && apiKey == "" {
-			return fmt.Errorf("in order to register, we need either an api or activation token")
-		}
-
-		logger.Infof("Registering agent with %s", serviceUrl)
-
-		// Create our registration struct and actually register
-		reg := Registration{
-			logger:     logger,
-			config:     config,
-			serviceUrl: serviceUrl,
-		}
-
-		// Generate and store our public, private key pair and add to config
-		if err := reg.generateKeys(); err != nil {
-			return err
-		}
-
-		// Complete registration with the Bastion
-		if err := reg.phoneHome(activationToken, apiKey, targetId); err != nil {
-			return err
-		}
-
-		// If the registration went ok, save the config
-		if err := reg.config.Save(); err != nil {
-			return fmt.Errorf("error saving vault: %s", err)
-		}
-
-		logger.Info("Registration complete!")
-		return nil
+func New(
+	serviceUrl string,
+	activationToken string,
+	apiKey string,
+	targetId string,
+	version string,
+	environmentId string,
+	environmentName string,
+	targetName string,
+	idpProvider string,
+	idpOrgId string,
+) *Registration {
+	var jwksUrlPatterns []string
+	return &Registration{
+		serviceUrl:      serviceUrl,
+		activationToken: activationToken,
+		registrationKey: apiKey,
+		targetId:        targetId,
+		version:         version,
+		environmentId:   environmentId,
+		environmentName: environmentName,
+		targetName:      targetName,
+		idpProvider:     idpProvider,
+		idpOrgId:        idpOrgId,
+		jwksUrlPatterns: jwksUrlPatterns,
 	}
 }
 
-func (r *Registration) generateKeys() error {
-	// Generate public, secret key pair and convert to strings
-	publicKey, privateKey, err := ed.GenerateKey(nil)
+func (r *Registration) Register(ctx context.Context, logger *logger.Logger, config RegistrationConfig) error {
+	r.ctx = ctx
+
+	// Check we have all our requried args
+	if r.activationToken == "" && r.registrationKey == "" {
+		return fmt.Errorf("in order to register, we need either an api key or an activation token")
+	}
+
+	r.logger = logger
+	r.logger.Infof("Registering agent with %s", r.serviceUrl)
+
+	// Generate and store our public, private key pair and add to config
+	publicKey, privateKey, err := keypair.GenerateKeyPair()
 	if err != nil {
-		return fmt.Errorf("error generating key pair: %v", err.Error())
+		return err
 	}
-	r.config.Data.PublicKey = base64.StdEncoding.EncodeToString([]byte(publicKey))
-	r.config.Data.PrivateKey = base64.StdEncoding.EncodeToString([]byte(privateKey))
-
 	r.logger.Info("Generated cryptographic identity")
+
+	r.logger.Info("Phoning home to BastionZero...")
+	// Complete registration with the Bastion
+	if err := r.phoneHome(publicKey.String()); err != nil {
+		return err
+	}
+
+	r.logger.Info("Agent successfully Registered.  BastionZero says hi.")
+
+	// If the registration went ok, save the config
+	if err := config.SetRegistrationData(r.serviceUrl, publicKey, privateKey, r.idpProvider, r.idpOrgId, r.targetId, r.jwksUrlPatterns); err != nil {
+		return fmt.Errorf("failed to persist new registration data: %w", err)
+	}
+
+	r.logger.Info("Registration complete!")
 	return nil
 }
 
-func (r *Registration) phoneHome(activationToken string, apiKey string, targetId string) error {
+func (r *Registration) phoneHome(publickey string) error {
 	// If we don't have an activation token, use api key to get one
-	if activationToken == "" {
-		if token, err := r.getActivationToken(apiKey); err != nil {
+	if r.activationToken == "" {
+		if token, err := r.getActivationToken(r.registrationKey); err != nil {
 			return err
 		} else {
-			activationToken = token
+			r.activationToken = token
 		}
 	}
 
 	// Register with Bastion
-	r.logger.Info("Phoning home to BastionZero...")
-
-	if resp, err := r.getRegistrationResponse(activationToken, targetId); err != nil {
+	resp, err := r.getRegistrationResponse(publickey)
+	if err != nil {
 		return err
-	} else {
-		// only replace, if values were undefined by user
-		if r.config.Data.IdpProvider == "" {
-			r.config.Data.IdpProvider = resp.OrgProvider
-		}
-		if r.config.Data.IdpOrgId == "" {
-			r.config.Data.IdpOrgId = resp.OrgID
-		}
-
-		// set our remaining values
-		r.config.Data.TargetName = resp.TargetName
-
-		// If targetId is empty, that means to use the activationToken as the id of the target
-		if targetId == "" {
-			targetId = activationToken
-		}
-		r.config.Data.TargetId = targetId
-
-		r.logger.Info("Agent successfully Registered.  BastionZero says hi.")
-		return nil
 	}
+
+	// only replace, if values were undefined by user
+	if r.idpProvider == "" {
+		r.idpProvider = resp.OrgProvider
+	}
+	if r.idpOrgId == "" {
+		r.idpOrgId = resp.OrgID
+	}
+
+	// set our remaining values
+	r.targetName = resp.TargetName
+
+	r.logger.Infof("Setting up this agent to accept service accounts from the following JWKS URL patterns %v", resp.JwksUrlPatterns)
+	r.jwksUrlPatterns = resp.JwksUrlPatterns
+
+	return nil
 }
 
 func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	r.logger.Infof("Requesting activation token from Bastion")
-	tokenEndpoint, err := bzhttp.BuildEndpoint(r.serviceUrl, activationTokenEndpoint)
-	if err != nil {
-		return "", err
-	}
-
 	req := ActivationTokenRequest{
-		TargetName: r.config.Data.TargetName,
+		TargetName: r.targetName,
 	}
 
-	// Marshall the request
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
-		return "", fmt.Errorf("error marshalling activation token request: %+v", req)
+		return "", fmt.Errorf("error marshalling activation token request: %s", err)
 	}
 
-	headers := map[string]string{
-		"X-API-KEY": apiKey,
-	}
-	params := map[string]string{} // no params
+	backoff := backoff.NewExponentialBackOff()
+	backoff.MaxElapsedTime = 10 * time.Minute
+	backoff.MaxInterval = time.Minute
 
-	resp, err := bzhttp.Post(r.logger, tokenEndpoint, "application/json", reqBytes, headers, params)
+	opts := httpclient.HTTPOptions{
+		Endpoint: activationTokenEndpoint,
+		Body:     bytes.NewBuffer(reqBytes),
+		Headers: http.Header{
+			"X-API-KEY":    {apiKey},
+			"Content-Type": {"application/json"},
+		},
+		ExponentialBackoff: backoff,
+	}
+
+	client, err := httpclient.New(r.serviceUrl, opts)
 	if err != nil {
-		return "", fmt.Errorf("failed to get activation token: %s. {Endpoint: %s, Request: %+v, Response Status: %s}", err, tokenEndpoint, req, resp.Status)
+		return "", fmt.Errorf("failed to create to http client: %s", err)
+	}
+
+	resp, err := client.Post(r.ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to get activation token: %w", err)
 	}
 
 	// read our activation token request body
@@ -163,7 +203,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	}
 }
 
-func (r *Registration) getRegistrationResponse(activationToken string, targetId string) (RegistrationResponse, error) {
+func (r *Registration) getRegistrationResponse(publickey string) (RegistrationResponse, error) {
 	var regResponse RegistrationResponse
 
 	// if the target name was never previously set, then we default to hostname, but only Bastion knows
@@ -173,56 +213,65 @@ func (r *Registration) getRegistrationResponse(activationToken string, targetId 
 		return regResponse, fmt.Errorf("could not resolve hostname: %s", err)
 	}
 
-	// determine agent location
+	// determine agent's location
 	region, err := r.whereAmI()
 	if err != nil {
 		return regResponse, fmt.Errorf("failed to get agent region: %s", err)
 	}
 
 	// If we pass no targetId to the container, this means that our Id is the same as our activationToken
-	if targetId == "" {
-		targetId = activationToken
+	if r.targetId == "" {
+		r.targetId = r.activationToken
 	}
 
 	// Create our request
 	req := RegistrationRequest{
-		PublicKey:       r.config.Data.PublicKey,
-		ActivationCode:  activationToken,
-		Version:         r.config.Data.Version,
-		EnvironmentId:   r.config.Data.EnvironmentId,
-		EnvironmentName: r.config.Data.EnvironmentName,
-		TargetName:      r.config.Data.TargetName,
+		PublicKey:       publickey,
+		ActivationCode:  r.activationToken,
+		Version:         r.version,
+		EnvironmentId:   r.environmentId,
+		EnvironmentName: r.environmentName,
+		TargetName:      r.targetName,
 		TargetHostName:  hostname,
-		TargetId:        targetId,
+		TargetId:        r.targetId,
 		Region:          region,
-	}
-
-	// Build the endpoint we want to hit
-	registrationEndpoint, err := bzhttp.BuildEndpoint(r.serviceUrl, registerEndpoint)
-	if err != nil {
-		return regResponse, fmt.Errorf("error building registration url: {serviceUrl: %s, registerEndpoint: %s", r.serviceUrl, registerEndpoint)
 	}
 
 	// Marshal the request
 	reqBytes, err := json.Marshal(req)
 	if err != nil {
-		return regResponse, fmt.Errorf("error marshalling register agent message for agent: %+v", req)
+		return regResponse, fmt.Errorf("error marshalling register agent message for agent: %s", err)
 	}
 
-	// Perform the request
-	resp, err := bzhttp.Post(r.logger, registrationEndpoint, "application/json", reqBytes, map[string]string{}, map[string]string{})
+	backoff := backoff.NewExponentialBackOff()
+	backoff.MaxElapsedTime = 10 * time.Minute
+	backoff.MaxInterval = time.Minute
+
+	opts := httpclient.HTTPOptions{
+		Endpoint: registerEndpoint,
+		Body:     bytes.NewBuffer(reqBytes),
+		Headers: http.Header{
+			"Content-Type": {"application/json"},
+		},
+		ExponentialBackoff: backoff,
+	}
+
+	client, err := httpclient.New(r.serviceUrl, opts)
 	if err != nil {
-		return regResponse, fmt.Errorf("error registering agent with bastion: %s. {Endpoint: %s, Request: %+v, Response Status: %s}", err, registrationEndpoint, req, resp.Status)
+		return regResponse, fmt.Errorf("failed to create to http client: %s", err)
+	}
+
+	resp, err := client.Post(r.ctx)
+	if err != nil {
+		return regResponse, fmt.Errorf("failed to get activation token: %w", err)
 	}
 
 	if respBytes, err := io.ReadAll(resp.Body); err != nil {
 		return regResponse, fmt.Errorf("could not read http response: %s", err)
+	} else if err := json.Unmarshal(respBytes, &regResponse); err != nil {
+		return regResponse, fmt.Errorf("malformed registration response: %s", err)
 	} else {
-		if err := json.Unmarshal(respBytes, &regResponse); err != nil {
-			return regResponse, fmt.Errorf("malformed registration response: %s", err)
-		} else {
-			return regResponse, nil
-		}
+		return regResponse, nil
 	}
 }
 
@@ -233,17 +282,19 @@ func (r *Registration) whereAmI() (string, error) {
 		return "", err
 	}
 
-	whereEndpoint, err := bzhttp.BuildEndpoint(connectionServiceUrl, whereEndpoint)
+	client, err := httpclient.New(connectionServiceUrl, httpclient.HTTPOptions{
+		Endpoint: whereEndpoint,
+	})
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to create to http client: %s", err)
 	}
 
-	regionResponse, err := bzhttp.Get(r.logger, whereEndpoint, map[string]string{}, map[string]string{})
+	resp, err := client.Get(r.ctx)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to hit location endpoint: %s", err)
 	}
 
-	if regionBodyBytes, err := io.ReadAll(regionResponse.Body); err != nil {
+	if regionBodyBytes, err := io.ReadAll(resp.Body); err != nil {
 		return "", err
 	} else {
 		return string(regionBodyBytes), nil
@@ -251,22 +302,22 @@ func (r *Registration) whereAmI() (string, error) {
 }
 
 func (r *Registration) getConnectionServiceUrlFromServiceUrl() (string, error) {
-	// build our endpoint
-	endpointToHit, err := bzhttp.BuildEndpoint(r.serviceUrl, getConnectionServiceEndpoint)
+	client, err := httpclient.New(r.serviceUrl, httpclient.HTTPOptions{
+		Endpoint: getConnectionServiceEndpoint,
+	})
 	if err != nil {
-		return "", fmt.Errorf("error building endpoint for get connection service request")
+		return "", fmt.Errorf("failed to create to http client: %s", err)
 	}
 
-	// make our request
-	resp, err := bzhttp.Get(r.logger, endpointToHit, map[string]string{}, map[string]string{})
+	resp, err := client.Get(r.ctx)
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making request to connection service: %s", err)
 	}
 
 	// read the response
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading body on get connection service url requets")
+		return "", fmt.Errorf("error reading body on get connection service url requets: %s", err)
 	}
 
 	// unmarshal the response into struct

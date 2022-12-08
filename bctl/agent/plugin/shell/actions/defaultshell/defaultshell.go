@@ -19,7 +19,7 @@ import (
 // DefaultShell - Allows launching an interactive shell on the host which the agent is running on. Implements IShellAction.
 //
 //     New - Configures the shell including setting the RunAsUser but doesn't launch it
-//     Receive - receives MRZAP messages and dispatches them to the correct method based on subaction
+//     Receive - receives MrTAP messages and dispatches them to the correct method based on subaction
 //
 // User interaction works as follows:
 //     user keypresses --> DataChannel --> plugin.Receive(shell/input) --> p.action.Receive(shell/input) -> p.ShellInput(..) --> pty.stdIn
@@ -36,7 +36,7 @@ import (
 var NewPseudoTerminal = func(logger *logger.Logger, runAsUser string, command string) (IPseudoTerminal, error) {
 	// Create will create the user with the given username if it is allowed, or it will return the existing user
 	if usr, err := unixuser.LookupOrCreateFromList(runAsUser); err != nil {
-		return nil, fmt.Errorf("failed to use ssh as user %s: %s", runAsUser, err)
+		return nil, fmt.Errorf("failed to log in as user %s: %w", runAsUser, err)
 	} else {
 		return pseudoterminal.New(logger, usr, command)
 	}
@@ -97,7 +97,7 @@ func (d *DefaultShell) Kill() {
 	}
 }
 
-// Receive takes input from a client using the MRZAP datachannel and returns output via the MRZAP datachannel
+// Receive takes input from a client using the MrTAP datachannel and returns output via the MrTAP datachannel
 func (d *DefaultShell) Receive(action string, actionPayload []byte) ([]byte, error) {
 	d.logger.Infof("Plugin received Data message with %v action", action)
 

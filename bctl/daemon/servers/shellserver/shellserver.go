@@ -10,13 +10,14 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
@@ -38,7 +39,7 @@ type ShellServer struct {
 	dataChannelId string
 
 	// fields for new datachannels
-	agentPubKey string
+	agentPubKey *keypair.PublicKey
 	cert        *bzcert.DaemonBZCert
 
 	tmb tomb.Tomb
@@ -53,7 +54,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 ) (*ShellServer, error) {
 
 	server := &ShellServer{
@@ -81,16 +82,14 @@ func New(
 	// the error to the errChan. Using a tmb prevents any side-effects from
 	// server.Close from being called multiple times.
 	server.tmb.Go(func() error {
-		select {
-		case <-server.tmb.Dying():
-			server.logger.Infof("shell server tmb is dying")
-			err := server.tmb.Err()
-			if server.conn != nil {
-				server.conn.Close(err, connectionCloseTimeout)
-			}
-			server.errChan <- err
-			return err
+		<-server.tmb.Dying()
+		server.logger.Infof("shell server tmb is dying")
+		err := server.tmb.Err()
+		if server.conn != nil {
+			server.conn.Close(err, connectionCloseTimeout)
 		}
+		server.errChan <- err
+		return err
 	})
 
 	return server, nil
@@ -146,14 +145,14 @@ func (ss *ShellServer) newDataChannel(action string) error {
 		TargetUser: ss.targetUser,
 	}
 
-	ksLogger := ss.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, ss.agentPubKey, ss.cert)
+	mtLogger := ss.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, ss.agentPubKey, ss.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "shell/" + action
-	ss.dc, err = datachannel.New(subLogger, ss.dataChannelId, ss.conn, keysplitter, plugin, action, synPayload, attach, false)
+	ss.dc, err = datachannel.New(subLogger, ss.dataChannelId, ss.conn, mt, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}

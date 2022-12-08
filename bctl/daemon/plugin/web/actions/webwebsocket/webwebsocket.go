@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
@@ -70,7 +69,7 @@ func (w *WebWebsocketAction) handleWebsocketRequest(writer http.ResponseWriter, 
 	var upgrader = websocket.Upgrader{}
 	conn, err := upgrader.Upgrade(writer, request, nil)
 	if err != nil {
-		log.Print("upgrade failed: ", err)
+		w.logger.Errorf("upgrade failed: %s", err)
 		return err
 	}
 
@@ -80,20 +79,24 @@ func (w *WebWebsocketAction) handleWebsocketRequest(writer http.ResponseWriter, 
 		defer close(w.doneChan)
 
 		for {
-			incomingMessage := <-w.streamInputChan
-			// may be getting an old-fashioned or newfangled message, depending on what we asked for
-			if incomingMessage.Type == smsg.DataOut || incomingMessage.Type == smsg.Data {
-				if err := w.writeOutData(conn, incomingMessage.Content); err != nil {
-					w.logger.Error(err)
-					return err
-				}
-			}
-			if incomingMessage.Type == smsg.AgentStop || incomingMessage.Type == smsg.Stop {
-				// End the local connection
-				w.logger.Infof("Received close message from agent, closing websocket")
+			select {
+			case <-w.tmb.Dead():
 				return nil
-			} else {
-				w.logger.Errorf("unhandled stream type: %s", incomingMessage.Type)
+			case incomingMessage := <-w.streamInputChan:
+				switch incomingMessage.Type {
+				// may be getting an old-fashioned or newfangled message, depending on what we asked for
+				case smsg.DataOut, smsg.Data:
+					if err := w.writeOutData(conn, incomingMessage.Content); err != nil {
+						w.logger.Error(err)
+						return err
+					}
+				case smsg.AgentStop, smsg.Stop:
+					// End the local connection
+					w.logger.Infof("Received close message from agent, closing websocket")
+					return nil
+				default:
+					w.logger.Errorf("unhandled stream type: %s", incomingMessage.Type)
+				}
 			}
 		}
 	})

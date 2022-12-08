@@ -4,4 +4,4 @@
 cd "$(dirname "$0")"
 
 VERSION="$(cat ./VERSION)"
-sed -i.bu 's/\$AGENT_VERSION/'"$VERSION"'/g' ./bctl/agent/agent.go
+sed -i.bu 's/\$AGENT_VERSION/'"$VERSION"'/g' ./bctl/agent/main.go

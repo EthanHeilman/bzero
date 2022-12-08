@@ -23,7 +23,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
@@ -32,8 +32,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 )
 
 var (
@@ -61,9 +61,11 @@ type ControlConnection struct {
 	// A connection broker, allows us to narrowcast to one subscribed datachannel
 	broker *broker.Broker
 
-	// provider of agent identity token and message signer for authenticating messages to the backend
+	// Provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+
+	// signing key
+	privateKey *keypair.PrivateKey
 
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
@@ -72,12 +74,11 @@ type ControlConnection struct {
 func New(
 	logger *logger.Logger,
 	bastionUrl string,
-	privateKey string,
+	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
 ) (connection.Connection, error) {
 
 	conn := ControlConnection{
@@ -85,12 +86,8 @@ func New(
 		client:                client,
 		broker:                broker.New(),
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		sendQueue:             make(chan *am.AgentMessage, 50),
-	}
-
-	if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
-		return nil, err
 	}
 
 	go conn.receive()
@@ -98,6 +95,10 @@ func New(
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
 		defer conn.logger.Infof("Connection has stopped")
+
+		if err := conn.connect(bastionUrl, headers, params); err != nil {
+			return err
+		}
 
 		for {
 			select {
@@ -115,7 +116,7 @@ func New(
 				conn.ready = false
 
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(bastionUrl, headers, params, privateKey); err != nil {
+				if err := conn.connect(bastionUrl, headers, params); err != nil {
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
@@ -191,7 +192,7 @@ func (c *ControlConnection) Close(reason error, timeout time.Duration) {
 	}
 }
 
-func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values, privateKey string) error {
+func (c *ControlConnection) connect(bastionUrl string, headers http.Header, params url.Values) error {
 	// Make sure bastionUrl is valid
 	if _, err := url.ParseRequestURI(bastionUrl); err != nil {
 		return err
@@ -241,7 +242,7 @@ func (c *ControlConnection) connect(bastionUrl string, headers http.Header, para
 				continue
 			}
 
-			getControlChannelResponse, err := c.getControlChannel(connectionOrchestratorUrl, agentIdentityToken)
+			getControlChannelResponse, err := c.getControlChannel(ctx, connectionOrchestratorUrl, agentIdentityToken)
 			if err != nil {
 				c.logger.Infof("Retrying in %s because we failed to get assigned a connection node from the orchestrator: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
@@ -292,7 +293,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 		Endpoint: connectionServiceEndpoint,
 	}
 
-	client, err := httpclient.New(c.logger, serviceUrl, options)
+	client, err := httpclient.New(serviceUrl, options)
 	if err != nil {
 		return "", err
 	}
@@ -300,7 +301,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	// make our request
 	resp, err := client.Get(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url")
+		return "", fmt.Errorf("error making get request to get connection service url: %w", err)
 	}
 
 	// Decode and return response
@@ -310,7 +311,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	return responseDecoded.ConnectionServiceUrl, nil
 }
 
-func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken string) (*GetControlChannelResponse, error) {
+func (c *ControlConnection) getControlChannel(ctx context.Context, connUrl string, agentIdentityToken string) (*GetControlChannelResponse, error) {
 	// Create a new GetControlChannel message
 	getControlChannel := GetControlChannel{
 		BackendAgentMessage: am.BackendAgentMessage{
@@ -326,10 +327,7 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 	}
 
 	// Sign the message
-	sig, err := c.messageSigner.SignMessage(getControlChannelPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign getControlChannel message: %w", err)
-	}
+	sig := c.privateKey.Sign(getControlChannelPayload)
 
 	// Build the http client and request
 	options := httpclient.HTTPOptions{
@@ -343,15 +341,15 @@ func (c *ControlConnection) getControlChannel(connUrl string, agentIdentityToken
 		},
 	}
 
-	client, err := httpclient.New(c.logger, connUrl, options)
+	client, err := httpclient.New(connUrl, options)
 	if err != nil {
 		return nil, err
 	}
 
 	// Make request
-	response, err := client.Get(context.Background())
+	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for control channel. Request: %+v Error: %s. Response: %+v", getControlChannel, err, response)
+		return nil, fmt.Errorf("error making get request for control channel: %s. Request: %+v", err, getControlChannel)
 	}
 
 	// Decode and return response
@@ -380,10 +378,7 @@ func (c *ControlConnection) buildOpenControlChannelMessage(version string, conne
 	}
 
 	// Sign the message
-	sig, err := c.messageSigner.SignMessage(openControlChannelPayload)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to sign openControlChannel message %w", err)
-	}
+	sig := c.privateKey.Sign(openControlChannelPayload)
 
 	return base64.StdEncoding.EncodeToString(openControlChannelPayload), sig, nil
 }

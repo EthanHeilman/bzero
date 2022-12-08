@@ -25,14 +25,14 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )
 
@@ -77,12 +77,12 @@ type DataConnection struct {
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
 
-	// config values needed for keysplitting when creating datachannels
-	ksConfig keysplitting.IKeysplittingConfig
+	// config values needed for MrTAP when creating datachannels
+	mrtapConfig mrtap.MrtapConfig
 
 	// provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 
 	// Channel indicating when the DaemonConnected control message is sent in the websocket
 	daemonReadyChan chan bool
@@ -92,9 +92,9 @@ func New(
 	logger *logger.Logger,
 	connUrl string,
 	connectionId string,
-	ksConfig keysplitting.IKeysplittingConfig,
+	mrtapConfig mrtap.MrtapConfig,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
@@ -115,9 +115,9 @@ func New(
 		client:                client,
 		broker:                broker.New(),
 		sendQueue:             make(chan *am.AgentMessage, 50),
-		ksConfig:              ksConfig,
+		mrtapConfig:           mrtapConfig,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
+		privateKey:            privateKey,
 		daemonReadyChan:       make(chan bool),
 	}
 
@@ -149,7 +149,7 @@ func New(
 					conn.logger.Errorf("Failed to marshal close daemon websocket message %s", err)
 				} else {
 					cdwMessage := am.AgentMessage{
-						MessageType:    string(am.CloseDaemonWebsocket),
+						MessageType:    am.CloseDaemonWebsocket,
 						MessagePayload: messagePayloadBytes,
 						SchemaVersion:  am.CurrentVersion,
 						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
@@ -264,12 +264,12 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	d.logger.Infof("got new open data channel control message for id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
-	ksSubLogger := d.logger.GetComponentLogger("mrzap")
+	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
-	if keysplitter, err := keysplitting.New(ksSubLogger, d.ksConfig); err != nil {
+	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, keysplitter, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, mt, dcId, odMessage.Syn)
 		return err
 	}
 }
@@ -389,10 +389,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 			}
 
 			// Sign the message
-			sig, err := d.messageSigner.SignMessage(openAgentWebsocketPayload)
-			if err != nil {
-				return fmt.Errorf("failed to sign openAgentWebsocket message: %w", err)
-			}
+			sig := d.privateKey.Sign(openAgentWebsocketPayload)
 
 			// Add our AgentIdentityToken as Bearer Authorization header
 			headers["Authorization"] = []string{fmt.Sprintf("Bearer %s", agentIdentityToken)}
@@ -432,7 +429,7 @@ func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.CloseDaemonWebsocket:
 		return "CloseDaemonWebsocketV1", nil
-	case am.Keysplitting, am.Stream, am.Error:
+	case am.Mrtap, am.MrtapLegacy, am.Stream, am.Error:
 		return "ResponseAgentToBastionV1", nil
 	default:
 		return "", fmt.Errorf("unable to determine SignalR endpoint for message type: %s", agentMessage.MessageType)

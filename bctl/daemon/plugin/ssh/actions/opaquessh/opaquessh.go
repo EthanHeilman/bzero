@@ -107,7 +107,7 @@ func (s *OpaqueSsh) Start() error {
 				} else if err != nil {
 					if err == io.EOF {
 						s.sendOutputMessage(bzssh.SshClose, bzssh.SshCloseMessage{Reason: endedByUser})
-						return fmt.Errorf("finished reading from stdin")
+						return &bzssh.SshStdinClosedError{}
 					}
 					return fmt.Errorf("error reading from Stdin: %s", err)
 				} else if n > 0 {

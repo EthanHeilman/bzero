@@ -10,13 +10,14 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
@@ -41,7 +42,7 @@ type DbServer struct {
 	// fields for new datachannels
 	localPort   string
 	localHost   string
-	agentPubKey string
+	agentPubKey *keypair.PublicKey
 	cert        *bzcert.DaemonBZCert
 }
 
@@ -55,7 +56,7 @@ func New(logger *logger.Logger,
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 ) (*DbServer, error) {
 
 	server := &DbServer{
@@ -165,15 +166,15 @@ func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemo
 		RemoteHost: d.remoteHost,
 	}
 
-	ksLogger := d.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, d.agentPubKey, d.cert)
+	mtLogger := d.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, d.agentPubKey, d.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "db/" + action
 	attach := false
-	_, err = datachannel.New(subLogger, dcId, d.conn, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, d.conn, mt, plugin, action, synPayload, attach, true)
 	if err != nil {
 		return err
 	}

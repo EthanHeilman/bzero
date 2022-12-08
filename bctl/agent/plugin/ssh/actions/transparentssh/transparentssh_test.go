@@ -104,7 +104,7 @@ func readStdin(channel gossh.Channel, outputChan chan []byte) {
 	}
 }
 
-func TestDefaultSsh(t *testing.T) {
+func TestTransparentSsh(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Agent TransparentSsh Suite")
 }

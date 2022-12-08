@@ -1,6 +1,7 @@
 package controlchannel
 
 import (
+	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/telemetry"
 	"bastionzero.com/bctl/v1/bzerolib/telemetry/throughput"
 )
@@ -57,4 +58,19 @@ type CloseDataChannelMessage struct {
 type RestartAgentMessage struct {
 	RestartedBy string `json:"restartedBy"`
 	RestartedAt string `json:"restartedAt"`
+}
+
+type RetrieveAgentLogsMessage struct {
+	UserEmail           string `json:"userEmail"`
+	UploadLogsRequestId string `json:"uploadLogsRequestId"`
+}
+
+type ServiceAccountConfiguration struct {
+	JwksUrlPattern string `json:"jwksUrlPattern"`
+}
+
+type ConfigureServiceAccountMessage struct {
+	ServiceAccountConfiguration ServiceAccountConfiguration `json:"serviceAccountConfiguration"`
+	BZCert                      bzcrt.BZCert                `json:"bZCert"`
+	Signature                   string                      `json:"signature"`
 }

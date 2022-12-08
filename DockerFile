@@ -1,4 +1,4 @@
-ARG BASE_IMAGE="golang:1.16-alpine"
+ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
 RUN mkdir -p /bctl-agent-files && \
@@ -15,7 +15,7 @@ RUN /bctl-agent-files/update-agent-version.sh
 
 # Build our exectuable
 RUN cd /bctl-agent-files/bctl/agent && \
-    go build agent.go
+    go build -buildvcs=false
 
 # Move the executable and make it runnable, make our log dir
 RUN mv /bctl-agent-files/bctl/agent/agent /bctl-agent && \

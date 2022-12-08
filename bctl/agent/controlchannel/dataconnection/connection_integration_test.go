@@ -7,12 +7,12 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"bastionzero.com/bctl/v1/bzerolib/tests/connectionnode"
 	"bastionzero.com/bctl/v1/bzerolib/tests/server"
@@ -29,14 +29,13 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	params := url.Values{}
 	headers := http.Header{}
 
-	fakeKeyPair, _ := tests.GenerateEd25519Key()
-	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	connectionId := uuid.New().String()
 	stats := monitor.New(make(<-chan struct{}))
 
-	mockKeysplittingConfig := &keysplitting.MockKeysplittingConfig{}
-	mockKeysplittingConfig.On("GetPrivateKey").Return(fakeKeyPair.Base64EncodedPrivateKey)
-	mockKeysplittingConfig.On("GetPublicKey").Return(fakeKeyPair.Base64EncodedPublicKey)
+	mockMrtapConfig := &mrtap.MockMrtapConfig{}
+	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
+	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
@@ -46,8 +45,8 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		wsLogger := logger.GetComponentLogger("Websocket")
 		srLogger := logger.GetComponentLogger("SignalR")
 
-		client := signalr.New(srLogger, stats, websocket.New(wsLogger, stats))
-		conn, _ := New(logger, cnUrl, connectionId, mockKeysplittingConfig, mockAgentIdentityProvider, fakeMessageSigner, params, headers, client, stats)
+		client := signalr.New(srLogger, websocket.New(wsLogger))
+		conn, _ := New(logger, cnUrl, connectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, client, stats)
 
 		return conn
 	}

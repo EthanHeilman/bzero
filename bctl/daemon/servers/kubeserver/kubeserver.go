@@ -12,13 +12,14 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzkube "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
@@ -57,7 +58,7 @@ type KubeServer struct {
 	// fields for new datachannels
 	targetUser   string
 	targetGroups []string
-	agentPubKey  string
+	agentPubKey  *keypair.PublicKey
 	localPort    string
 	localHost    string
 }
@@ -76,7 +77,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 ) (*KubeServer, error) {
 
 	server := &KubeServer{
@@ -128,11 +129,11 @@ func (k *KubeServer) Start() error {
 			k.statusCallback(w, r)
 		})
 
-		k.logger.Debugf("listening for connections at %s:%s", k.localHost, k.localHost)
+		k.logger.Debugf("listening for connections at %s:%s", k.localHost, k.localPort)
 		if err := http.ListenAndServeTLS(k.localHost+":"+k.localPort, k.certPath, k.keyPath, nil); err != nil {
 			k.logger.Error(err)
 		}
-		k.logger.Debugf("successfully began listening")
+		k.logger.Debugf("finished listening")
 	}()
 
 	return nil
@@ -183,15 +184,15 @@ func (k *KubeServer) newDataChannel(dcId string, action string, plugin *kube.Kub
 		TargetGroups: k.targetGroups,
 	}
 
-	ksLogger := k.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, k.agentPubKey, k.cert)
+	mtLogger := k.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, k.agentPubKey, k.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "kube/" + action
 	attach := false
-	_, err = datachannel.New(subLogger, dcId, k.conn, keysplitter, plugin, action, synPayload, attach, true)
+	_, err = datachannel.New(subLogger, dcId, k.conn, mt, plugin, action, synPayload, attach, true)
 
 	if err != nil {
 		return err

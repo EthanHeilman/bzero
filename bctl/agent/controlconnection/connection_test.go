@@ -14,8 +14,8 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"bastionzero.com/bctl/v1/bzerolib/tests"
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -65,7 +65,7 @@ func mockGetConnectionServiceUrlHandler(connectionOrchestratorUrl string) http.H
 	}
 }
 
-var _ = Describe("Agent Control Channel Connection", Ordered, func() {
+var _ = Describe("Agent Control Channel Connection", func() {
 	var conn connection.Connection
 	var mockClient *messenger.MockMessenger
 	var mockBastion *tests.MockServer
@@ -74,9 +74,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 	var inboundChan chan *signalr.SignalRMessage
 	var err error
 
-	fakeKeyPair, _ := tests.GenerateEd25519Key()
-	fakePrivateKey := fakeKeyPair.Base64EncodedPrivateKey
-	fakeMessageSigner, _ := messagesigner.New(fakeKeyPair.PrivateKey)
+	_, privateKey, _ := keypair.GenerateKeyPair()
 
 	logger := logger.MockLogger(GinkgoWriter)
 	params := url.Values{
@@ -114,11 +112,11 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, err = New(logger, mockBastion.Url, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, err = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 			})
 
 			It("instantiates without error", func() {
-				Expect(err).ToNot(HaveOccurred(), "connection did not fail to instantiate")
+				Expect(err).ToNot(HaveOccurred(), "connection failed to instantiate")
 			})
 
 			It("connects successfully", func() {
@@ -128,15 +126,25 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 		})
 
 		When("connecting with an invalid connection url", func() {
+			var err error
 			malformedUrl := "this is a malformed url"
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+			})
+
+			It("instantiates without error", func() {
+				Expect(err).ToNot(HaveOccurred(), "connection failed to instantiate")
 			})
 
 			It("fails to establish a connection", func() {
-				Expect(err).To(HaveOccurred(), "connection successfully instantiated")
+				for i := 1; i < 3; i++ {
+					if conn.Ready() {
+						Expect(conn.Ready()).To(Equal(false))
+					}
+					time.Sleep(time.Second)
+				}
 			})
 		})
 	})
@@ -145,13 +153,13 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 		When("a datachannel sends messages to the connection", func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 				conn.Send(testAgentMessage)
 			})
 
@@ -169,7 +177,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 
 			testAgentMessage := agentmessage.AgentMessage{
 				ChannelId:   testId,
-				MessageType: "keysplitting",
+				MessageType: "mrtap",
 			}
 
 			testAgentMessageBytes, _ := json.Marshal(testAgentMessage)
@@ -184,7 +192,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -207,7 +215,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 
 				doneChan <- struct{}{}
 			})
@@ -223,7 +231,7 @@ var _ = Describe("Agent Control Channel Connection", Ordered, func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, fakePrivateKey, params, headers, mockClient, mockAgentIdentityProvider, fakeMessageSigner)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

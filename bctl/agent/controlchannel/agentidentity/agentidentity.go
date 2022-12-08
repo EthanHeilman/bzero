@@ -11,8 +11,8 @@ import (
 
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
 	"github.com/coreos/go-oidc/v3/oidc"
 )
 
@@ -22,7 +22,7 @@ const (
 
 type IAgentIdentityTokenStore interface {
 	GetAgentIdentityToken() string
-	SaveAgentIdentityToken(string) error
+	SetAgentIdentityToken(string) error
 }
 
 type IAgentIdentityProvider interface {
@@ -35,7 +35,7 @@ type AgentIdentityProvider struct {
 	targetId              string
 	store                 IAgentIdentityTokenStore
 	agentIdentityProvider *oidc.Provider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 }
 
 func New(
@@ -43,14 +43,14 @@ func New(
 	serviceUrl string,
 	targetId string,
 	agentIdentityTokenStore IAgentIdentityTokenStore,
-	messageSigner messagesigner.IMessageSigner,
+	privateKey *keypair.PrivateKey,
 ) *AgentIdentityProvider {
 	return &AgentIdentityProvider{
-		logger:        logger,
-		serviceUrl:    serviceUrl,
-		targetId:      targetId,
-		store:         agentIdentityTokenStore,
-		messageSigner: messageSigner,
+		logger:     logger,
+		serviceUrl: serviceUrl,
+		targetId:   targetId,
+		store:      agentIdentityTokenStore,
+		privateKey: privateKey,
 	}
 }
 
@@ -75,11 +75,10 @@ func (a *AgentIdentityProvider) refreshToken(ctx context.Context) (string, error
 	if res, err := a.getTokenFromBastion(ctx); err != nil {
 		return "", err
 	} else {
-		if err = a.store.SaveAgentIdentityToken(res.Token); err != nil {
-			return "", err
-		} else {
-			return res.Token, nil
+		if err = a.store.SetAgentIdentityToken(res.Token); err != nil {
+			a.logger.Errorf("failed to save agent identity token: %s", err)
 		}
+		return res.Token, nil
 	}
 }
 
@@ -131,10 +130,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	}
 
 	// Sign the message
-	sig, err := a.messageSigner.SignMessage(getAgentIdentityTokenPayload)
-	if err != nil {
-		return nil, fmt.Errorf("failed to sign getAgentIdentityToken message %w", err)
-	}
+	sig := a.privateKey.Sign(getAgentIdentityTokenPayload)
 
 	// Build the http client and request
 	options := httpclient.HTTPOptions{
@@ -145,7 +141,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 		},
 	}
 
-	client, err := httpclient.New(a.logger, a.serviceUrl, options)
+	client, err := httpclient.New(a.serviceUrl, options)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +149,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	// Send the request
 	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for agent identity token. Request: %+v Error: %s", getAgentIdentityToken, err)
+		return nil, fmt.Errorf("error making get request for agent identity token: %s. Request: %+v", err, getAgentIdentityToken)
 	}
 
 	// Decode and return response

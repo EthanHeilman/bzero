@@ -4,23 +4,26 @@ Bastion Zero has.
 
 It does 4 main things:
 1. Extends the golang user package but ensuring that uid and gid(s) are all ints
-	- Lookup(username string) (*UnixUser, error)
-	- Current() (*UnixUser, error)
-	- (u *UnixUser) GroupIds() ([]int, error)
+  - Lookup(username string) (*UnixUser, error)
+  - Current() (*UnixUser, error)
+  - (u *UnixUser) GroupIds() ([]int, error)
+
 2. Allows permission checking against file paths. This group of functions returns whether permission is granted
 and, if not, why.
-    - (u *UnixUser) CanRead(path string) (bool, error)
-	- (u *UnixUser) CanWrite(path string) (bool, error)
-	- (u *UnixUser) CanExecute(path string) (bool, error)
-	- (u *UnixUser) CanOpen(path string) (bool, error)
-	- (u *UnixUser) CanCreate(path string) (bool, error)
+  - (u *UnixUser) CanRead(path string) (bool, error)
+  - (u *UnixUser) CanWrite(path string) (bool, error)
+  - (u *UnixUser) CanExecute(path string) (bool, error)
+  - (u *UnixUser) CanOpen(path string) (bool, error)
+  - (u *UnixUser) CanCreate(path string) (bool, error)
+
 3. Allows for file operations as a user. These functions will check permissions before acting and if there was
 any creation, they will set the owner of the created file to the user
-    - (u *UnixUser) Mkdir(path string, perm fs.FileMode) error
-	- (u *UnixUser) OpenFile(path string, flag int, perm fs.FileMode) (*os.File, error)
+  - (u *UnixUser) Mkdir(path string, perm fs.FileMode) error
+  - (u *UnixUser) OpenFile(path string, flag int, perm fs.FileMode) (*os.File, error)
+
 4. Allows for the creation of new users, even checking against current user's permissions to determine whether
 there is an issue. This function uses the useradd command and allows for the adding of users to a sudoers file.
-    - Create(username string, options UserAddOptions) (*UnixUser, error)
+  - Create(username string, options UserAddOptions) (*UnixUser, error)
 
 Any permissions errors are returned as type PermissionDeniedError
 */
@@ -42,13 +45,6 @@ import (
 const (
 	passwdFile = "/etc/passwd"
 )
-
-// this is an error returned when a user does not have the correct permissions
-type PermissionDeniedError string
-
-func (e PermissionDeniedError) Error() string {
-	return "permission denied: " + string(e)
-}
 
 type UnixUser struct {
 	Uid      uint32

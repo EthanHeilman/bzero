@@ -12,17 +12,18 @@ import (
 	"sync"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/monitor"
-	"bastionzero.com/bctl/v1/bctl/agent/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/agent/vault"
+	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/messagesigner"
+	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
 	"bastionzero.com/bctl/v1/bzerolib/telemetry"
 
 	"gopkg.in/tomb.v2"
@@ -35,8 +36,18 @@ const (
 	HeartRate    = 1 * time.Minute
 	closeTimeout = 10 * time.Second
 
-	ManualRestartMsg = "received manual restart from user"
+	ManualRestartMsg = "received manual restart from subject"
 )
+
+type AgentDatachannelConnection interface {
+	connection.Connection
+	NumDataChannels() int
+}
+
+type ControlChannelConfig interface {
+	mrtap.MrtapConfig
+	SetServiceAccountJwksUrl(jwksUrlPattern string) error
+}
 
 type ControlChannel struct {
 	conn   connection.Connection
@@ -44,11 +55,10 @@ type ControlChannel struct {
 	tmb    tomb.Tomb
 	id     string
 
-	stats *monitor.StatsMonitor
-
-	ksConfig              keysplitting.IKeysplittingConfig
+	stats                 *monitor.StatsMonitor
+	cConfig               ControlChannelConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	messageSigner         messagesigner.IMessageSigner
+	privateKey            *keypair.PrivateKey
 
 	// variables for opening connections
 	serviceUrl string
@@ -63,6 +73,7 @@ type ControlChannel struct {
 	runtimeErrChan chan error
 
 	targetType string
+	targetId   string
 
 	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
 	connections     map[string]connection.Connection
@@ -85,9 +96,10 @@ func Start(logger *logger.Logger,
 	conn connection.Connection, // control channel connection
 	serviceUrl string,
 	targetType string,
+	targetId string,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	messageSigner messagesigner.IMessageSigner,
-	ksConfig keysplitting.IKeysplittingConfig,
+	privateKey *keypair.PrivateKey,
+	cConfig ControlChannelConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -96,9 +108,10 @@ func Start(logger *logger.Logger,
 		id:                    id,
 		serviceUrl:            serviceUrl,
 		targetType:            targetType,
+		targetId:              targetId,
 		agentIdentityProvider: agentIdentityProvider,
-		messageSigner:         messageSigner,
-		ksConfig:              ksConfig,
+		privateKey:            privateKey,
+		cConfig:               cConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]connection.Connection),
 		agentPongChan:         make(chan bool),
@@ -142,6 +155,17 @@ func Start(logger *logger.Logger,
 			}
 		})
 
+		// Make a context and tie it in with our tomb to use for processing control messages
+		ctx, cancel := context.WithCancel(context.Background())
+
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-control.tmb.Dying():
+				cancel()
+			}
+		}()
+
 		for {
 			select {
 			case <-control.tmb.Dying():
@@ -157,7 +181,7 @@ func Start(logger *logger.Logger,
 				// Process each message in its own thread
 				// TODO: (CWC-2038) it would be safer to put a limit on how many threads can be created this way
 				go func() {
-					if err := control.processInput(agentMessage); err != nil {
+					if err := control.processInput(agentMessage, ctx); err != nil {
 						logger.Error(err)
 						control.runtimeErrChan <- err
 					}
@@ -239,7 +263,7 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 	} else {
 		agentMessage := am.AgentMessage{
 			ChannelId:      c.id,
-			MessageType:    string(messageType),
+			MessageType:    messageType,
 			SchemaVersion:  am.CurrentVersion,
 			MessagePayload: messageBytes,
 		}
@@ -263,9 +287,9 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 		subLogger,
 		message.ConnectionServiceUrl,
 		message.ConnectionId,
-		c.ksConfig,
+		c.cConfig,
 		c.agentIdentityProvider,
-		c.messageSigner,
+		c.privateKey,
 		params,
 		headers,
 		client,
@@ -288,7 +312,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 }
 
 // This is our main process function where incoming messages from the connection will be processed
-func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
+func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.Context) error {
 	c.logger.Debugf("control channel received %s message", am.MessageType(agentMessage.MessageType))
 
 	switch am.MessageType(agentMessage.MessageType) {
@@ -302,6 +326,26 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 			restartRequest = RestartAgentMessage{}
 		}
 		c.Close(fmt.Errorf("%s: %+v", ManualRestartMsg, restartRequest))
+	case am.RetrieveLogs:
+		var retrieveLogsRequest RetrieveAgentLogsMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &retrieveLogsRequest); err != nil {
+			return fmt.Errorf("malformed retrieve agent logs request: %s", err)
+		} else {
+			c.logger.Infof("Sending %s logs from agent %s", c.targetType, c.targetId)
+			if err := agentreport.ReportLogs(c.targetType, c.agentIdentityProvider, ctx, c.serviceUrl, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
+				return fmt.Errorf("error sending agent logs to Bastion: %s", err)
+			} else {
+				c.logger.Infof("Successfully sent agent logs to Bastion")
+			}
+		}
+	case am.Configure:
+		var configureRequest ConfigureServiceAccountMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &configureRequest); err != nil {
+			return fmt.Errorf("malformed configure agent request: %s", err)
+		}
+		if err := c.configureServiceAccount(configureRequest); err != nil {
+			return fmt.Errorf("error while configuring agent with jwksUrlPattern %s : %s", configureRequest.ServiceAccountConfiguration.JwksUrlPattern, err)
+		}
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {
@@ -326,6 +370,39 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage) error {
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}
 
+	return nil
+}
+
+func (c *ControlChannel) configureServiceAccount(configureRequest ConfigureServiceAccountMessage) (err error) {
+	bzcert := configureRequest.BZCert
+
+	// Verify the BZCert
+	if err := bzcert.Verify(c.cConfig.GetIdpProvider(), c.cConfig.GetIdpOrgId(), c.cConfig.GetServiceAccountJwksUrls()); err != nil {
+		return fmt.Errorf("failed to verify configure's BZCert: %w", err)
+	}
+
+	// Verify the signature
+	var pubkey *keypair.PublicKey
+	if pubkey, err = keypair.PublicKeyFromString(bzcert.ClientPublicKey); err != nil {
+		return fmt.Errorf("malformed public key: %s", bzcert.ClientPublicKey)
+	}
+
+	// Verify the signature
+	var hashBits []byte
+	var ok bool
+	if hashBits, ok = util.HashPayload(configureRequest.ServiceAccountConfiguration); !ok {
+		return fmt.Errorf("failed to hash the mrtap payload")
+	}
+	if ok := pubkey.Verify(hashBits, configureRequest.Signature); !ok {
+		return fmt.Errorf("invalid signature for payload: %+v", configureRequest.ServiceAccountConfiguration)
+	}
+
+	// Configure the agent
+	jwksUrlPattern := configureRequest.ServiceAccountConfiguration.JwksUrlPattern
+	if err := c.cConfig.SetServiceAccountJwksUrl(jwksUrlPattern); err != nil {
+		return fmt.Errorf("error adding new jwksUrlPattern to the config: %s", err)
+	}
+	c.logger.Infof("Successfully configured this agent to allow access to service accounts originating from JWKS URLs following the %s pattern", jwksUrlPattern)
 	return nil
 }
 
@@ -360,8 +437,9 @@ func (c *ControlChannel) reportHealth() error {
 		return err
 	}
 
+	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
-	if vault.InCluster() {
+	if c.targetType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}

@@ -52,12 +52,12 @@ func New(logger *logger.Logger, stats websocketStats) transporter.Transporter {
 
 func (w *Websocket) Close(reason error) {
 	if w.tmb.Alive() {
+		w.tmb.Kill(reason)
 		w.logger.Infof("Websocket connection closing because: %s", reason)
 
 		// close the websocket connection
 		w.client.Close()
 
-		w.tmb.Kill(reason)
 		w.tmb.Wait()
 	} else {
 		w.logger.Infof("Close was called while in a dying state")

@@ -5,6 +5,5 @@ then
 elif [ $(cat /proc/1/comm) = systemd ]
 then
     systemctl enable $BZERO_PKG_NAME
-    systemctl start $BZERO_PKG_NAME
-    systemctl daemon-reload
+    systemctl restart $BZERO_PKG_NAME
 fi

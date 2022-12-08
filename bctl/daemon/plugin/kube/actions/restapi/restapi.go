@@ -56,7 +56,7 @@ func (r *RestApiAction) Err() error {
 	return r.err
 }
 
-func (r *RestApiAction) ReceiveKeysplitting(actionPayload []byte) {
+func (r *RestApiAction) ReceiveMrtap(actionPayload []byte) {
 	r.inputChan <- actionPayload
 }
 

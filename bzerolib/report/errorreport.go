@@ -1,10 +1,13 @@
 package report
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 )
 
 const (
@@ -14,33 +17,35 @@ const (
 type ErrorReport struct {
 	Reporter  string      `json:"reporter"`
 	Timestamp string      `json:"timestamp"`
-	State     interface{} `json:"state"`
 	Message   string      `json:"message"`
+	State     interface{} `json:"state"`
 	Logs      string      `json:"logs"`
 }
 
-func ReportError(logger *logger.Logger, serviceUrl string, errReport ErrorReport) {
-	// make our state a string
-	stateBytes, err := json.Marshal(errReport.State)
-	if err != nil {
-		logger.Errorf("error marshalling error report: %+v", errReport)
-		return
-	}
-	errReport.State = string(stateBytes)
-
-	endpoint, err := bzhttp.BuildEndpoint(serviceUrl, errorEndpoint)
-	if err != nil {
-		logger.Errorf("failed to build error report endpoint: %+v", err)
-	}
+func ReportError(ctx context.Context, serviceUrl string, errReport ErrorReport) error {
+	errReport.State = fmt.Sprintf("%+v", errReport.State)
 
 	// Marshall the request
 	errBytes, err := json.Marshal(errReport)
 	if err != nil {
-		logger.Errorf("error marshalling error report: %+v", errReport)
-		return
+		return fmt.Errorf("error marshalling error report: %+v", errReport)
+	}
+	body := bytes.NewBuffer(errBytes)
+
+	client, err := httpclient.New(serviceUrl, httpclient.HTTPOptions{
+		Endpoint: errorEndpoint,
+		Body:     body,
+		Headers: http.Header{
+			"Content-Type": {"application/json"},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create our http client: %s", err)
 	}
 
-	if resp, err := bzhttp.Post(logger, endpoint, "application/json", errBytes, map[string]string{}, map[string]string{}); err != nil {
-		logger.Errorf("failed to report error: %s, Endpoint: %s, Request: %+v, Response Status: %s", err, endpoint, errReport, resp.Status)
+	if _, err := client.Post(ctx); err != nil {
+		return fmt.Errorf("failed to report error: %s, Request: %+v", err, errReport)
 	}
+
+	return nil
 }

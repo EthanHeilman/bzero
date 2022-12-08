@@ -12,6 +12,7 @@ env:
   parameter-store:
     GITHUB_KEY_PATH: "/github/sshkey/path"
     SSH_KEY_PATH: "/webshell/sshkey/path"
+    GO_VERSION: "/development/bzero/go-version"
   secrets-manager:
     GITHUB_API_KEY: arn:aws:secretsmanager:us-east-1:238681891460:secret:development/infra/roleandfrank-github-api-key-1Cok4j:Token
 phases:
@@ -25,9 +26,9 @@ phases:
       - mkdir $HOME
       - touch $HOME/.bash_profile
       - chown -R codebuild-user $HOME
-      # We need go 1.18 and this isnt in yum
-      - wget https://dl.google.com/go/go1.18.5.linux-amd64.tar.gz -q
-      - tar -C /usr/local -xzf go1.18.5.linux-amd64.tar.gz
+      # We need go version and this isnt in yum
+      - wget https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz -q
+      - tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz
       - echo 'export PATH=/usr/local/go/bin:$PATH' >>~/.bash_profile
       - export PATH=/usr/local/go/bin:$PATH
       # Install gocov-xml to push our coverage reports

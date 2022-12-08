@@ -32,7 +32,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"github.com/cenkalti/backoff"
+	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )
 
@@ -140,7 +140,7 @@ func New(
 					conn.logger.Errorf("Failed to marshal close agent websocket message %s", err)
 				} else {
 					cawMessage := am.AgentMessage{
-						MessageType:    string(am.CloseAgentWebsocket),
+						MessageType:    am.CloseAgentWebsocket,
 						MessagePayload: messagePayloadBytes,
 						SchemaVersion:  am.CurrentVersion,
 						ChannelId:      "-1", // Channel Id does not since this applies to all datachannels
@@ -353,7 +353,8 @@ func (d *DataConnection) waitForAgentReady() {
 // daemon's data channel function to select signalR hub method based on agent message type
 func targetSelectHandler(agentMessage am.AgentMessage) (string, error) {
 	switch am.MessageType(agentMessage.MessageType) {
-	case am.Keysplitting:
+	// TODO: CWC-2183; we can remove support for legacy messages in future
+	case am.Mrtap, am.MrtapLegacy:
 		return "RequestDaemonToBastionV1", nil
 	case am.OpenDataChannel:
 		return "OpenDataChannelDaemonToBastionV1", nil

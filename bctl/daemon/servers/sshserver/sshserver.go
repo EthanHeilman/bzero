@@ -9,14 +9,15 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting"
-	"bastionzero.com/bctl/v1/bctl/daemon/keysplitting/bzcert"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
+	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh"
 	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
 	"bastionzero.com/bctl/v1/bzerolib/bzio"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
@@ -45,7 +46,7 @@ type SshServer struct {
 	hostNames      []string
 
 	// fields for new datachannels
-	agentPubKey string
+	agentPubKey *keypair.PublicKey
 	cert        *bzcert.DaemonBZCert
 
 	tmb tomb.Tomb
@@ -60,7 +61,7 @@ func New(
 	connUrl string,
 	params url.Values,
 	headers http.Header,
-	agentPubKey string,
+	agentPubKey *keypair.PublicKey,
 	identityFile string,
 	knownHostsFile string,
 	hostNames []string,
@@ -101,15 +102,13 @@ func New(
 	// the error to the errChan. Using a tmb prevents any side-effects from
 	// server.Close from being called multiple times.
 	server.tmb.Go(func() error {
-		select {
-		case <-server.tmb.Dying():
-			err := server.tmb.Err()
-			if server.conn != nil {
-				server.conn.Close(err, connectionCloseTimeout)
-			}
-			server.errChan <- err
-			return err
+		<-server.tmb.Dying()
+		err := server.tmb.Err()
+		if server.conn != nil {
+			server.conn.Close(err, connectionCloseTimeout)
 		}
+		server.errChan <- err
+		return err
 	})
 
 	return server, nil
@@ -149,6 +148,11 @@ func (s *SshServer) newDataChannel(action string) error {
 	fileIo := bzio.OsFileIo{}
 
 	idFile := bzssh.NewIdentityFile(s.identityFile, fileIo)
+
+	// clear knownhosts file so that it only contains the key(s) from this session
+	if err := fileIo.Truncate(s.knownHostsFile, 0); err != nil {
+		s.logger.Errorf("failed to truncate known hosts file: %s", err)
+	}
 	khFile := bzssh.NewKnownHosts(s.knownHostsFile, s.hostNames, fileIo)
 
 	pluginLogger := subLogger.GetPluginLogger(bzplugin.Ssh)
@@ -163,14 +167,14 @@ func (s *SshServer) newDataChannel(action string) error {
 		RemotePort: s.remotePort,
 	}
 
-	ksLogger := s.logger.GetComponentLogger("mrzap")
-	keysplitter, err := keysplitting.New(ksLogger, s.agentPubKey, s.cert)
+	mtLogger := s.logger.GetComponentLogger("mrtap")
+	mt, err := mrtap.New(mtLogger, s.agentPubKey, s.cert)
 	if err != nil {
 		return err
 	}
 
 	action = "ssh/" + action
-	s.dc, err = datachannel.New(subLogger, dcId, s.conn, keysplitter, plugin, action, synPayload, attach, false)
+	s.dc, err = datachannel.New(subLogger, dcId, s.conn, mt, plugin, action, synPayload, attach, false)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -128,12 +129,14 @@ func (e *ExecAction) Receive(action string, actionPayload []byte) ([]byte, error
 	case bzexec.ExecStop:
 		var execStopAction bzexec.KubeExecStopActionPayload
 		if err := json.Unmarshal(actionPayload, &execStopAction); err != nil {
-			rerr := fmt.Errorf("error unmarshaling stop message: %s", err)
-			e.logger.Error(rerr)
-			return []byte{}, rerr
+			e.logger.Errorf("error unmarshaling stop message: %s", err)
 		}
 
-		e.stdinReader.Close()
+		// close the execStdinChannel which will end the the stream after it
+		// finishes reading all data in the execStdinChannel. This is in effect a "soft" close
+		// in contrast to the e.stdinReader.Close() above, which exits without waiting
+		// for all input to be processed
+		close(e.execStdinChannel)
 		return []byte{}, nil
 	default:
 		rerr := fmt.Errorf("unhandled exec action: %v", action)
@@ -143,6 +146,7 @@ func (e *ExecAction) Receive(action string, actionPayload []byte) ([]byte, error
 }
 
 func (e *ExecAction) startExec(startExecRequest bzexec.KubeExecStartActionPayload) ([]byte, error) {
+	e.logger.Infof("executing kube exec cmd: %s. command: %s. isTty: %t. isStdIn: %t", startExecRequest.CommandBeingRun, startExecRequest.Command, startExecRequest.IsTty, startExecRequest.IsStdIn)
 	// keep track of who we're talking to
 	e.requestId = startExecRequest.RequestId
 	e.logger.Infof("Setting request id: %s", e.requestId)
@@ -224,14 +228,23 @@ func (e *ExecAction) startExec(startExecRequest bzexec.KubeExecStartActionPayloa
 		if err != nil {
 			rerr := fmt.Errorf("error in SPDY stream: %s", err)
 			e.logger.Error(rerr)
-
-			// Also write the error to our stdoutWriter so the user can see it
-			stdoutWriter.Write([]byte(fmt.Sprint(rerr)))
+			e.sendStreamMessage(0, smsg.Error, false, []byte(rerr.Error()))
 		}
 
-		// Now close the stream
-		stdoutWriter.Write([]byte(bzexec.EscChar))
+		// Now close the stream by sending an empty stdout stream message with more=false
+		e.sendStreamMessage(stdoutWriter.SequenceNumber, smsg.StdOut, false, []byte{})
 	}()
 
 	return []byte{}, nil
+}
+
+func (e *ExecAction) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType, more bool, contentBytes []byte) {
+	e.streamOutputChan <- smsg.StreamMessage{
+		SchemaVersion:  e.streamMessageVersion,
+		SequenceNumber: sequenceNumber,
+		Action:         string(kube.Exec),
+		Type:           streamType,
+		More:           more,
+		Content:        base64.StdEncoding.EncodeToString(contentBytes),
+	}
 }
