@@ -132,6 +132,8 @@ func parseFlags() {
 	// Parse any flag
 	flag.Parse()
 
+	attemptedRegistration = activationToken != "" || registrationKey != ""
+
 	// The environment will overwrite any flags passed
 	if getAgentType() == Kubernetes {
 		serviceUrl = os.Getenv("SERVICE_URL")
@@ -144,8 +146,6 @@ func parseFlags() {
 		namespace = os.Getenv("NAMESPACE")
 		registrationKey = os.Getenv("API_KEY")
 	}
-
-	attemptedRegistration = activationToken != "" || registrationKey != ""
 }
 
 func NewSystemdAgent(
