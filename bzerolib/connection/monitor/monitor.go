@@ -21,12 +21,12 @@ type StatsMonitor struct {
 
 func New(done <-chan struct{}) *StatsMonitor {
 	return &StatsMonitor{
-		InboundAgentMessage:  throughput.New("AgentMessages", done),
-		OutboundAgentMessage: throughput.New("AgentMessages", done),
-		InboundSignalR:       throughput.New("SignalR Messages", done),
-		OutboundSignalR:      throughput.New("SignalR Messages", done),
-		InboundBytes:         throughput.New("bytes", done),
-		OutboundBytes:        throughput.New("bytes", done),
+		InboundAgentMessage:  throughput.New(done),
+		OutboundAgentMessage: throughput.New(done),
+		InboundSignalR:       throughput.New(done),
+		OutboundSignalR:      throughput.New(done),
+		InboundBytes:         throughput.New(done),
+		OutboundBytes:        throughput.New(done),
 	}
 }
 

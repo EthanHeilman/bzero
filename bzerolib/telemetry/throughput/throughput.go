@@ -7,7 +7,6 @@ import (
 const interval time.Duration = time.Second
 
 type Throughput struct {
-	unit      string
 	count     int
 	workQueue chan int
 	resetChan chan bool
@@ -18,9 +17,8 @@ type Throughput struct {
 	Data  []int     `json:"data"`
 }
 
-func New(unit string, done <-chan struct{}) *Throughput {
+func New(done <-chan struct{}) *Throughput {
 	t := Throughput{
-		unit:      unit,
 		workQueue: make(chan int, 15),
 		resetChan: make(chan bool),
 		Start:     time.Now(),
