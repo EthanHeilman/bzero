@@ -47,7 +47,7 @@ type RetrieveAgentLogsMessage struct {
 }
 
 type KeyShardMessage struct {
-	TargetIds []string      `json:"virtualTargetId"`
+	TargetIds []string      `json:"virtualTargetIds"`
 	KeyShard  data.KeyEntry `json:"keyShard"`
 }
 
