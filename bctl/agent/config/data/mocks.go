@@ -5,7 +5,6 @@ import (
 
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 
-	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -59,10 +58,10 @@ func NewMockDataV1() DataV1 {
 
 func (mockV1 *DataV1) AssertMatchesV2(v2Data DataV2) {
 	// Since shutdown state has changed, we make sure that it's empty here
-	By("making sure the shutdown state is empty")
+	// making sure the shutdown state is empty
 	Expect(v2Data.ShutdownState).To(Equal(map[string]string{}))
 
-	By("matching all remaining fields are parsed verbatim")
+	// matching all remaining fields are parsed verbatim
 	Expect(v2Data.Version).To(Equal(mockV1.Version), fmt.Sprintf(`"%s" != "%s"`, v2Data.Version, mockV1.Version))
 	Expect(v2Data.PublicKey.String()).To(Equal(mockV1.PublicKey), fmt.Sprintf(`"%s" != "%s"`, v2Data.PublicKey.String(), mockV1.PublicKey))
 	Expect(v2Data.PrivateKey.String()).To(Equal(mockV1.PrivateKey), fmt.Sprintf(`"%s" != "%s"`, v2Data.PrivateKey.String(), mockV1.PrivateKey))
@@ -92,7 +91,7 @@ func NewMockDataV2() DataV2 {
 }
 
 func (mockV2 *DataV2) AssertMatchesV2(v2Data DataV2) {
-	By("making sure all fields are parsed verbatim")
+	// making sure all fields are parsed verbatim
 	Expect(v2Data.Version).To(Equal(mockV2.Version), fmt.Sprintf(`"%s" != "%s"`, v2Data.Version, mockV2.Version))
 	Expect(v2Data.PublicKey.String()).To(Equal(mockV2.PublicKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PublicKey.String(), mockV2.PublicKey.String()))
 	Expect(v2Data.PrivateKey.String()).To(Equal(mockV2.PrivateKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PrivateKey.String(), mockV2.PrivateKey.String()))
