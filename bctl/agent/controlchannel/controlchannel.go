@@ -50,8 +50,8 @@ type ControlChannelConfig interface {
 }
 
 type KeyShardConfig interface {
-	AddKey(newEntry data.KeyEntry) error
-	LastKey(targetId string) (data.SplitPrivateKey, error)
+	AddKey(newEntry data.MappedKeyEntry) error
+	LastKey(targetId string) (data.KeyEntry, error)
 }
 
 type ControlChannel struct {
@@ -367,8 +367,8 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 
 		c.logger.Infof("got: %+v", ksRequest)
 
-		if err := c.keyShardConfig.AddKey(data.KeyEntry{
-			Key:       ksRequest.KeyShard,
+		if err := c.keyShardConfig.AddKey(data.MappedKeyEntry{
+			KeyData:   ksRequest.KeyShard,
 			TargetIds: ksRequest.TargetIds,
 		}); err != nil {
 			return fmt.Errorf("failed to add key shard to config: %s", err)

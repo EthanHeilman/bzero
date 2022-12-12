@@ -2,8 +2,6 @@ package config
 
 import (
 	"fmt"
-
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 )
 
 type configFetchError string
@@ -19,10 +17,10 @@ func (e configSaveError) Error() string {
 }
 
 // KeyError means the config is valid but there is no entry with the given key -- key is hashed to prevent it being logged
-type KeyError struct{ Key data.SplitPrivateKey }
+type KeyError struct{}
 
 func (e *KeyError) Error() string {
-	return fmt.Sprintf("no entry with modulus %s", e.Key.PublicKey.N)
+	return "key not found"
 }
 func (e *KeyError) Unwrap() error { return nil }
 

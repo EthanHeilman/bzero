@@ -1,19 +1,13 @@
 package data
 
-type KeyShardData []KeyEntry
+type KeyShardData []MappedKeyEntry
 
-type PublicKey struct {
-	N []byte `json:"n"`
-	E int    `json:"e"`
-}
-
-type SplitPrivateKey struct {
-	PublicKey PublicKey `json:"associatedPublicKey"`
-	D         []byte    `json:"d"`
-	E         []byte    `json:"e"`
+type MappedKeyEntry struct {
+	KeyData   KeyEntry `json:"keyData"`
+	TargetIds []string `json:"targetIds"`
 }
 
 type KeyEntry struct {
-	Key       SplitPrivateKey `json:"key"`
-	TargetIds []string        `json:"targetIds"`
+	KeyShardPem string `json:"keyShardPem"`
+	CaCertPem   string `json:"caCertPem"`
 }

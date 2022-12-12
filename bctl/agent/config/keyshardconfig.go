@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"sync"
@@ -41,7 +40,7 @@ func LoadKeyShardConfig(client keyShardConfigClient) (*KeyShardConfig, error) {
 //
 // If the entry already exists, any newEntry.TargetIds absent from the existing entry are added to it.
 // If all of newEntry.TargetIds are already present in the existing entry, a NoOpError is returned.
-func (c *KeyShardConfig) AddKey(newEntry data.KeyEntry) error {
+func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -50,7 +49,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.KeyEntry) error {
 		return configFetchError(err.Error())
 	}
 
-	if idx, err := findEntry(current, newEntry.Key); err == nil {
+	if idx, err := findEntry(current, newEntry.KeyData); err == nil {
 		var addedSomeTargets bool
 		for _, targetId := range newEntry.TargetIds {
 			// add any new targets
@@ -78,7 +77,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.KeyEntry) error {
 
 // Add a target to the entry matching the key. If there is no such entry, a KeyError is returned.
 // If the target is already present in that entry, a NoOpError is returned
-func (c *KeyShardConfig) AddTarget(key data.SplitPrivateKey, targetId string) error {
+func (c *KeyShardConfig) AddTarget(key data.KeyEntry, targetId string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -107,25 +106,25 @@ func (c *KeyShardConfig) AddTarget(key data.SplitPrivateKey, targetId string) er
 }
 
 // Get the most recent key data for the given target. If the target is not present in any entry, a TargetError is returned
-func (c *KeyShardConfig) LastKey(targetId string) (data.SplitPrivateKey, error) {
+func (c *KeyShardConfig) LastKey(targetId string) (data.KeyEntry, error) {
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return data.SplitPrivateKey{}, configFetchError(err.Error())
+		return data.KeyEntry{}, configFetchError(err.Error())
 	}
 
 	idx, err := lastIndex(current, targetId)
 	if err != nil {
-		return data.SplitPrivateKey{}, err
+		return data.KeyEntry{}, err
 	}
 
-	return current[idx].Key, nil
+	return current[idx].KeyData, nil
 }
 
 // Remove an entire key->targets entry from the configuration. If there is no such entry, a KeyError is returned
-func (c *KeyShardConfig) DeleteKey(key data.SplitPrivateKey) error {
+func (c *KeyShardConfig) DeleteKey(key data.KeyEntry) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -173,18 +172,18 @@ func (c *KeyShardConfig) DeleteTarget(targetId string, hard bool) error {
 }
 
 // get the index matching the given key
-func findEntry(keyShards data.KeyShardData, key data.SplitPrivateKey) (int, error) {
+func findEntry(keyShards data.KeyShardData, key data.KeyEntry) (int, error) {
 	for i := range keyShards {
-		if bytes.Equal(keyShards[i].Key.D, key.D) {
+		if keyShards[i].KeyData.KeyShardPem == key.KeyShardPem {
 			return i, nil
 		}
 	}
 	// not found
-	return -1, &KeyError{Key: key}
+	return -1, &KeyError{}
 }
 
 // check if an entry contains a given targetId
-func containsTarget(entry data.KeyEntry, targetId string) bool {
+func containsTarget(entry data.MappedKeyEntry, targetId string) bool {
 	for _, tid := range entry.TargetIds {
 		if tid == targetId {
 			return true

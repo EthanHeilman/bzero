@@ -37,36 +37,28 @@ var (
 	mockShutdownStateV1 = fmt.Sprintf("%+v", mockShutdownState)
 
 	// KeyShard examples
-	mockSplitPrivateKeyDefault = SplitPrivateKey{
-		D: []byte("123"),
-		E: []byte("45"),
-		PublicKey: PublicKey{
-			N: []byte("678"),
-			E: 90,
-		},
+	mockSplitPrivateKeyDefault = KeyEntry{
+		KeyShardPem: "123",
+		CaCertPem:   "",
 	}
 
-	mockSplitPrivateKeyAlt = SplitPrivateKey{
-		D: []byte("101"),
-		E: []byte("202"),
-		PublicKey: PublicKey{
-			N: []byte("303"),
-			E: 404,
-		},
+	mockSplitPrivateKeyAlt = KeyEntry{
+		KeyShardPem: "101",
+		CaCertPem:   "",
 	}
 
-	mockEntryDefault = KeyEntry{
-		Key:       mockSplitPrivateKeyDefault,
+	mockEntryDefault = MappedKeyEntry{
+		KeyData:   mockSplitPrivateKeyDefault,
 		TargetIds: []string{"targetId1", "targetId2"},
 	}
 
-	mockEntryDefaultPlusTarget = KeyEntry{
-		Key:       mockSplitPrivateKeyDefault,
+	mockEntryDefaultPlusTarget = MappedKeyEntry{
+		KeyData:   mockSplitPrivateKeyDefault,
 		TargetIds: []string{"targetId1", "targetId2", "targetId3"},
 	}
 
-	mockEntryAlt = KeyEntry{
-		Key:       mockSplitPrivateKeyAlt,
+	mockEntryAlt = MappedKeyEntry{
+		KeyData:   mockSplitPrivateKeyAlt,
 		TargetIds: []string{"targetId1", "targetId2"},
 	}
 )
@@ -141,39 +133,31 @@ func (mockV2 *AgentDataV2) AssertMatchesV2(v2Data AgentDataV2) {
 }
 
 func DefaultMockKeyShardDataSmall() KeyShardData {
-	return []KeyEntry{mockEntryDefault}
+	return []MappedKeyEntry{mockEntryDefault}
 }
 
 func AltMockKeyShardDataSmall() KeyShardData {
-	return []KeyEntry{mockEntryAlt}
+	return []MappedKeyEntry{mockEntryAlt}
 }
 
-func DefaultMockKeyEntry3Target() KeyEntry {
-	return KeyEntry{
-		Key:       mockSplitPrivateKeyDefault,
+func DefaultMockKeyEntry3Target() MappedKeyEntry {
+	return MappedKeyEntry{
+		KeyData:   mockSplitPrivateKeyDefault,
 		TargetIds: []string{"targetId1", "targetId2", "targetId3"},
 	}
 }
 
-func DefaultMockSplitPrivateKey() SplitPrivateKey {
-	return SplitPrivateKey{
-		D: []byte("123"),
-		E: []byte("45"),
-		PublicKey: PublicKey{
-			N: []byte("678"),
-			E: 90,
-		},
+func DefaultMockSplitPrivateKey() KeyEntry {
+	return KeyEntry{
+		KeyShardPem: "123",
+		CaCertPem:   "",
 	}
 }
 
-func AltMockSplitPrivateKey() SplitPrivateKey {
-	return SplitPrivateKey{
-		D: []byte("101"),
-		E: []byte("202"),
-		PublicKey: PublicKey{
-			N: []byte("303"),
-			E: 404,
-		},
+func AltMockSplitPrivateKey() KeyEntry {
+	return KeyEntry{
+		KeyShardPem: "101",
+		CaCertPem:   "",
 	}
 }
 
@@ -182,7 +166,7 @@ func DefaultMockTargetIds() []string {
 }
 
 func MockKeyShardDataMedium() KeyShardData {
-	return []KeyEntry{
+	return []MappedKeyEntry{
 		mockEntryDefault,
 		mockEntryAlt,
 	}
@@ -192,47 +176,31 @@ func MockKeyShardLargeNoTargetsRaw() string {
 	return `
 [
   {
-    "key": {
-      "d": "MQ==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "1",
+		"caCertPem": ""
+	},
     "targetIds": []
   },
   {
-    "key": {
-      "d": "Mg==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "2",
+		"caCertPem": ""
+	},
     "targetIds": []
   },
   {
-    "key": {
-      "d": "Mw==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "3",
+		"caCertPem": ""
+	},
     "targetIds": []
   },
   {
-    "key": {
-      "d": "NA==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "4",
+		"caCertPem": ""
+	},
     "targetIds": []
   }
 ]
@@ -243,56 +211,40 @@ func MockKeyShardLargeWithTargetsRaw() string {
 	return `
 [
   {
-    "key": {
-      "d": "MQ==",
-      "e": "MjAy",
-      "associatedPublicKey": {
-        "n": "MzAz",
-        "e": 404
-      }
-    },
+    "keyData": {
+		"keyShardPem": "1",
+		"caCertPem": ""
+	},
     "targetIds": [
       "targetId0",
       "targetId1"
     ]
   },
   {
-    "key": {
-      "d": "Mg==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "2",
+		"caCertPem": ""
+	},
     "targetIds": [
       "targetId2",
       "targetId3"
     ]
   },
   {
-    "key": {
-      "d": "Mw==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "3",
+		"caCertPem": ""
+	},
     "targetIds": [
       "targetId4",
       "targetId5"
     ]
   },
   {
-    "key": {
-      "d": "NA==",
-      "e": "NDU=",
-      "associatedPublicKey": {
-        "n": "Njc4",
-        "e": 90
-      }
-    },
+    "keyData": {
+		"keyShardPem": "4",
+		"caCertPem": ""
+	},
     "targetIds": [
       "targetId6",
       "targetId7"
