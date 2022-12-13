@@ -33,7 +33,7 @@ require (
 )
 
 require (
-	github.com/bastionzero/keysplitting v0.3.0 // indirect
+	github.com/bastionzero/keysplitting v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.1 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
