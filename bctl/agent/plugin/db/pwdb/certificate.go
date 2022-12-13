@@ -1,153 +1,67 @@
-package certificate
+package pwdb
 
 import (
-	"bytes"
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
-	"crypto/x509"
-	"encoding/base64"
-	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"log"
+	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"github.com/bastionzero/go-toolkit/certificate"
 	"github.com/bastionzero/go-toolkit/certificate/ca"
-	"github.com/bastionzero/go-toolkit/certificate/splitcertificate"
+	"github.com/bastionzero/go-toolkit/certificate/splitclient"
 	"github.com/bastionzero/go-toolkit/certificate/template"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
-	certificateServiceEndpoint = "https://lucie-certificate-service.bastionzero.com/generate/client"
-	rootCertHash               = "v3R6c5gJMEUCGrh743C7GfV9TjaGi1odcz0anP03zbA="
-	rsaKeyLength               = 4096
+	rsaKeyLength = 4096
 )
 
-type Certificate struct {
-	logger     *logger.Logger
-	CACert     []byte
-	ClientCert []byte
-	ClientKey  []byte
-}
+func tlsKeyPair(logger *logger.Logger, targetUser string) (tls.Certificate, error) {
+	ret := tls.Certificate{}
 
-type ClientCertificateRequest struct {
-	TargetUser        string
-	ClientCertificate splitcertificate.SplitSignCertificate
-	PublicKey         rsa.PublicKey
-	KeyShardHash      string
-}
-
-type ClientCertificateResponse struct {
-	ClientCertificate splitcertificate.SplitSignCertificate
-}
-
-func (c *Certificate) TLSKeyPair() (tls.Certificate, error) {
-	c.logger.Infof("%s", string(c.ClientCert))
-	c.logger.Infof("%s", string(c.ClientKey))
-
-	return tls.X509KeyPair(c.ClientCert, c.ClientKey)
-}
-
-func New(logger *logger.Logger, targetUser string) (*Certificate, error) {
 	// Load CA with agent's key shard
 	agentCA, err := ca.Load(caPem, agentShardPem)
 	if err != nil {
-		return nil, fmt.Errorf("failed to mock out agent's ca: %s", err)
+		return ret, fmt.Errorf("failed to mock out agent's ca: %s", err)
 	}
 
 	// Generate key pair for our client certificate
 	certKey, err := rsa.GenerateKey(rand.Reader, rsaKeyLength)
 	if err != nil {
-		return nil, fmt.Errorf("we fucked up generating the key: %s", err)
+		return ret, fmt.Errorf("we fucked up generating the key: %s", err)
 	}
 
 	// Create a split certificate
-	clientCertificateTemplate, _ := template.ClientCertificate("postgres")
-	clientCert, err := splitcertificate.New(rand.Reader, clientCertificateTemplate, agentCA.X509(), &certKey.PublicKey, agentCA.PrivateKey())
+	clientCertificateTemplate, _ := template.ClientCertificate(targetUser, time.Hour)
+	clientCert, err := splitclient.Generate(rand.Reader, clientCertificateTemplate, agentCA.X509(), &certKey.PublicKey, agentCA.SplitPrivateKey())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create new client certificate: %s", err)
+		return ret, fmt.Errorf("failed to create new client certificate: %s", err)
 	}
 
-	if err := clientCert.VerifySignature(agentCA.PrivateKey().PublicKey); err != nil {
+	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
 		log.Printf("this failed and we're glad it did")
 	}
 
-	// just use the hash of the certificate for testing
-	agentKeyPem, err := agentCA.PrivateKey().EncodePEM()
+	signedCert, err := client.RequestSignature(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
-		return nil, fmt.Errorf("failed to encode split private key: %s", err)
+		return ret, fmt.Errorf("failed to get bastion signature on client certificate: %s", err)
 	}
 
-	hash := sha3.Sum256([]byte(agentKeyPem))
-	agentKeyHash := base64.StdEncoding.EncodeToString(hash[:])
-
-	req := ClientCertificateRequest{
-		TargetUser:        targetUser,
-		ClientCertificate: *clientCert,
-		PublicKey:         *agentCA.PrivateKey().PublicKey,
-		KeyShardHash:      agentKeyHash,
-	}
-
-	logger.Infof("target user: %s", targetUser)
-
-	reqBytes, err := json.Marshal(req)
+	certPem, err := signedCert.PEM()
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling request to sign client certificate request: %s", err)
+		return ret, fmt.Errorf("received signed certificate was not pem-encodable: %s", err)
 	}
 
-	client, err := httpclient.New(certificateServiceEndpoint, httpclient.HTTPOptions{
-		Body: bytes.NewBuffer(reqBytes),
-	})
+	keyPem, err := certificate.EncodeRSAPrivateKeyPEM(certKey)
 	if err != nil {
-		return nil, fmt.Errorf("error while instantiating http client: %s", err)
+		return ret, fmt.Errorf("failed to pem-encode the rsa private key: %s", err)
 	}
 
-	rsp, err := client.Post(context.TODO())
-	if err != nil {
-		return nil, fmt.Errorf("failed to get signed certificate: %s", err)
-	}
-
-	var certResponse ClientCertificateResponse
-	if err := json.NewDecoder(rsp.Body).Decode(&certResponse); err != nil {
-		return nil, fmt.Errorf("malformed certificate response: %s", err)
-	}
-
-	// logger.Infof("Client Certificate: %s", string(certResponse.ClientCertificate))
-	// logger.Infof("Client key: %s", string(certResponse.ClientKey))
-	xcert, err := certResponse.ClientCertificate.X509()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert cert to x509: %s", err)
-	}
-
-	return &Certificate{
-		logger:     logger,
-		CACert:     []byte(caPem),
-		ClientCert: []byte(encodeCertificatePEM(xcert)),
-		ClientKey:  []byte(encodeRSAPrivateKeyPEM(certKey)),
-	}, nil
-}
-
-func encodeRSAPrivateKeyPEM(key *rsa.PrivateKey) string {
-	keyPEM := new(bytes.Buffer)
-	pem.Encode(keyPEM, &pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: x509.MarshalPKCS1PrivateKey(key),
-	})
-	return keyPEM.String()
-}
-
-func encodeCertificatePEM(cert *x509.Certificate) string {
-	certPEM := new(bytes.Buffer)
-	pem.Encode(certPEM, &pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: cert.Raw,
-	})
-
-	return certPEM.String()
+	return tls.X509KeyPair([]byte(certPem), []byte(keyPem))
 }
 
 var caPem = `-----BEGIN CERTIFICATE-----

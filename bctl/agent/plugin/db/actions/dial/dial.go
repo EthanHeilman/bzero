@@ -1,8 +1,6 @@
 package dial
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,10 +8,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/crunchydata/crunchy-proxy/protocol"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/certificate"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/dial"
@@ -141,7 +138,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 	if dialActionRequest.TargetUser == "" {
 		remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
 	} else {
-		remoteConnection, err = d.Connect(d.remoteAddress.String())
+		remoteConnection, err = pwdb.Connect(d.logger, d.remoteAddress.String(), dialActionRequest.TargetUser)
 	}
 
 	// For each start, call the dial the TCP address
@@ -212,195 +209,3 @@ func (d *Dial) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType,
 		Content:        base64.StdEncoding.EncodeToString(contentBytes),
 	}
 }
-
-func (d *Dial) Connect(host string) (net.Conn, error) {
-	connection, err := net.Dial("tcp", host)
-
-	if err != nil {
-		return nil, err
-	}
-
-	d.logger.Info("SSL connections are enabled.")
-
-	/*
-	 * First determine if SSL is allowed by the backend. To do this, send an
-	 * SSL request. The response from the backend will be a single byte
-	 * message. If the value is 'S', then SSL connections are allowed and an
-	 * upgrade to the connection should be attempted. If the value is 'N',
-	 * then the backend does not support SSL connections.
-	 */
-
-	/* Create the SSL request message. */
-	message := protocol.NewMessageBuffer([]byte{})
-	message.WriteInt32(8)
-	message.WriteInt32(protocol.SSLRequestCode)
-
-	/* Send the SSL request message. */
-	_, err = connection.Write(message.Bytes())
-
-	if err != nil {
-		d.logger.Errorf("Error sending SSL request to backend.")
-		d.logger.Errorf("Error: %s", err.Error())
-		return nil, err
-	}
-
-	/* Receive SSL response message. */
-	response := make([]byte, 4096)
-	_, err = connection.Read(response)
-
-	if err != nil {
-		d.logger.Errorf("Error receiving SSL response from backend.")
-		d.logger.Errorf("Error: %s", err.Error())
-		return nil, err
-	}
-
-	/*
-	 * If SSL is not allowed by the backend then close the connection and
-	 * throw an error.
-	 */
-	if len(response) > 0 && response[0] != 'S' {
-		d.logger.Errorf("The backend does not allow SSL connections.")
-		connection.Close()
-	} else {
-		d.logger.Debug("SSL connections are allowed by PostgreSQL.")
-		d.logger.Debug("Attempting to upgrade connection.")
-		connection, err = d.UpgradeClientConnection(host, connection)
-		if err != nil {
-			return nil, err
-		}
-		d.logger.Debug("Connection successfully upgraded.")
-	}
-
-	return connection, nil
-}
-
-func (d *Dial) UpgradeClientConnection(hostPort string, connection net.Conn) (net.Conn, error) {
-	// hostname, _, _ := net.SplitHostPort(hostPort)
-	tlsConfig := tls.Config{
-		InsecureSkipVerify: true,
-		RootCAs:            x509.NewCertPool(),
-	}
-
-	// Get our certificates from bastion
-	certProvider, err := certificate.New(d.logger, "postgres")
-	if err != nil {
-		return nil, err
-	}
-
-	d.logger.Debug("Loading client SSL certificate and key")
-	if cert, err := certProvider.TLSKeyPair(); err != nil {
-		d.logger.Info("WE'RE GETTING HERE")
-		return nil, err
-	} else {
-		tlsConfig.Certificates = []tls.Certificate{cert}
-	}
-
-	d.logger.Debug("Loading root CA")
-	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(certProvider.CACert))
-
-	d.logger.Info("Upgrading to SSL connection")
-	client := tls.Client(connection, &tlsConfig)
-	return client, nil
-
-	/* Add client SSL certificate and key. */
-	// d.logger.Debug("Loading SSL certificate and key")
-	// cert, _ := tls.LoadX509KeyPair("/home/ec2-user/certs/client.crt", "/home/ec2-user/certs/client.key")
-	// tlsConfig.Certificates = []tls.Certificate{cert}
-
-	/* Add root CA certificate. */
-	// 	d.logger.Debug("Loading root CA.")
-	// 	tlsConfig.RootCAs = x509.NewCertPool()
-	// 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(`
-	// 	-----BEGIN CERTIFICATE-----
-	// 	MIIFczCCA1ugAwIBAgIRAOS3pZlUykM5zgm1N+pm0CswDQYJKoZIhvcNAQELBQAw
-	// 	UzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1NYXNzYWNodXNldHRzMQ8wDQYDVQQH
-	// 	EwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25aZXJvLCBJbmMuMB4XDTIyMTAxOTIw
-	// 	MzgzMloXDTIzMTAxOTIwMzgzMlowUzEMMAoGA1UEBhMDVVNBMRYwFAYDVQQIEw1N
-	// 	YXNzYWNodXNldHRzMQ8wDQYDVQQHEwZCb3N0b24xGjAYBgNVBAoTEUJhc3Rpb25a
-	// 	ZXJvLCBJbmMuMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEA08XAuaYR
-	// 	w/ge3apqxgFyK0x15NE+bwVYwwR18qT3E5qjwsHWpO84W8O0naerc96ktuy77Q/3
-	// 	ozT0ILKb1Zm/k7evxTRC0riV6vLRH+S5EsPPMwKRy3j682K4i4upeeZi1YlCOPCj
-	// 	I4l2gBrHr3KCTzrkuijS0xVrBAM5zOuurg7SNfL3enflODDbKFLGheIOyyrl3JnU
-	// 	epGkVo7oZmZVF+dGoaO4OaZOEtUIgm9Dij0rtPrwQsXQzRTGYdlFYsKyrL3UnEyI
-	// 	jhPVSY0CAcrsgPcsLroXcK9oojk6oQ36n5divX83RgI2dGHsmnC7z/MweeZ2dmXS
-	// 	ZqsjPUgLHSBq5hFgXEV1gGNtPJIvOKNOn4kFtbAmg3upyBjGiA2bmNZPFg4Etglv
-	// 	8axK8RmF2sLud1soMtZiC78xlg++vmrfp71rp5ymWVmQucR5rmJChslke1sNMltQ
-	// 	V8xOnShYuIx9ttdEGukEHRAEptwF4yTfpwn+T0zhLJnTU9Ea2D+TMMqeOaD9JfMd
-	// 	DHpN5/CKvk1weJWe5cmphTcPMg1x/7fnMv2MUIZKSEEyTHAiCBxkZRrN3My+klil
-	// 	I+vShM7zS7c1XLPFZn6VN25TU4De8m6UcY3qg7JR5yXIHsR1f4Fazk2WJF03TiqI
-	// 	SRz9Vwe5qZiXBxK3eP4xYYZY9yhif6YVyXcCAwEAAaNCMEAwDgYDVR0PAQH/BAQD
-	// 	AgIEMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFL1w3h1kRkJnusxK4itJmQ8d
-	// 	QuF7MA0GCSqGSIb3DQEBCwUAA4ICAQBNIDmPPgMNwdgW/9nPwZlo2zlZ1EFWEHwA
-	// 	cXN/1aqVWXVSzir5gtz2s/zqBG07XjP1VvbiDGVhhRI6+/sq4iU3lW/+atFGCgLJ
-	// 	N4ojOncqPNj2tyVBn//4X2/GsW8D7jxfqgtP2tX0140iCZpy9Vs6Gv3hyVfjZPRD
-	// 	xtl74eZDITjnMcvAv+Wl7Dn3xV/4lRPQHMVyH2egs6ga+C+GcmWke7tc4JRI2A/c
-	// 	QBYsFlZlYy5/E9Is8jydTqdiQR/AVDo4wg60RGnuwap9YFXpKWn43hdUgBs3esoM
-	// 	oJSYNtJjCA3Z0ERc6uAa5/44o9dMaQN58EWkjfILF7jlSTgs9SYIzD0gO2HChHY5
-	// 	UIUIaHP8dedso7EFVIZ5/X0ROFOpGO5PD7PtneS22tSl69Z9Ekv4ZoFAVWLcerLd
-	// 	YnPJ6gGE8rClZc9BfQ8VgKiLB3Qw07WS5Y6QTIXnz/xWHXM0KeHgk+HDEjbhs5AZ
-	// 	N/e2NxZJZjunrMrZtiD/DYmFyyEjKFq9h3O3+UWsSQU8WHXBBz5R5t2UarFHBS2M
-	// 	eWog7yoRYOfhaJqqu04+iOg23UIxqCYnW5wQ7jtEeC7bGwp9G8Cj/5zXTVYMAR8l
-	// 	Ffa3KOUlrfEXIIkFUm4/np9kBAA9P0e8OPNAi5BgDrr+wW4J6wA5hZzmeJJb0S7U
-	// 	dT3KFaOUug==
-	// 	-----END CERTIFICATE-----
-	// `))
-
-	/* Upgrade the connection. */
-	// d.logger.Info("Upgrading to SSL connection.")
-	// client := tls.Client(connection, &tlsConfig)
-
-	// err := d.verifyCertificateAuthority(client, &tlsConfig)
-	// if err != nil {
-	// 	d.logger.Errorf("Could not verify certificate authority: %s", err.Error())
-	// 	return nil
-	// } else {
-	// 	d.logger.Info("Successfully verified CA")
-	// }
-
-	// return client
-}
-
-/*
- * This function will perform a TLS handshake with the server and to verify the
- * certificates against the CA.
- *
- * client - the TLS client connection.
- * tlsConfig - the configuration associated with the connection.
- */
-// func (d *Dial) verifyCertificateAuthority(client *tls.Conn, tlsConf *tls.Config) error {
-// 	err := client.Handshake()
-
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	/* Get the peer certificates. */
-// 	certs := client.ConnectionState().PeerCertificates
-
-// 	/* Setup the verification options. */
-// 	options := x509.VerifyOptions{
-// 		DNSName:       client.ConnectionState().ServerName,
-// 		Intermediates: x509.NewCertPool(),
-// 		Roots:         tlsConf.RootCAs,
-// 	}
-
-// 	for i, certificate := range certs {
-// 		/*
-// 		 * The first certificate in the list is client certificate and not an
-// 		 * intermediate certificate. Therefore it should not be added.
-// 		 */
-// 		if i == 0 {
-// 			continue
-// 		}
-
-// 		options.Intermediates.AddCert(certificate)
-// 	}
-
-// 	/* Verify the client certificate.
-// 	 *
-// 	 * The first certificate in the certificate to verify.
-// 	 */
-// 	_, err = certs[0].Verify(options)
-
-// 	return err
-// }
