@@ -78,6 +78,8 @@ github.com/bastionzero/go-toolkit v0.1.10 h1:uPjJMA5cheHUtA3Az0V60/aKv4C+cSr1I8m
 github.com/bastionzero/go-toolkit v0.1.10/go.mod h1:2ZnabF0Hlsq8NP0ciGRmO+Yg0XhmoSwkSVS7BBkOI7k=
 github.com/bastionzero/go-toolkit v0.1.12 h1:JdWTlEE/++VMG4eMPIcq8UvIb9X7eO99Wls4sKOX9QA=
 github.com/bastionzero/go-toolkit v0.1.12/go.mod h1:2ZnabF0Hlsq8NP0ciGRmO+Yg0XhmoSwkSVS7BBkOI7k=
+github.com/bastionzero/go-toolkit v0.1.15 h1:ipufL9c1M3yZZ/3D1YWtrnDFQtEe4cmKuRO0BAAbpJM=
+github.com/bastionzero/go-toolkit v0.1.15/go.mod h1:2ZnabF0Hlsq8NP0ciGRmO+Yg0XhmoSwkSVS7BBkOI7k=
 github.com/bastionzero/keysplitting v0.3.0 h1:eHA8SaMpQtUwOkWkrAWurgs8C7K/tnmqY+fP+ivyNAU=
 github.com/bastionzero/keysplitting v0.3.0/go.mod h1:o89uy0lLxocDixHlzOQgke7W6mUmehyn9MVVqignpMc=
 github.com/buger/jsonparser v1.1.1/go.mod h1:6RYKKt7H4d4+iWqouImQ9R2FZql3VbhNgx27UK13J/0=
