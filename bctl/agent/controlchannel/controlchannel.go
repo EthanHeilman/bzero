@@ -9,10 +9,12 @@ import (
 	"reflect"
 	"regexp"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
@@ -47,6 +49,11 @@ type ControlChannelConfig interface {
 	SetServiceAccountJwksUrl(jwksUrlPattern string) error
 }
 
+type KeyShardConfig interface {
+	AddKey(newEntry data.MappedKeyEntry) error
+	LastKey(targetId string) (data.KeyEntry, error)
+}
+
 type ControlChannel struct {
 	conn   connection.Connection
 	logger *logger.Logger
@@ -54,6 +61,7 @@ type ControlChannel struct {
 	id     string
 
 	cConfig               ControlChannelConfig
+	keyShardConfig        KeyShardConfig
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
 
@@ -92,6 +100,7 @@ func Start(logger *logger.Logger,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
 	cConfig ControlChannelConfig,
+	keyShardConfig KeyShardConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -104,6 +113,7 @@ func Start(logger *logger.Logger,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
 		cConfig:               cConfig,
+		keyShardConfig:        keyShardConfig,
 		inputChan:             make(chan am.AgentMessage, 25),
 		connections:           make(map[string]AgentDatachannelConnection),
 		agentPongChan:         make(chan bool),
@@ -115,6 +125,12 @@ func Start(logger *logger.Logger,
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
 	// subscribing to the connection with a unique id. As long as we use the same one when we unsubscribe
 	conn.Subscribe("", control)
+
+	// initialize our user key storage
+	var err error
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup user key storage: %s", err)
+	}
 
 	// Set up our handler to deal with incoming messages
 	control.tmb.Go(func() error {
@@ -342,6 +358,23 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 				return fmt.Errorf("could not close non existent connection with id: %s", cwRequest.ConnectionId)
 			}
 		}
+	case am.KeyShard:
+		c.logger.Infof("raw: %s", agentMessage.MessagePayload)
+		var ksRequest KeyShardMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &ksRequest); err != nil {
+			return fmt.Errorf("malformed distribute shard request: %s", err)
+		}
+
+		c.logger.Infof("got: %+v", ksRequest)
+
+		if err := c.keyShardConfig.AddKey(data.MappedKeyEntry{
+			KeyData:   ksRequest.KeyShard,
+			TargetIds: ksRequest.TargetIds,
+		}); err != nil {
+			return fmt.Errorf("failed to add key shard to config: %s", err)
+		}
+
+		c.logger.Infof("successfully stored key shard for targets %s", strings.Join(ksRequest.TargetIds, ", "))
 	default:
 		return fmt.Errorf("unrecognized message type: %s", agentMessage.MessageType)
 	}

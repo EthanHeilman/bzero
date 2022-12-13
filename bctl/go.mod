@@ -15,7 +15,6 @@ require (
 	github.com/creack/pty v1.1.18
 	github.com/crunchydata/crunchy-proxy v0.0.0-20190407215550-64e9426fd4ad
 	github.com/fsnotify/fsnotify v1.6.0
-	github.com/gofrs/flock v0.8.1
 	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0
@@ -41,6 +40,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/swag v0.22.3 // indirect
+	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.6.9 // indirect

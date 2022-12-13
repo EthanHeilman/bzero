@@ -7,7 +7,8 @@ import (
 	"github.com/gofrs/flock"
 )
 
-/* we need to implement a small client layer on top of flock to make sure we manage
+/*
+we need to implement a small client layer on top of flock to make sure we manage
 the proper deletion of the lock file it creates, and so that parent processes can
 require that all of their children use the same underlying lock file
 
@@ -31,6 +32,24 @@ func (f *FileLock) NewLock() (*flock.Flock, error) {
 		return nil, fmt.Errorf("you must use the NewFileLock() constructor and set a file path first")
 	}
 	return flock.New(f.lockFile), nil
+}
+
+func (f *FileLock) AcquireLock() (*flock.Flock, error) {
+	lock, err := f.NewLock()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lock: %s", err)
+	}
+
+	for {
+		if acquiredLock, err := lock.TryLock(); err != nil {
+			return nil, fmt.Errorf("error acquiring lock: %w", err)
+		} else if acquiredLock {
+			break
+		}
+	}
+
+	lock.Lock()
+	return lock, nil
 }
 
 // remove the underlying lock file from the OS

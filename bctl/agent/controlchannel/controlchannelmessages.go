@@ -1,6 +1,7 @@
 package controlchannel
 
 import (
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 )
 
@@ -43,6 +44,11 @@ type RestartAgentMessage struct {
 type RetrieveAgentLogsMessage struct {
 	UserEmail           string `json:"userEmail"`
 	UploadLogsRequestId string `json:"uploadLogsRequestId"`
+}
+
+type KeyShardMessage struct {
+	TargetIds []string      `json:"virtualTargetIds"`
+	KeyShard  data.KeyEntry `json:"keyShard"`
 }
 
 type ServiceAccountConfiguration struct {
