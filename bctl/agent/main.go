@@ -239,7 +239,7 @@ func NewSystemdAgent(
 			return
 		}
 
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return
@@ -333,7 +333,7 @@ func NewKubeAgent(
 			return
 		}
 
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return

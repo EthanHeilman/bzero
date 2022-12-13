@@ -38,6 +38,7 @@ type DbServer struct {
 	// Db specific vars
 	remotePort int
 	remoteHost string
+	targetUser string
 
 	// fields for new datachannels
 	localPort   string
@@ -53,6 +54,7 @@ func New(logger *logger.Logger,
 	remotePort int,
 	remoteHost string,
 	cert *bzcert.DaemonBZCert,
+	targetUser string,
 	connUrl string,
 	params url.Values,
 	headers http.Header,
@@ -65,6 +67,7 @@ func New(logger *logger.Logger,
 		cert:        cert,
 		localPort:   localPort,
 		localHost:   localHost,
+		targetUser:  targetUser,
 		remoteHost:  remoteHost,
 		remotePort:  remotePort,
 		agentPubKey: agentPubKey,
@@ -103,7 +106,7 @@ func (d *DbServer) Start() error {
 		return fmt.Errorf("failed to open local port to listen: %s", err)
 	}
 
-	// Do nothing with the first syn no-op call
+	// Do nothing with the first no-op call
 	d.tcpListener.AcceptTCP()
 
 	go d.handleConnections()
@@ -144,7 +147,7 @@ func (d *DbServer) handleConnections() {
 			dcId := uuid.New().String()
 			subLogger := d.logger.GetDatachannelLogger(dcId)
 			pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
-			plugin := db.New(pluginLogger)
+			plugin := db.New(pluginLogger, d.targetUser)
 			if err := plugin.StartAction(bzdb.Dial, conn); err != nil {
 				d.logger.Errorf("error starting action: %s", err)
 			} else if err := d.newDataChannel(dcId, string(bzdb.Dial), plugin); err != nil {

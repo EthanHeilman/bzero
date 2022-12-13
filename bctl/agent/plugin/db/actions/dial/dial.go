@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/tomb.v2"
 
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/dial"
@@ -33,6 +34,9 @@ type Dial struct {
 	streamOutputChan     chan smsg.StreamMessage
 	streamMessageVersion smsg.SchemaVersion
 
+	// config for interacting with key shard store needed for pwdb
+	keyshardConfig pwdb.PWDBConfig
+
 	requestId        string
 	remoteAddress    *net.TCPAddr
 	remoteConnection *net.Conn
@@ -41,6 +45,7 @@ type Dial struct {
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
+	keyshardConfig pwdb.PWDBConfig,
 	remoteHost string,
 	remotePort int) (*Dial, error) {
 
@@ -55,6 +60,7 @@ func New(logger *logger.Logger,
 		return &Dial{
 			logger:           logger,
 			doneChan:         doneChan,
+			keyshardConfig:   keyshardConfig,
 			streamOutputChan: ch,
 			remoteAddress:    raddr,
 		}, nil
@@ -132,8 +138,16 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 	d.streamMessageVersion = dialActionRequest.StreamMessageVersion
 	d.logger.Infof("Setting stream message version: %s", d.streamMessageVersion)
 
+	var remoteConnection net.Conn
+	var err error
+	if dialActionRequest.TargetUser == "" {
+		remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
+	} else {
+		remoteConnection, err = pwdb.Connect(d.logger, d.keyshardConfig, d.remoteAddress.String(), dialActionRequest.TargetUser)
+	}
+
 	// For each start, call the dial the TCP address
-	if remoteConnection, err := net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout); err != nil {
+	if err != nil {
 		d.logger.Errorf("Failed to dial remote address: %s", err)
 		return []byte{}, err
 	} else {

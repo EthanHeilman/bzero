@@ -18,6 +18,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
@@ -50,8 +51,8 @@ type ControlChannelConfig interface {
 }
 
 type KeyShardConfig interface {
+	pwdb.PWDBConfig
 	AddKey(newEntry data.MappedKeyEntry) error
-	LastKey(targetId string) (data.KeyEntry, error)
 }
 
 type ControlChannel struct {
@@ -289,7 +290,7 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.cConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.cConfig, c.keyShardConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary

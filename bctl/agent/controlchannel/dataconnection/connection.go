@@ -26,6 +26,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
@@ -69,6 +70,9 @@ type DataConnection struct {
 	// config values needed for MrTAP when creating datachannels
 	mrtapConfig mrtap.MrtapConfig
 
+	// Config interface for interacting with key shards
+	keyshardConfig pwdb.PWDBConfig
+
 	// provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
@@ -82,6 +86,7 @@ func New(
 	connUrl string,
 	connectionId string,
 	mrtapConfig mrtap.MrtapConfig,
+	keyshardConfig pwdb.PWDBConfig,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
 	params url.Values,
@@ -103,6 +108,7 @@ func New(
 		broker:                broker.New(),
 		sendQueue:             make(chan *am.AgentMessage, 50),
 		mrtapConfig:           mrtapConfig,
+		keyshardConfig:        keyshardConfig,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
 		daemonReadyChan:       make(chan bool),
@@ -246,7 +252,7 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, mt, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, dcId, odMessage.Syn)
 		return err
 	}
 }
