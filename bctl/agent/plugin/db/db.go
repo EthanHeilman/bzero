@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/dial"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
@@ -30,6 +31,7 @@ type DbPlugin struct {
 
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
+	keyshardConfig pwdb.PWDBConfig,
 	action string,
 	payload []byte,
 ) (*DbPlugin, error) {
@@ -58,7 +60,7 @@ func New(logger *logger.Logger,
 
 		switch parsedAction {
 		case db.Dial:
-			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, syn.RemoteHost, syn.RemotePort)
+			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, syn.RemoteHost, syn.RemotePort)
 		default:
 			rerr = fmt.Errorf("unhandled DB action")
 		}

@@ -34,6 +34,9 @@ type Dial struct {
 	streamOutputChan     chan smsg.StreamMessage
 	streamMessageVersion smsg.SchemaVersion
 
+	// config for interacting with key shard store needed for pwdb
+	keyshardConfig pwdb.PWDBConfig
+
 	requestId        string
 	remoteAddress    *net.TCPAddr
 	remoteConnection *net.Conn
@@ -42,6 +45,7 @@ type Dial struct {
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
+	keyshardConfig pwdb.PWDBConfig,
 	remoteHost string,
 	remotePort int) (*Dial, error) {
 
@@ -56,6 +60,7 @@ func New(logger *logger.Logger,
 		return &Dial{
 			logger:           logger,
 			doneChan:         doneChan,
+			keyshardConfig:   keyshardConfig,
 			streamOutputChan: ch,
 			remoteAddress:    raddr,
 		}, nil
@@ -138,7 +143,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 	if dialActionRequest.TargetUser == "" {
 		remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
 	} else {
-		remoteConnection, err = pwdb.Connect(d.logger, d.remoteAddress.String(), dialActionRequest.TargetUser)
+		remoteConnection, err = pwdb.Connect(d.logger, d.keyshardConfig, d.remoteAddress.String(), dialActionRequest.TargetUser)
 	}
 
 	// For each start, call the dial the TCP address

@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"net"
 
+	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"github.com/crunchydata/crunchy-proxy/protocol"
 )
 
+type PWDBConfig interface {
+	LastKey(targetId string) (data.KeyEntry, error)
+}
+
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, host, role string) (net.Conn, error) {
+func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.Conn, error) {
 	connection, err := net.Dial("tcp", host)
 	if err != nil {
 		return nil, err
@@ -49,7 +54,7 @@ func Connect(logger *logger.Logger, host, role string) (net.Conn, error) {
 	 */
 	if len(response) > 0 && response[0] != 'S' {
 		connection.Close()
-		return nil, fmt.Errorf("The backend does not allow SSL connections")
+		return nil, fmt.Errorf("the database does not allow SSL connections")
 	}
 	logger.Info("SSL connections are allowed by the database")
 

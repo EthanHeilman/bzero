@@ -12,6 +12,7 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh"
@@ -51,6 +52,9 @@ type DataChannel struct {
 	mrtap  IMrtap
 	plugin IPlugin
 
+	// config for interacting with key shard store needed for pwdb
+	keyshardConfig pwdb.PWDBConfig
+
 	// incoming and outgoing message channels
 	inputChan  chan am.AgentMessage
 	outputChan chan am.AgentMessage
@@ -63,18 +67,20 @@ func New(
 	parentTmb *tomb.Tomb,
 	logger *logger.Logger,
 	conn connection.Connection,
+	keyshardConfig pwdb.PWDBConfig,
 	mrtap IMrtap,
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {
 
 	datachannel := &DataChannel{
-		logger:     logger,
-		id:         id,
-		conn:       conn,
-		mrtap:      mrtap,
-		inputChan:  make(chan am.AgentMessage, 50),
-		outputChan: make(chan am.AgentMessage, 10),
+		logger:         logger,
+		id:             id,
+		conn:           conn,
+		keyshardConfig: keyshardConfig,
+		mrtap:          mrtap,
+		inputChan:      make(chan am.AgentMessage, 50),
+		outputChan:     make(chan am.AgentMessage, 10),
 	}
 
 	// register with connection so datachannel can send a receive messages
@@ -319,7 +325,7 @@ func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string,
 	case bzplugin.Web:
 		d.plugin, err = web.New(subLogger, streamOutputChan, action, payload)
 	case bzplugin.Db:
-		d.plugin, err = db.New(subLogger, streamOutputChan, action, payload)
+		d.plugin, err = db.New(subLogger, streamOutputChan, d.keyshardConfig, action, payload)
 	default:
 		return fmt.Errorf("unrecognized plugin name %s", string(pluginName))
 	}
