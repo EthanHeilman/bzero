@@ -10,6 +10,7 @@ require (
 	bastionzero.com/bctl/v1/bzerolib v0.0.0-00010101000000-000000000000
 	github.com/Masterminds/semver v1.5.0
 	github.com/bastionzero/go-toolkit v0.1.15
+	github.com/bastionzero/keysplitting v0.4.0
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/coreos/go-oidc/v3 v3.4.0
 	github.com/creack/pty v1.1.18
@@ -33,7 +34,6 @@ require (
 )
 
 require (
-	github.com/bastionzero/keysplitting v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.10.1 // indirect
 	github.com/go-logr/logr v1.2.3 // indirect
