@@ -16,7 +16,7 @@ type PWDBConfig interface {
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.Conn, error) {
+func Connect(logger *logger.Logger, keyData data.KeyEntry, host, role string) (net.Conn, error) {
 	connection, err := net.Dial("tcp", host)
 	if err != nil {
 		return nil, err
@@ -58,15 +58,8 @@ func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.C
 	}
 	logger.Info("SSL connections are allowed by the database")
 
-	// Grab our key shard data from the vault
-	targetId := "5a8ca000-36ab-4f11-afab-190de6d81335"
-	keydata, err := config.LastKey(targetId)
-	if err != nil {
-		return nil, err
-	}
-
 	logger.Info("Attempting to upgrade connection...")
-	connection, err = upgradeConnection(logger, keydata, connection, host, role)
+	connection, err = upgradeConnection(logger, keyData, connection, host, role)
 	if err != nil {
 		return nil, err
 	}
