@@ -149,7 +149,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	// Send the request
 	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for agent identity token: %s. Request: %+v", err, getAgentIdentityToken)
+		return nil, fmt.Errorf("error making get request for agent identity token: %s", err)
 	}
 
 	// Decode and return response

@@ -16,13 +16,13 @@ type PWDBConfig interface {
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.Conn, error) {
+func Connect(logger *logger.Logger, keyData data.KeyEntry, host, role string) (net.Conn, error) {
 	connection, err := net.Dial("tcp", host)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Info("SSL connections are enabled.")
+	logger.Info("SSL connections are enabled to the database")
 
 	/*
 	 * First determine if SSL is allowed by the backend. To do this, send an
@@ -59,7 +59,7 @@ func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.C
 	logger.Info("SSL connections are allowed by the database")
 
 	logger.Info("Attempting to upgrade connection...")
-	connection, err = upgradeConnection(logger, connection, host, role)
+	connection, err = upgradeConnection(logger, keyData, connection, host, role)
 	if err != nil {
 		return nil, err
 	}
@@ -69,22 +69,22 @@ func Connect(logger *logger.Logger, config PWDBConfig, host, role string) (net.C
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func upgradeConnection(logger *logger.Logger, connection net.Conn, hostPort, role string) (net.Conn, error) {
+func upgradeConnection(logger *logger.Logger, keyData data.KeyEntry, connection net.Conn, hostPort, role string) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
 		InsecureSkipVerify: true,
 		RootCAs:            x509.NewCertPool(),
 	}
 
+	logger.Info("Loading CA Certificate")
+	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
+
 	logger.Info("Loading client SSL certificate and key")
-	if cert, err := tlsKeyPair(logger, role); err != nil {
+	if cert, err := tlsKeyPair(logger, keyData, role); err != nil {
 		return nil, err
 	} else {
 		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
-
-	logger.Info("Loading root CA")
-	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(caPem))
 
 	logger.Info("Upgrading to SSL connection")
 	client := tls.Client(connection, &tlsConfig)
