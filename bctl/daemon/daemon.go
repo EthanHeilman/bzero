@@ -291,6 +291,7 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 		config[REMOTE_HOST].Value,
 		cert,
 		config[TARGET_USER].Value,
+		config[TARGET_ID].Value,
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,

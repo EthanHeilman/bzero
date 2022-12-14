@@ -15,6 +15,7 @@ const (
 type DialActionPayload struct {
 	RequestId  string `json:"requestId"`
 	TargetUser string `json:"targetUser"`
+	TargetId   string `json:"targetId"`
 	// (optional) informs Agent what SchemaVersion to use
 	StreamMessageVersion smsg.SchemaVersion `json:"streamMessageVersion"`
 }
