@@ -18,11 +18,13 @@ import (
 )
 
 const (
-	rsaKeyLength = 4096
+	rsaKeyLength = 2048
 )
 
 func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
 	ret := tls.Certificate{}
+
+	start := time.Now()
 
 	// Load CA with agent's key shard
 	agentCA, err := ca.Load(keyData.CaCertPem, keyData.KeyShardPem)
@@ -42,6 +44,8 @@ func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string)
 	if err != nil {
 		return ret, fmt.Errorf("failed to create new client certificate: %s", err)
 	}
+
+	logger.Infof("It took us %s to generate the client certificate", time.Since(start).String())
 
 	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
 		log.Printf("this failed and we're glad it did")
