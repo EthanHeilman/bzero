@@ -59,6 +59,7 @@ const (
 	Google    ProviderType = "google"
 	Microsoft ProviderType = "microsoft"
 	Okta      ProviderType = "okta"
+	OneLogin  ProviderType = "onelogin"
 	// Custom    ProviderType = "custom" // plan for custom IdP support
 )
 
@@ -73,6 +74,8 @@ func NewVerifier(idpProvider string, idpOrgId string, jwksUrlPatterns []string) 
 		issuerUrl = getMicrosoftIssUrl(idpOrgId)
 	case Okta:
 		issuerUrl = fmt.Sprintf("https://%s.okta.com", idpOrgId)
+	case OneLogin:
+		issuerUrl = fmt.Sprintf("https://%s.onelogin.com/oidc/2", idpOrgId)
 	// case Custom:
 	// 	issUrl = customIss
 	default:
@@ -125,7 +128,6 @@ func (v *BZCertVerifier) Verify(bzcert *BZCert) (exp time.Time, err error) {
 			return exp, nil
 		}
 	}
-
 	if err = v.verifyInitialIdToken(bzcert.InitialIdToken, bzcert); err != nil {
 		return exp, &InitialIdTokenError{InnerError: err}
 	} else if exp, err = v.verifyCurrentIdToken(bzcert.CurrentIdToken); err != nil {
@@ -201,6 +203,7 @@ func (v *BZCertVerifier) getTokenClaims(idtoken string, config *oidc.Config) (*i
 	// account. We do not need to check against anything for Okta, because Okta
 	// creates a specific issuer url for every org meaning that by virtue of
 	// getting the claims, we are assured it's for the specific Okta tenant.
+	// Okta assumption also applied for OneLogin tenants.
 	if v.orgId != "None" {
 		switch v.providerType {
 		case Google:

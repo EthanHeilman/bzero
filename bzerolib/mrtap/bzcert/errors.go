@@ -44,8 +44,8 @@ type ServiceAccountError struct {
 	InnerError error
 }
 
-func (e *ServiceAccountError) Error() string { 
+func (e *ServiceAccountError) Error() string {
 	return fmt.Sprintf("%s: %s", ServiceAccountNotConfiguredMsg, e.InnerError)
- }
+}
 
 func (e *ServiceAccountError) Unwrap() error { return e.InnerError }
