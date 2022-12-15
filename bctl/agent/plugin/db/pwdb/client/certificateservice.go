@@ -29,7 +29,7 @@ type ClientCertificateResponse struct {
 	ClientCertificate splitclient.SplitClientCertificate
 }
 
-func RequestSignature(targetUser string, clientCert *splitclient.SplitClientCertificate, clientPubKey rsa.PublicKey, privKey keysplitting.SplitPrivateKey) (*splitclient.SplitClientCertificate, error) {
+func RequestSignature(targetUser string, clientCert *splitclient.SplitClientCertificate, clientPubKey rsa.PublicKey, privKey keysplitting.PrivateKeyShard) (*splitclient.SplitClientCertificate, error) {
 	// Hash the agent's private key as an identifier for which certificate Bastion needs
 	agentKeyPem, err := privKey.EncodePEM()
 	if err != nil {

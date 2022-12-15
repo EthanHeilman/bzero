@@ -27,7 +27,7 @@ func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string)
 	// Load CA with agent's key shard
 	agentCA, err := ca.Load(keyData.CaCertPem, keyData.KeyShardPem)
 	if err != nil {
-		return ret, fmt.Errorf("failed to mock out agent's ca: %s", err)
+		return ret, fmt.Errorf("malformed ca certificate: %s", err)
 	}
 
 	// Generate key pair for our client certificate
