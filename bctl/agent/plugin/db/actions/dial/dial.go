@@ -155,7 +155,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 
 	// For each start, call the dial the TCP address
 	if err != nil {
-		d.logger.Errorf("Failed to dial remote address: %s", err)
+		d.logger.Errorf("Failed to establish connection with database: %s", err)
 		return []byte{}, err
 	} else {
 		d.remoteConnection = &remoteConnection
