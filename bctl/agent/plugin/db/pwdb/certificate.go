@@ -45,7 +45,7 @@ func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string)
 		return ret, fmt.Errorf("failed to create new client certificate: %s", err)
 	}
 
-	logger.Infof("It took us %s to generate the client certificate", time.Since(start).String())
+	logger.Infof("It took us %s to generate the client certificate with key size %d", time.Since(start).String(), rsaKeyLength)
 
 	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
 		log.Printf("this failed and we're glad it did")

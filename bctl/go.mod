@@ -9,7 +9,7 @@ replace bastionzero.com/bctl/v1/bctl => ./
 require (
 	bastionzero.com/bctl/v1/bzerolib v0.0.0-00010101000000-000000000000
 	github.com/Masterminds/semver v1.5.0
-	github.com/bastionzero/go-toolkit v0.1.16
+	github.com/bastionzero/go-toolkit v0.1.17
 	github.com/bastionzero/keysplitting v0.4.0
 	github.com/cenkalti/backoff/v4 v4.2.0
 	github.com/coreos/go-oidc/v3 v3.4.0
