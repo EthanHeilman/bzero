@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	certificateServiceEndpoint = "https://lucie-certificate-service.bastionzero.com/generate/client"
+	certificateServiceEndpoint = "https://john-certificate-service.bastionzero.com/generate/client"
 )
 
 type ClientCertificateRequest struct {
