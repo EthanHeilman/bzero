@@ -5,9 +5,32 @@ on:
       # Run System Tests on PRs to master
       - master
 jobs:
-  system-test-google:
-    name: System Test (google)
+  determine_idps_to_test:
     runs-on: ubuntu-latest
+    outputs:
+      idps: ${{ steps.set_idps.outputs.idps }}
+      run_pipeline_tests: ${{ steps.set_pipeline_var.outputs.run_pipeline_tests }}
+    steps:
+    - id: set_idps
+      env:
+        labels: ${{ toJSON(github.event.pull_request.labels) }}
+      run: |
+        idps=$(echo $labels | jq -r -c 'map(. | select(.name | startswith("ci-run")) | .name | sub("ci-run-"; ""))')
+        if [[ $(echo $idps | jq length) == 0 ]]; then idps='["google"]'; fi
+        echo "idps=$idps" >> $GITHUB_OUTPUT
+    - id: set_pipeline_var
+      env:
+          run_pipeline_tests: ${{ contains(github.event.pull_request.labels.*.name, 'run-pipeline-tests') }}
+      run: |
+        echo "run_pipeline_tests=$run_pipeline_tests" >> $GITHUB_OUTPUT
+  system-test:
+    name: System Test
+    runs-on: ubuntu-latest
+    needs: determine_idps_to_test
+    strategy:
+      fail-fast: false
+      matrix: 
+        idp: ${{ fromJSON(needs.determine_idps_to_test.outputs.idps) }}
     steps:
       - name: Generate System Test UUID and Job Summary
         id: generateId
@@ -67,8 +90,10 @@ jobs:
           env-vars-for-codebuild: |
             IDPS_TO_TEST,
             RUN_AS_SERVICE_ACCOUNT,
+            IN_PIPELINE,
             SYSTEM_TEST_UNIQUE_ID
         env:
-          IDPS_TO_TEST: "serviceaccount"
-          RUN_AS_SERVICE_ACCOUNT: "True"
+          IDPS_TO_TEST: ${{ matrix.idp }}
+          RUN_AS_SERVICE_ACCOUNT: "${{ matrix.idp == 'serviceaccount' && 'true' || 'false' }}"
+          IN_PIPELINE: ${{ needs.determine_idps_to_test.outputs.run_pipeline_tests }}
           SYSTEM_TEST_UNIQUE_ID: ${{ env.id }}

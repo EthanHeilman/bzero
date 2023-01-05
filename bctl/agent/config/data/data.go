@@ -39,7 +39,7 @@ type DataV2 struct {
 	ShutdownReason string
 	ShutdownState  map[string]string
 
-	// If this agent is registered to AliceOrg, Eve can create a jwksUrl of her own and sign her 
+	// If this agent is registered to AliceOrg, Eve can create a jwksUrl of her own and sign her
 	// token with the correct privKey and pass that to the agent. The agent will check that, validate
 	// that the token is actually signed by the provided privKey/jwk and allow access. Obviously we should
 	// not allow this, so we need a way to let the agent know to allow only specific jwksUrls. The first naive
@@ -138,7 +138,7 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 	if val, ok := objmap["JwksUrlPatterns"]; ok {
 		if err := json.Unmarshal(val, &jwksUrlPatterns); err != nil {
 			return fmt.Errorf("failed to unmarshal jwksUrlPatterns: %s", err)
-			}
+		}
 	}
 	v.JwksUrlPatterns = jwksUrlPatterns
 
