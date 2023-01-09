@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection"
@@ -64,6 +65,9 @@ const (
 	agentConnectedTimeout = time.Minute
 
 	maximumReconnectWaitTime = 5 * time.Minute
+
+	policyEditedErrTemplate  = "has been edited and does not provide access anymore"
+	policyDeletedErrTemplate = "has been deleted"
 )
 
 type DataConnection struct {
@@ -127,8 +131,17 @@ func New(
 			case <-conn.tmb.Dying():
 				conn.ready = false
 
+				var closeReason error
+				if strings.Contains(conn.tmb.Err().Error(), policyEditedErrTemplate) {
+					closeReason = &connection.PolicyEditedConnectionClosedError{Reason: conn.tmb.Err().Error()}
+				} else if strings.Contains(conn.tmb.Err().Error(), policyDeletedErrTemplate) {
+					closeReason = &connection.PolicyDeletedConnectionClosedError{Reason: conn.tmb.Err().Error()}
+				} else {
+					closeReason = fmt.Errorf("connection closed with reason: %s", conn.tmb.Err())
+				}
+
 				// Close any listening datachannels
-				conn.broker.Close(fmt.Errorf("connection closed"))
+				conn.broker.Close(closeReason)
 
 				// Sends a message to the agent that we are closing the data connection
 				// websocket so that the agent can also disconnect from the websocket

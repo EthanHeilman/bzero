@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
@@ -14,13 +15,15 @@ import (
 
 // Daemon Exit Codes
 const (
-	Success                     = 0
-	UnspecifiedError            = 1
-	BZCertIdTokenError          = 2
-	CancelledByUser             = 3
-	UserNotFound                = 4
-	ZliConfigError              = 5
-	ServiceAccountNotConfigured = 6
+	Success                       = 0
+	UnspecifiedError              = 1
+	BZCertIdTokenError            = 2
+	CancelledByUser               = 3
+	UserNotFound                  = 4
+	ZliConfigError                = 5
+	ServiceAccountNotConfigured   = 6
+	PolicyEditedConnectionClosed  = 7
+	PolicyDeletedConnectionClosed = 8
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -42,6 +45,8 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var userNotFoundError *unixuser.UserNotFoundError
 	var certConfigError *bzcert.CertConfigError
 	var serviceAccountError *bzcert.ServiceAccountError
+	var policyEditedError *connection.PolicyEditedConnectionClosedError
+	var policyDeletedError *connection.PolicyDeletedConnectionClosedError
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
@@ -60,6 +65,12 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	} else if errors.As(err, &userNotFoundError) {
 		logger.Errorf(err.Error())
 		os.Exit(UserNotFound)
+	} else if errors.As(err, &policyEditedError) {
+		logger.Errorf(err.Error())
+		os.Exit(PolicyEditedConnectionClosed)
+	} else if errors.As(err, &policyDeletedError) {
+		logger.Errorf(err.Error())
+		os.Exit(PolicyDeletedConnectionClosed)
 	} else if errors.As(err, &shellQuitError) || errors.As(err, &osInterruptError) || errors.As(err, &sshStdinClosedError) {
 		logger.Errorf(err.Error())
 		os.Exit(Success)
