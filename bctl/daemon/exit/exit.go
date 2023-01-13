@@ -24,6 +24,7 @@ const (
 	ServiceAccountNotConfigured   = 6
 	PolicyEditedConnectionClosed  = 7
 	PolicyDeletedConnectionClosed = 8
+	IdleTimeout                   = 9
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -47,6 +48,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var serviceAccountError *bzcert.ServiceAccountError
 	var policyEditedError *connection.PolicyEditedConnectionClosedError
 	var policyDeletedError *connection.PolicyDeletedConnectionClosedError
+	var idleTimeoutError *connection.IdleTimeoutConnectionClosedError
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
@@ -71,6 +73,9 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	} else if errors.As(err, &policyDeletedError) {
 		logger.Errorf(err.Error())
 		os.Exit(PolicyDeletedConnectionClosed)
+	} else if errors.As(err, &idleTimeoutError) {
+		logger.Errorf(err.Error())
+		os.Exit(IdleTimeout)
 	} else if errors.As(err, &shellQuitError) || errors.As(err, &osInterruptError) || errors.As(err, &sshStdinClosedError) {
 		logger.Errorf(err.Error())
 		os.Exit(Success)

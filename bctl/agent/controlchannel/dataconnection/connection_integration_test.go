@@ -151,5 +151,29 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 				Expect(conn.Ready()).To(Equal(true))
 			})
 		})
+
+		When("The Idle Timeout is reached after no daemon activity", func() {
+			var mockCN *connectionnode.MockConnectionNode
+			var conn connection.Connection
+			idleTimeout := time.Second
+
+			BeforeEach(func() {
+				mockCN = connectionnode.New(logger, agentHubEndpoint)
+				conn = createConnectionWithBastion(mockCN.Url)
+
+				testDaemonConnectedMessage := struct {
+					IdleTimeout int64
+				}{
+					IdleTimeout: idleTimeout.Nanoseconds(),
+				}
+				mockCN.SendSignalRInvocationMessage(daemonConnected, testDaemonConnectedMessage)
+			})
+
+			It("The connection is closed", func(ctx SpecContext) {
+				done := conn.Done()
+				Eventually(done, 15*time.Second).Should(BeClosed())
+				Expect(conn.Err()).Should(MatchError(ContainSubstring("Closing connection after idle timeout")))
+			}, SpecTimeout(15*time.Second))
+		})
 	})
 })

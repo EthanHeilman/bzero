@@ -65,9 +65,6 @@ const (
 	agentConnectedTimeout = time.Minute
 
 	maximumReconnectWaitTime = 5 * time.Minute
-
-	policyEditedErrTemplate  = "has been edited and does not provide access anymore"
-	policyDeletedErrTemplate = "has been deleted"
 )
 
 type DataConnection struct {
@@ -132,10 +129,12 @@ func New(
 				conn.ready = false
 
 				var closeReason error
-				if strings.Contains(conn.tmb.Err().Error(), policyEditedErrTemplate) {
+				if strings.Contains(conn.tmb.Err().Error(), connection.PolicyEditedErrTemplate) {
 					closeReason = &connection.PolicyEditedConnectionClosedError{Reason: conn.tmb.Err().Error()}
-				} else if strings.Contains(conn.tmb.Err().Error(), policyDeletedErrTemplate) {
+				} else if strings.Contains(conn.tmb.Err().Error(), connection.PolicyDeletedErrTemplate) {
 					closeReason = &connection.PolicyDeletedConnectionClosedError{Reason: conn.tmb.Err().Error()}
+				} else if strings.Contains(conn.tmb.Err().Error(), connection.IdleTimeoutTemplate) {
+					closeReason = &connection.IdleTimeoutConnectionClosedError{Reason: conn.tmb.Err().Error()}
 				} else {
 					closeReason = fmt.Errorf("connection closed with reason: %s", conn.tmb.Err())
 				}

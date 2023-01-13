@@ -1,5 +1,16 @@
 package connection
 
+import (
+	"fmt"
+	"time"
+)
+
+const (
+	PolicyEditedErrTemplate  = "has been edited and does not provide access anymore"
+	PolicyDeletedErrTemplate = "has been deleted"
+	IdleTimeoutTemplate      = "Closing connection after idle timeout"
+)
+
 // The PolicyEditedConnectionClosedError is used when a dataconnection is closed by the bastion because the policy allowing it
 // was edited, removing the access. It should generally be treated as a failure / nonzero exit code
 type PolicyEditedConnectionClosedError struct {
@@ -19,3 +30,18 @@ type PolicyDeletedConnectionClosedError struct {
 func (e *PolicyDeletedConnectionClosedError) Error() string { return e.Reason }
 
 func (e *PolicyDeletedConnectionClosedError) Unwrap() error { return nil }
+
+// The IdleTimeoutConnectionClosedError is used when a dataconnection is closed
+// by an agent after an extended period of time of inactivity from the daemon.
+type IdleTimeoutConnectionClosedError struct {
+	Reason string
+}
+
+func NewIdleTimeoutConnectionClosedError(idleTimeout time.Duration, lastDaemonEvent string) *IdleTimeoutConnectionClosedError {
+	idleTimeoutErrMsg := fmt.Sprintf("%s of %s. Last daemon event was: %s", IdleTimeoutTemplate, idleTimeout, lastDaemonEvent)
+	return &IdleTimeoutConnectionClosedError{Reason: idleTimeoutErrMsg}
+}
+
+func (e *IdleTimeoutConnectionClosedError) Error() string { return e.Reason }
+
+func (e *IdleTimeoutConnectionClosedError) Unwrap() error { return nil }

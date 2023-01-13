@@ -126,7 +126,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 				mockCN = connectionnode.New(logger, daemonHubEndpoint)
 				conn = createConnectionWithBastion(mockCN.Url)
 
-				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRInvocationMessage(agentConnected, testAgentConnectedMessage)
 				time.Sleep(time.Millisecond)
 				mockCN.BreakWebsocket()
 			})
@@ -139,7 +139,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 			It("will try to reconnect", func() {
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(false), "connection was ready before agent had reconnected")
-				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRInvocationMessage(agentConnected, testAgentConnectedMessage)
 				time.Sleep(time.Millisecond)
 				Expect(conn.Ready()).To(Equal(true), "connection did not reestablish itself after we unexpectedly broke the websocket connection")
 			})
@@ -153,7 +153,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 				mockCN = connectionnode.New(logger, daemonHubEndpoint)
 				conn = createConnectionWithBastion(mockCN.Url)
 
-				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRInvocationMessage(agentConnected, testAgentConnectedMessage)
 				time.Sleep(time.Second)
 				mockCN.CloseWebsocket()
 			})
@@ -169,7 +169,7 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(false), "connection was ready before agent has reconnected")
 
-				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRInvocationMessage(agentConnected, testAgentConnectedMessage)
 				time.Sleep(time.Second)
 				Expect(conn.Ready()).To(Equal(true), "connection ready after agent has reconnected")
 			})
@@ -189,8 +189,8 @@ var _ = Describe("Daemon Data Connection Integration", Ordered, func() {
 
 				conn = createConnectionWithBastion(mockCN.Url)
 
-				mockCN.SendSignalRMessage(agentConnected, testAgentConnectedMessage)
-				mockCN.SendSignalRMessage(closeConnection, mockCloseDaemonWebsocketMessage)
+				mockCN.SendSignalRInvocationMessage(agentConnected, testAgentConnectedMessage)
+				mockCN.SendSignalRInvocationMessage(closeConnection, mockCloseDaemonWebsocketMessage)
 			})
 
 			AfterEach(func() {
