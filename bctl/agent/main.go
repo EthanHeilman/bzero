@@ -118,7 +118,7 @@ func parseFlags() {
 	flag.StringVar(&orgId, "orgId", "", "OrgID to use")
 	flag.StringVar(&targetName, "targetName", "", "Target name to use")
 	flag.StringVar(&targetId, "targetId", "", "Target ID to use")
-	flag.StringVar(&logLevel, "logLevel", logger.Debug.String(), "The log level to use")
+	flag.StringVar(&logLevel, "logLevel", "debug", "The log level to use -- must be one of 'disabled', 'debug', 'info', 'error'")
 
 	flag.StringVar(&environmentId, "environmentId", "", "Policy environment ID to associate with agent")
 	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
@@ -145,6 +145,7 @@ func parseFlags() {
 		idpOrgId = os.Getenv("IDP_ORG_ID")
 		namespace = os.Getenv("NAMESPACE")
 		registrationKey = os.Getenv("API_KEY")
+		logLevel = os.Getenv("LOG_LEVEL")
 	}
 }
 
@@ -179,6 +180,7 @@ func NewSystemdAgent(
 	if a.logger, err = logger.New(&logger.Config{
 		ConsoleWriters: []io.Writer{os.Stdout},
 		FilePath:       defaultLogFilePath,
+		LogLevel:       logger.ToLogLevel(logLevel),
 	}); err != nil {
 		return
 	}
@@ -272,6 +274,7 @@ func NewKubeAgent(
 	// Create our logger
 	if a.logger, err = logger.New(&logger.Config{
 		ConsoleWriters: []io.Writer{os.Stdout},
+		LogLevel:       logger.ToLogLevel(logLevel),
 	}); err != nil {
 		return nil, err
 	}
