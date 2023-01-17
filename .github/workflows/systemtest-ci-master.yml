@@ -5,9 +5,32 @@ on:
       # Run System Tests on PRs to master
       - master
 jobs:
-  system-test-google:
-    name: System Test (google)
+  determine_idps_to_test:
     runs-on: ubuntu-latest
+    outputs:
+      idps: ${{ steps.set_idps.outputs.idps }}
+      run_pipeline_tests: ${{ steps.set_pipeline_var.outputs.run_pipeline_tests }}
+    steps:
+    - id: set_idps
+      env:
+        labels: ${{ toJSON(github.event.pull_request.labels) }}
+      run: |
+        idps=$(echo $labels | jq -r -c 'map(. | select(.name | startswith("ci-run")) | .name | sub("ci-run-"; ""))')
+        if [[ $(echo $idps | jq length) == 0 ]]; then idps='["google"]'; fi
+        echo "idps=$idps" >> $GITHUB_OUTPUT
+    - id: set_pipeline_var
+      env:
+          run_pipeline_tests: ${{ contains(github.event.pull_request.labels.*.name, 'run-pipeline-tests') }}
+      run: |
+        echo "run_pipeline_tests=$run_pipeline_tests" >> $GITHUB_OUTPUT
+  system-test:
+    name: System Test
+    runs-on: ubuntu-latest
+    needs: determine_idps_to_test
+    strategy:
+      fail-fast: false
+      matrix: 
+        idp: ${{ fromJSON(needs.determine_idps_to_test.outputs.idps) }}
     steps:
       - name: Generate System Test UUID and Job Summary
         id: generateId
@@ -26,40 +49,6 @@ jobs:
           # https://github.com/aws-actions/configure-aws-credentials#session-tagging
           role-skip-session-tagging: true
           role-duration-seconds: 5400
-      - name: Run CodeBuild
-        uses: aws-actions/aws-codebuild-run-build@v1.0.4
-        with:
-          project-name: bzero-prod-system-test
-          env-vars-for-codebuild: |
-            IDPS_TO_TEST,
-            SYSTEM_TEST_UNIQUE_ID
-        env:
-          IDPS_TO_TEST: "google"
-          SYSTEM_TEST_UNIQUE_ID: ${{ env.id }}
-  system-test-service-account:
-    name: System Test (service account)
-    # Trigger this CI job only if the custom label 'ci-run-service-account-tests' has been added to the PR
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'ci-run-service-account-tests') }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Generate System Test UUID and Job Summary
-        id: generateId
-        run: |
-            id=$(uuidgen | head -c23)
-            echo "id=${id}" >> $GITHUB_ENV
-            echo "System Test ID: ${id}. For more info run: bzero-qa info test --id ${id}" >> $GITHUB_STEP_SUMMARY
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.CI_AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.CI_AWS_ACCESS_KEY_SECRET }}
-          role-to-assume: arn:aws:iam::134895913440:role/cwcprod/system_test_github_action_role
-          aws-region: us-east-1
-          # Skip session tagging (enabling this requires sts:TagSession iam permission)
-          # https://github.com/aws-actions/configure-aws-credentials#session-tagging
-          role-skip-session-tagging: true
-          role-duration-seconds: 5400
-
       - name: Run CodeBuild
         uses: aws-actions/aws-codebuild-run-build@v1.0.4
         with:
@@ -67,8 +56,10 @@ jobs:
           env-vars-for-codebuild: |
             IDPS_TO_TEST,
             RUN_AS_SERVICE_ACCOUNT,
+            IN_PIPELINE,
             SYSTEM_TEST_UNIQUE_ID
         env:
-          IDPS_TO_TEST: "serviceaccount"
-          RUN_AS_SERVICE_ACCOUNT: "True"
+          IDPS_TO_TEST: ${{ matrix.idp }}
+          RUN_AS_SERVICE_ACCOUNT: "${{ matrix.idp == 'serviceaccount' && 'true' || 'false' }}"
+          IN_PIPELINE: ${{ needs.determine_idps_to_test.outputs.run_pipeline_tests }}
           SYSTEM_TEST_UNIQUE_ID: ${{ env.id }}

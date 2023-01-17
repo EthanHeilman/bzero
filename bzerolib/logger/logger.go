@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -23,19 +24,40 @@ const (
 
 // This is here for translation, so that the rest of the program doesn't need to care or know
 // about zerolog
-type DebugLevel = zerolog.Level
+type LogLevel = zerolog.Level
 
 const (
-	Debug DebugLevel = zerolog.DebugLevel
-	Info  DebugLevel = zerolog.InfoLevel
-	Error DebugLevel = zerolog.ErrorLevel
-	Trace DebugLevel = zerolog.TraceLevel
+	Disabled LogLevel = zerolog.Disabled
+	Trace    LogLevel = zerolog.TraceLevel
+	Debug    LogLevel = zerolog.DebugLevel
+	Info     LogLevel = zerolog.InfoLevel
+	Warn     LogLevel = zerolog.WarnLevel
+	Error    LogLevel = zerolog.ErrorLevel
 )
+
+func ToLogLevel(logLevel string) LogLevel {
+	switch strings.ToLower(logLevel) {
+	case "disabled":
+		return Disabled
+	case "trace":
+		return Trace
+	case "debug":
+		return Debug
+	case "info":
+		return Info
+	case "warn", "warning":
+		return Warn
+	case "error":
+		return Error
+	default:
+		return Debug
+	}
+}
 
 type Config struct {
 	// The global log level
 	// defaults to debug
-	LogLevel DebugLevel
+	LogLevel LogLevel
 
 	// Path to log file location. If no path is specified then logs
 	// will not be written to files

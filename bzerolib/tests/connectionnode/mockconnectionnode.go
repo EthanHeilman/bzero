@@ -72,6 +72,29 @@ func New(logger *logger.Logger, endpoint string) *MockConnectionNode {
 						logger.Errorf("error unmarshalling SignalR message: %s. Error: %s", string(rawMessage), err)
 					}
 
+					var msgType = signalr.SignalRMessageType(message.Type)
+					logger.Debugf("Received signalR message of type: %s", msgType.String())
+					switch msgType {
+					case signalr.Invocation:
+						// send back a dummy invocation completion message for
+						// all server invocations so that these invocations can
+						// be matched in the agent's invocator. Otherwise this
+						// prevents the agent's signalR client from closing.
+						invocationCompletionMessage := &signalr.CompletionMessage{
+							Type:         int(signalr.Completion),
+							InvocationId: &message.InvocationId,
+							Error:        nil,
+							Result:       nil,
+						}
+
+						messageBytes, err := json.Marshal(invocationCompletionMessage)
+						if err != nil {
+							logger.Errorf("error marshalling invocation completion message: %+v", invocationCompletionMessage)
+							return
+						}
+						cn.SendSignalRMessage(messageBytes)
+					}
+
 					// Push message to queue for processing
 					cn.Received <- &message
 				}
@@ -87,7 +110,7 @@ func (m *MockConnectionNode) AddEndpoint(endpoint string, handlerFunc http.Handl
 	m.mux.HandleFunc(fullEndpoint, handlerFunc)
 }
 
-func (m *MockConnectionNode) SendSignalRMessage(target string, message interface{}) {
+func (m *MockConnectionNode) SendSignalRInvocationMessage(target string, message interface{}) {
 	messageBytes, _ := json.Marshal(message)
 
 	signalRMessage := &signalr.SignalRMessage{
@@ -97,13 +120,17 @@ func (m *MockConnectionNode) SendSignalRMessage(target string, message interface
 		InvocationId: fmt.Sprint(rand.Intn(1000)),
 	}
 
-	trackedMessageBytes, err := json.Marshal(signalRMessage)
+	messageBytes, err := json.Marshal(signalRMessage)
 	if err != nil {
 		m.logger.Errorf("error marshalling outgoing SignalR Message: %+v", message)
 		return
 	}
 
-	terminatedMessageBytes := append(trackedMessageBytes, signalr.TerminatorByte)
+	m.SendSignalRMessage(messageBytes)
+}
+
+func (m *MockConnectionNode) SendSignalRMessage(rawMessage []byte) {
+	terminatedMessageBytes := append(rawMessage, signalr.TerminatorByte)
 	m.websocketServer.Write(terminatedMessageBytes)
 }
 

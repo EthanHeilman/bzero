@@ -45,7 +45,7 @@ func Nonce() string {
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-// Parses the provided jku and returns the pattern and the email for this service account 
+// Parses the provided jku and returns the pattern and the email for this service account
 func ExtractJwksUrlPattern(jku string) (string, string, error) {
 	if len(strings.Split(jku, "@")) != 2 {
 		return "", "", fmt.Errorf("jku value in ID Token does not contain exactly one @. Supplied jku value %s", jku)

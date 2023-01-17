@@ -72,7 +72,7 @@ var _ = Describe("NewBZCertVerifier.AttemptJwksVerification", Ordered, func() {
 				Expect(err).To(BeNil())
 			})
 		})
-		
+
 		// TODO: Add this back when we start checking again orgId
 		// When("Supplied with a service account MRTAP Bzcert with an invalid orgId", func() {
 		// 	wrongIdpOrgId := "eveCorp"
@@ -286,7 +286,7 @@ var _ = Describe("NewBZCertVerifier", Ordered, func() {
 				Expect(retTime).ToNot(BeNil())
 			})
 		})
-		
+
 		// TODO: Add this back when we start checking again orgId
 		// When("Supplied with a invalid service account MRTAP Bzcert with wrong orgId", func() {
 		// 	wrongIdpOrgId := "eveCorp"

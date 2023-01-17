@@ -27,6 +27,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
+	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
 	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
@@ -81,6 +82,8 @@ type DataConnection struct {
 	daemonReadyChan chan bool
 
 	serviceUrl string
+	// Channel indicating when daemon connection events occurs which should delay closing the connection due to an idle timeout
+	daemonIdleTimeoutChan chan string
 }
 
 func New(
@@ -189,6 +192,13 @@ func (d *DataConnection) receive() {
 		case <-d.tmb.Dead():
 			return
 		case message := <-d.client.Inbound():
+			// if the daemon is already connected then push a new event to
+			// daemonIdleTimeout chan to delay closing this connection due to
+			// idle timeout
+			if d.daemonIdleTimeoutChan != nil {
+				d.daemonIdleTimeoutChan <- fmt.Sprintf("received %s message in data connection at %s", message.Target, time.Now().UTC())
+			}
+
 			switch message.Target {
 			case closeConnection:
 				var rerr error
@@ -200,11 +210,25 @@ func (d *DataConnection) receive() {
 				}
 				d.tmb.Kill(rerr)
 			case daemonConnected:
-				d.logger.Info("daemon is connected")
-				d.daemonReadyChan <- true
+				var dcMessage DaemonConnectedWebsocketMessage
+				if err := json.Unmarshal(message.Arguments[0], &dcMessage); err != nil {
+					d.logger.Errorf("error unmarshalling daemon connected websocket message. Error: %s", err)
+				} else {
+					d.logger.Infof("daemon connected. Using idle timeout %s", dcMessage.IdleTimeout)
+					if d.daemonIdleTimeoutChan != nil {
+						d.logger.Errorf("received a daemon connect message after daemon was already connected")
+					} else {
+						go d.waitForIdleTimeout(dcMessage.IdleTimeout.Duration)
+					}
+					d.daemonReadyChan <- true
+				}
 			case daemonDisconnected:
 				reconnectTimeout := 60 * time.Second
 				d.logger.Infof("daemon disconnected...waiting %s for daemon to reconnect", reconnectTimeout)
+				if d.daemonIdleTimeoutChan != nil {
+					close(d.daemonIdleTimeoutChan)
+					d.daemonIdleTimeoutChan = nil
+				}
 				go d.waitForDaemonToConnect(reconnectTimeout)
 			case openDataChannel:
 				var odMessage OpenDataChannelMessage
@@ -408,6 +432,28 @@ func (d *DataConnection) waitForDaemonToConnect(timeout time.Duration) {
 		break
 	case <-time.After(timeout):
 		d.Close(fmt.Errorf("timed out waiting for daemon to connect after %s", timeout), 10*time.Second)
+	}
+}
+
+func (d *DataConnection) waitForIdleTimeout(idleTimeout time.Duration) {
+	lastDaemonEvent := fmt.Sprintf("daemon connected at %s", time.Now().UTC())
+	d.daemonIdleTimeoutChan = make(chan string)
+
+	for {
+		select {
+		case <-d.tmb.Dying():
+			return
+		case daemonEvent, ok := <-d.daemonIdleTimeoutChan:
+			lastDaemonEvent = daemonEvent
+			if !ok {
+				// If idleTimeoutChan is closed then return
+				return
+			}
+			// Otherwise continue but reset the timer for idleTimeout
+			break
+		case <-time.After(idleTimeout):
+			d.Close(connection.NewIdleTimeoutConnectionClosedError(idleTimeout, lastDaemonEvent), 10*time.Second)
+		}
 	}
 }
 
