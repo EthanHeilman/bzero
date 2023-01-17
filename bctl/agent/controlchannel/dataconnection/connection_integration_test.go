@@ -24,6 +24,7 @@ import (
 )
 
 var _ = Describe("Agent Data Connection Integration", Ordered, func() {
+	serviceUrl := "doesn't matter"
 	logger := logger.MockLogger(GinkgoWriter)
 
 	params := url.Values{}
@@ -47,7 +48,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
+		conn, _ := New(logger, serviceUrl, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
 
 		return conn
 	}

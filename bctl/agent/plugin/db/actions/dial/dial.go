@@ -37,6 +37,7 @@ type Dial struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig pwdb.PWDBConfig
 
+	serviceUrl       string
 	requestId        string
 	remoteAddress    *net.TCPAddr
 	remoteConnection *net.Conn
@@ -46,6 +47,7 @@ func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
 	keyshardConfig pwdb.PWDBConfig,
+	serviceUrl string,
 	remoteHost string,
 	remotePort int) (*Dial, error) {
 
@@ -61,6 +63,7 @@ func New(logger *logger.Logger,
 			logger:           logger,
 			doneChan:         doneChan,
 			keyshardConfig:   keyshardConfig,
+			serviceUrl:       serviceUrl,
 			streamOutputChan: ch,
 			remoteAddress:    raddr,
 		}, nil
@@ -150,7 +153,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 		}
 		d.logger.Info("Loaded key shard data")
 
-		remoteConnection, err = pwdb.Connect(d.logger, keydata, d.remoteAddress.String(), dialActionRequest.TargetUser)
+		remoteConnection, err = pwdb.Connect(d.logger, d.serviceUrl, keydata, d.remoteAddress.String(), dialActionRequest.TargetUser)
 	}
 
 	// For each start, call the dial the TCP address

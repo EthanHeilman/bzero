@@ -61,6 +61,8 @@ type DataChannel struct {
 
 	// backward compatability code for when the payload used to come with extra quotes
 	payloadClean bool
+
+	serviceUrl string
 }
 
 func New(
@@ -69,6 +71,7 @@ func New(
 	conn connection.Connection,
 	keyshardConfig pwdb.PWDBConfig,
 	mrtap IMrtap,
+	serviceUrl string,
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {
@@ -79,6 +82,7 @@ func New(
 		conn:           conn,
 		keyshardConfig: keyshardConfig,
 		mrtap:          mrtap,
+		serviceUrl:     serviceUrl,
 		inputChan:      make(chan am.AgentMessage, 50),
 		outputChan:     make(chan am.AgentMessage, 10),
 	}
@@ -325,7 +329,7 @@ func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string,
 	case bzplugin.Web:
 		d.plugin, err = web.New(subLogger, streamOutputChan, action, payload)
 	case bzplugin.Db:
-		d.plugin, err = db.New(subLogger, streamOutputChan, d.keyshardConfig, action, payload)
+		d.plugin, err = db.New(subLogger, streamOutputChan, d.keyshardConfig, d.serviceUrl, action, payload)
 	default:
 		return fmt.Errorf("unrecognized plugin name %s", string(pluginName))
 	}

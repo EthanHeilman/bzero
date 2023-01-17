@@ -32,6 +32,7 @@ type DbPlugin struct {
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	keyshardConfig pwdb.PWDBConfig,
+	serviceUrl string,
 	action string,
 	payload []byte,
 ) (*DbPlugin, error) {
@@ -60,7 +61,7 @@ func New(logger *logger.Logger,
 
 		switch parsedAction {
 		case db.Dial:
-			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, syn.RemoteHost, syn.RemotePort)
+			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, serviceUrl, syn.RemoteHost, syn.RemotePort)
 		default:
 			rerr = fmt.Errorf("unhandled DB action")
 		}

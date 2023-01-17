@@ -16,7 +16,7 @@ type PWDBConfig interface {
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, keyData data.KeyEntry, host, role string) (net.Conn, error) {
+func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host, role string) (net.Conn, error) {
 	connection, err := net.Dial("tcp", host)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,7 @@ func Connect(logger *logger.Logger, keyData data.KeyEntry, host, role string) (n
 	logger.Info("SSL connections are allowed by the database")
 
 	logger.Info("Attempting to upgrade connection...")
-	connection, err = upgradeConnection(logger, keyData, connection, host, role)
+	connection, err = upgradeConnection(logger, serviceUrl, keyData, connection, host, role)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func Connect(logger *logger.Logger, keyData data.KeyEntry, host, role string) (n
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func upgradeConnection(logger *logger.Logger, keyData data.KeyEntry, connection net.Conn, hostPort, role string) (net.Conn, error) {
+func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, connection net.Conn, hostPort, role string) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
 		InsecureSkipVerify: true,
@@ -80,7 +80,7 @@ func upgradeConnection(logger *logger.Logger, keyData data.KeyEntry, connection 
 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
 
 	logger.Info("Loading client SSL certificate and key")
-	if cert, err := tlsKeyPair(logger, keyData, role); err != nil {
+	if cert, err := tlsKeyPair(logger, serviceUrl, keyData, role); err != nil {
 		return nil, err
 	} else {
 		tlsConfig.Certificates = []tls.Certificate{cert}

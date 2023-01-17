@@ -31,6 +31,7 @@ func TestDatachannelConnection(t *testing.T) {
 
 var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	validUrl := "localhost:0"
+	fakeServiceUrl := "doesn'tmatter"
 
 	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	fakeConnectionId := uuid.New().String()
@@ -72,7 +73,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, err = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -90,7 +91,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				_, err = New(logger, fakeServiceUrl, malformedUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -108,7 +109,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -140,7 +141,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -162,7 +163,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -177,7 +178,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

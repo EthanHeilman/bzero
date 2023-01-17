@@ -21,7 +21,7 @@ const (
 	rsaKeyLength = 2048
 )
 
-func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
+func tlsKeyPair(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
 	ret := tls.Certificate{}
 
 	start := time.Now()
@@ -51,7 +51,7 @@ func tlsKeyPair(logger *logger.Logger, keyData data.KeyEntry, targetUser string)
 		log.Printf("this failed and we're glad it did")
 	}
 
-	signedCert, err := client.RequestSignature(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
+	signedCert, err := client.RequestSignature(serviceUrl, targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, fmt.Errorf("failed to get bastion signature on client certificate: %s", err)
 	}

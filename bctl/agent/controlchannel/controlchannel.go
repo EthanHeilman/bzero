@@ -290,7 +290,19 @@ func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
 	client := signalr.New(srLogger, websocket.New(wsLogger))
 	headers := http.Header{}
 	params := url.Values{}
-	if conn, err := dataconnection.New(subLogger, message.ConnectionServiceUrl, message.ConnectionId, c.cConfig, c.keyShardConfig, c.agentIdentityProvider, c.privateKey, params, headers, client); err != nil {
+	if conn, err := dataconnection.New(
+		subLogger,
+		c.serviceUrl,
+		message.ConnectionServiceUrl,
+		message.ConnectionId,
+		c.cConfig,
+		c.keyShardConfig,
+		c.agentIdentityProvider,
+		c.privateKey,
+		params,
+		headers,
+		client,
+	); err != nil {
 		return fmt.Errorf("could not create new connection: %s", err)
 	} else {
 		// add the connection to our connections dictionary

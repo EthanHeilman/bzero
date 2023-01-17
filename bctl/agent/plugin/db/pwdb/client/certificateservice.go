@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"net/http"
 
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"github.com/bastionzero/go-toolkit/certificate/splitclient"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	certificateServiceEndpoint = "https://john-certificate-service.bastionzero.com/generate/client"
+	certificateServiceEndpoint = "certificate/cosign"
 )
 
 type ClientCertificateRequest struct {
@@ -29,7 +30,7 @@ type ClientCertificateResponse struct {
 	ClientCertificate splitclient.SplitClientCertificate
 }
 
-func RequestSignature(targetUser string, clientCert *splitclient.SplitClientCertificate, clientPubKey rsa.PublicKey, privKey keysplitting.PrivateKeyShard) (*splitclient.SplitClientCertificate, error) {
+func RequestSignature(serviceUrl string, targetUser string, clientCert *splitclient.SplitClientCertificate, clientPubKey rsa.PublicKey, privKey keysplitting.PrivateKeyShard) (*splitclient.SplitClientCertificate, error) {
 	// Hash the agent's private key as an identifier for which certificate Bastion needs
 	agentKeyPem, err := privKey.EncodePEM()
 	if err != nil {
@@ -51,8 +52,12 @@ func RequestSignature(targetUser string, clientCert *splitclient.SplitClientCert
 		return nil, fmt.Errorf("error marshalling request to sign client certificate request: %s", err)
 	}
 
-	client, err := httpclient.New(certificateServiceEndpoint, httpclient.HTTPOptions{
-		Body: bytes.NewBuffer(reqBytes),
+	client, err := httpclient.New(serviceUrl, httpclient.HTTPOptions{
+		Endpoint: certificateServiceEndpoint,
+		Body:     bytes.NewBuffer(reqBytes),
+		Headers: http.Header{
+			"Content-Type": {"application/json"},
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("error while instantiating http client: %s", err)

@@ -79,10 +79,13 @@ type DataConnection struct {
 
 	// Channel indicating when the DaemonConnected control message is sent in the websocket
 	daemonReadyChan chan bool
+
+	serviceUrl string
 }
 
 func New(
 	logger *logger.Logger,
+	serviceUrl string,
 	connUrl string,
 	connectionId string,
 	mrtapConfig mrtap.MrtapConfig,
@@ -103,6 +106,7 @@ func New(
 
 	conn := DataConnection{
 		logger:                logger,
+		serviceUrl:            serviceUrl,
 		connectionId:          connectionId,
 		client:                client,
 		broker:                broker.New(),
@@ -252,7 +256,7 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, d.serviceUrl, dcId, odMessage.Syn)
 		return err
 	}
 }
