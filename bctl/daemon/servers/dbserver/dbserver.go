@@ -55,6 +55,7 @@ func New(logger *logger.Logger,
 	remotePort int,
 	remoteHost string,
 	cert *bzcert.DaemonBZCert,
+	action string,
 	targetUser string,
 	targetId string,
 	connUrl string,
@@ -62,6 +63,10 @@ func New(logger *logger.Logger,
 	headers http.Header,
 	agentPubKey *keypair.PublicKey,
 ) (*DbServer, error) {
+	// TODO: this is a placeholder until we have distinct db plugin actions
+	if action == "dial" {
+		targetUser = ""
+	}
 
 	server := &DbServer{
 		logger:      logger,
@@ -95,7 +100,7 @@ func New(logger *logger.Logger,
 
 func (d *DbServer) Start() error {
 	// Now create our local listener for TCP connections
-	d.logger.Infof("Resolving TCP address for host:port %s:%s", d.localHost, d.localPort)
+	d.logger.Infof("Resolving TCP address for %s:%s", d.localHost, d.localPort)
 	localTcpAddress, err := net.ResolveTCPAddr("tcp", d.localHost+":"+d.localPort)
 	if err != nil {
 		d.conn.Close(err, connectionCloseTimeout)
