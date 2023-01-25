@@ -31,9 +31,7 @@ var (
 	attemptedRegistration            bool
 
 	// key-shard vars
-	getKeyShards, clearKeyShards, addKeyShards, addTargetIds, removeTargetIds bool
-	addKeyShardsFilePath                                                      string
-	targetIdsToAdd, targetIdsToRemove                                         []string
+	getKeyShards, clearKeyShards, addKeyShards, addTargets, removeTargets bool
 )
 
 const (
@@ -147,8 +145,8 @@ func parseFlags() bool {
 	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "TODO:")
 	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "TODO:")
 	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "TODO:")
-	keyShardsCmd.BoolVar(&addTargetIds, "addTargets", false, "TODO:")
-	keyShardsCmd.BoolVar(&removeTargetIds, "removeTargets", false, "TODO:")
+	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "TODO:")
+	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "TODO:")
 
 	// check if we're in key-shard mode
 	if len(os.Args) > 1 && os.Args[1] == "keyShards" {
@@ -156,23 +154,27 @@ func parseFlags() bool {
 		// should probably put this in a separate file, with separate handlers
 		keyShardsCmd.Parse(os.Args[2:])
 		if getKeyShards {
-			fmt.Printf("GET KEY SHARDS\n")
+			printKeyShardConfig()
 		} else if clearKeyShards {
-			fmt.Printf("CLEAR KEY SHARDS\n")
+			clearKeyShardConfig()
 		} else if addKeyShards {
-			// FIXME: validate
-			addKeyShardsFilePath = keyShardsCmd.Args()[0]
-			fmt.Printf("ADD KEY SHARDS %s\n", addKeyShardsFilePath)
-		} else if addTargetIds {
-			targetIdsToAdd = keyShardsCmd.Args()
-			fmt.Printf("ADD TARGET IDS %v\n", targetIdsToAdd)
-		} else if removeTargetIds {
-			targetIdsToRemove = keyShardsCmd.Args()
-			fmt.Printf("REMOVE TARGET IDS %v\n", targetIdsToRemove)
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no file path provided")
+			}
+			addKeyShardData(keyShardsCmd.Args()[0])
+		} else if addTargets {
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no target IDs provided")
+			}
+			addTargetIds(keyShardsCmd.Args())
+		} else if removeTargets {
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no file path provided")
+			}
+			removeTargetIds(keyShardsCmd.Args())
 		} else {
 			fmt.Println("YOU MESSED UP")
 		}
-		handleKeyShardCmd()
 
 		// no need to continue normal execution
 		return false
@@ -403,8 +405,4 @@ func getAgentType() AgentType {
 	} else {
 		return Systemd
 	}
-}
-
-func handleKeyShardCmd() {
-	//
 }

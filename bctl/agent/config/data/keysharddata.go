@@ -3,7 +3,7 @@ package data
 type KeyShardData []MappedKeyEntry
 
 type MappedKeyEntry struct {
-	KeyData   KeyEntry `json:"keyData"`
+	KeyData   KeyEntry `json:"key"`
 	TargetIds []string `json:"targetIds"`
 }
 

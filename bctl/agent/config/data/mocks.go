@@ -176,28 +176,28 @@ func MockKeyShardLargeNoTargetsRaw() string {
 	return `
 [
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "1",
 		"caCertPem": ""
 	},
     "targetIds": []
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "2",
 		"caCertPem": ""
 	},
     "targetIds": []
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "3",
 		"caCertPem": ""
 	},
     "targetIds": []
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "4",
 		"caCertPem": ""
 	},
@@ -211,7 +211,7 @@ func MockKeyShardLargeWithTargetsRaw() string {
 	return `
 [
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "1",
 		"caCertPem": ""
 	},
@@ -221,7 +221,7 @@ func MockKeyShardLargeWithTargetsRaw() string {
     ]
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "2",
 		"caCertPem": ""
 	},
@@ -231,7 +231,7 @@ func MockKeyShardLargeWithTargetsRaw() string {
     ]
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "3",
 		"caCertPem": ""
 	},
@@ -241,7 +241,7 @@ func MockKeyShardLargeWithTargetsRaw() string {
     ]
   },
   {
-    "keyData": {
+    "key": {
 		"keyShardPem": "4",
 		"caCertPem": ""
 	},

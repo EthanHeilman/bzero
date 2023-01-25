@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -35,15 +36,17 @@ func LoadKeyShardConfig(client keyShardConfigClient) (*KeyShardConfig, error) {
 	}
 }
 
-// Returns a string representation of the data that can be loaded by another agent
-func (c *KeyShardConfig) String() (string, error) {
+// Returns a JSON representation of the data that can be loaded by another agent
+func (c *KeyShardConfig) MarshalJSON() ([]byte, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	data, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return "", configFetchError(err.Error())
+		return nil, configFetchError(err.Error())
 	}
+
+	return json.Marshal(data)
 }
 
 // Attempt to add a new key->targets entry to the configuration. If the entry does not exist in the config,
@@ -86,9 +89,10 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 	return nil
 }
 
-// Add a target to the entry matching the key. If there is no such entry, a KeyError is returned.
-// If the target is already present in that entry, a NoOpError is returned
-func (c *KeyShardConfig) AddTarget(key data.KeyEntry, targetId string) error {
+// Add a target to all entries in the config
+//
+// If the target is already present in all entries, a NoOpError is returned
+func (c *KeyShardConfig) AddTarget(targetId string) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -97,16 +101,17 @@ func (c *KeyShardConfig) AddTarget(key data.KeyEntry, targetId string) error {
 		return configFetchError(err.Error())
 	}
 
-	idx, err := findEntry(current, key)
-	if err != nil {
-		return err
+	added := false
+	for idx := range current {
+		if !containsTarget(current[idx], targetId) {
+			current[idx].TargetIds = append(current[idx].TargetIds, targetId)
+			added = true
+		}
 	}
 
-	if containsTarget(current[idx], targetId) {
+	if !added {
 		return &NoOpError{}
 	}
-
-	current[idx].TargetIds = append(current[idx].TargetIds, targetId)
 
 	c.data = current
 
@@ -134,8 +139,10 @@ func (c *KeyShardConfig) LastKey(targetId string) (data.KeyEntry, error) {
 	return current[idx].KeyData, nil
 }
 
-// Remove an entire key->targets entry from the configuration. If there is no such entry, a KeyError is returned
-func (c *KeyShardConfig) DeleteKey(key data.KeyEntry) error {
+// Remove all keys from the config
+//
+// If the config was already empty, a NoOpError is returned
+func (c *KeyShardConfig) Clear() error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -144,14 +151,11 @@ func (c *KeyShardConfig) DeleteKey(key data.KeyEntry) error {
 		return configFetchError(err.Error())
 	}
 
-	idx, err := findEntry(current, key)
-	if err != nil {
-		return err
+	if len(current) == 0 {
+		return &NoOpError{}
 	}
 
-	c.data = removeEntry(current, idx)
-
-	if err := c.client.Save(c.data); err != nil {
+	if err := c.client.Save(data.KeyShardData{}); err != nil {
 		return configSaveError(err.Error())
 	}
 	return nil
@@ -212,11 +216,6 @@ func lastIndex(keyShards data.KeyShardData, targetId string) (int, error) {
 	}
 	// not found
 	return -1, &TargetError{Target: targetId}
-}
-
-// remove the specified entry while preserving order
-func removeEntry(keyShards data.KeyShardData, idx int) data.KeyShardData {
-	return append(keyShards[:idx], keyShards[idx+1:]...)
 }
 
 // remove the specified target while preserving order
