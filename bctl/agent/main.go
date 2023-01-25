@@ -29,6 +29,11 @@ var (
 	printVersion                     bool
 	listLogFile                      bool
 	attemptedRegistration            bool
+
+	// key-shard vars
+	getKeyShards, clearKeyShards, addKeyShards, addTargetIds, removeTargetIds bool
+	addKeyShardsFilePath                                                      string
+	targetIdsToAdd, targetIdsToRemove                                         []string
 )
 
 const (
@@ -41,7 +46,11 @@ const (
 )
 
 func main() {
-	parseFlags()
+	// if running a special subcommand, we handle it separately and don't need to continue execution
+	proceed := parseFlags()
+	if !proceed {
+		return
+	}
 
 	agentType := getAgentType()
 	version := getAgentVersion()
@@ -97,7 +106,9 @@ func main() {
 	os.Exit(1)
 }
 
-func parseFlags() {
+func parseFlags() bool {
+
+	/* default command */
 	// Helpful flags
 	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent")
 	flag.BoolVar(&listLogFile, "logs", false, "Print the agent log file path")
@@ -129,23 +140,62 @@ func parseFlags() {
 
 	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
-	// Parse any flag
-	flag.Parse()
+	/* key-shard configuration command */
+	keyShardsCmd := flag.NewFlagSet("keyShards", flag.ExitOnError)
 
-	attemptedRegistration = activationToken != "" || registrationKey != ""
+	// TODO: figure out how we get targetName / namespace
+	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "TODO:")
+	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "TODO:")
+	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "TODO:")
+	keyShardsCmd.BoolVar(&addTargetIds, "addTargets", false, "TODO:")
+	keyShardsCmd.BoolVar(&removeTargetIds, "removeTargets", false, "TODO:")
 
-	// The environment will overwrite any flags passed
-	if getAgentType() == Kubernetes {
-		serviceUrl = os.Getenv("SERVICE_URL")
-		activationToken = os.Getenv("ACTIVATION_TOKEN")
-		targetName = os.Getenv("TARGET_NAME")
-		targetId = os.Getenv("TARGET_ID")
-		environmentId = os.Getenv("ENVIRONMENT")
-		idpProvider = os.Getenv("IDP_PROVIDER")
-		idpOrgId = os.Getenv("IDP_ORG_ID")
-		namespace = os.Getenv("NAMESPACE")
-		registrationKey = os.Getenv("API_KEY")
-		logLevel = os.Getenv("LOG_LEVEL")
+	// check if we're in key-shard mode
+	if len(os.Args) > 1 && os.Args[1] == "keyShards" {
+		// parse the flags, call this function with args
+		// should probably put this in a separate file, with separate handlers
+		keyShardsCmd.Parse(os.Args[2:])
+		if getKeyShards {
+			fmt.Printf("GET KEY SHARDS\n")
+		} else if clearKeyShards {
+			fmt.Printf("CLEAR KEY SHARDS\n")
+		} else if addKeyShards {
+			// FIXME: validate
+			addKeyShardsFilePath = keyShardsCmd.Args()[0]
+			fmt.Printf("ADD KEY SHARDS %s\n", addKeyShardsFilePath)
+		} else if addTargetIds {
+			targetIdsToAdd = keyShardsCmd.Args()
+			fmt.Printf("ADD TARGET IDS %v\n", targetIdsToAdd)
+		} else if removeTargetIds {
+			targetIdsToRemove = keyShardsCmd.Args()
+			fmt.Printf("REMOVE TARGET IDS %v\n", targetIdsToRemove)
+		} else {
+			fmt.Println("YOU MESSED UP")
+		}
+		handleKeyShardCmd()
+
+		// no need to continue normal execution
+		return false
+	} else {
+		flag.Parse()
+
+		attemptedRegistration = activationToken != "" || registrationKey != ""
+
+		// The environment will overwrite any flags passed
+		if getAgentType() == Kubernetes {
+			serviceUrl = os.Getenv("SERVICE_URL")
+			activationToken = os.Getenv("ACTIVATION_TOKEN")
+			targetName = os.Getenv("TARGET_NAME")
+			targetId = os.Getenv("TARGET_ID")
+			environmentId = os.Getenv("ENVIRONMENT")
+			idpProvider = os.Getenv("IDP_PROVIDER")
+			idpOrgId = os.Getenv("IDP_ORG_ID")
+			namespace = os.Getenv("NAMESPACE")
+			registrationKey = os.Getenv("API_KEY")
+			logLevel = os.Getenv("LOG_LEVEL")
+		}
+
+		return true
 	}
 }
 
@@ -353,4 +403,8 @@ func getAgentType() AgentType {
 	} else {
 		return Systemd
 	}
+}
+
+func handleKeyShardCmd() {
+	//
 }

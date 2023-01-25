@@ -35,6 +35,17 @@ func LoadKeyShardConfig(client keyShardConfigClient) (*KeyShardConfig, error) {
 	}
 }
 
+// Returns a string representation of the data that can be loaded by another agent
+func (c *KeyShardConfig) String() (string, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	data, err := c.client.FetchKeyShardData()
+	if err != nil {
+		return "", configFetchError(err.Error())
+	}
+}
+
 // Attempt to add a new key->targets entry to the configuration. If the entry does not exist in the config,
 // a new "last" entry is created. For all of newEntry.TargetIds, calling LastKey will return newEntry
 //
