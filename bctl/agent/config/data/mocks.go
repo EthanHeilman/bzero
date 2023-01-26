@@ -133,11 +133,11 @@ func (mockV2 *AgentDataV2) AssertMatchesV2(v2Data AgentDataV2) {
 }
 
 func DefaultMockKeyShardDataSmall() KeyShardData {
-	return []MappedKeyEntry{mockEntryDefault}
+	return KeyShardData{Keys: []MappedKeyEntry{mockEntryDefault}}
 }
 
 func AltMockKeyShardDataSmall() KeyShardData {
-	return []MappedKeyEntry{mockEntryAlt}
+	return KeyShardData{[]MappedKeyEntry{mockEntryAlt}}
 }
 
 func DefaultMockKeyEntry3Target() MappedKeyEntry {
@@ -166,91 +166,130 @@ func DefaultMockTargetIds() []string {
 }
 
 func MockKeyShardDataMedium() KeyShardData {
-	return []MappedKeyEntry{
-		mockEntryDefault,
-		mockEntryAlt,
+	return KeyShardData{
+		Keys: []MappedKeyEntry{
+			mockEntryDefault,
+			mockEntryAlt,
+		},
 	}
 }
 
 func MockKeyShardLargeNoTargetsRaw() string {
 	return `
-[
-  {
-    "key": {
-		"keyShardPem": "1",
-		"caCertPem": ""
-	},
-    "targetIds": []
-  },
-  {
-    "key": {
-		"keyShardPem": "2",
-		"caCertPem": ""
-	},
-    "targetIds": []
-  },
-  {
-    "key": {
-		"keyShardPem": "3",
-		"caCertPem": ""
-	},
-    "targetIds": []
-  },
-  {
-    "key": {
-		"keyShardPem": "4",
-		"caCertPem": ""
-	},
-    "targetIds": []
-  }
-]
+{
+  "keys":
+    [
+      {
+        "key": {
+    		"keyShardPem": "1",
+    		"caCertPem": ""
+    	},
+        "targetIds": []
+      },
+      {
+        "key": {
+    		"keyShardPem": "2",
+    		"caCertPem": ""
+    	},
+        "targetIds": []
+      },
+      {
+        "key": {
+    		"keyShardPem": "3",
+    		"caCertPem": ""
+    	},
+        "targetIds": []
+      },
+      {
+        "key": {
+    		"keyShardPem": "4",
+    		"caCertPem": ""
+    	},
+        "targetIds": []
+      }
+    ]
+}
 `
+}
+
+func MockKeyShardLargeWithTargetsObject() KeyShardData {
+	return KeyShardData{
+		Keys: []MappedKeyEntry{
+			{
+				KeyData: KeyEntry{
+					KeyShardPem: "1",
+				},
+				TargetIds: []string{"targetId0", "targetId1"},
+			},
+			{
+				KeyData: KeyEntry{
+					KeyShardPem: "2",
+				},
+				TargetIds: []string{"targetId2", "targetId3"},
+			},
+			{
+				KeyData: KeyEntry{
+					KeyShardPem: "3",
+				},
+				TargetIds: []string{"targetId4", "targetId5"},
+			},
+			{
+				KeyData: KeyEntry{
+					KeyShardPem: "4",
+				},
+				TargetIds: []string{"targetId6", "targetId7"},
+			},
+		},
+	}
 }
 
 func MockKeyShardLargeWithTargetsRaw() string {
 	return `
-[
-  {
-    "key": {
-		"keyShardPem": "1",
-		"caCertPem": ""
-	},
-    "targetIds": [
-      "targetId0",
-      "targetId1"
+{
+  "keys":
+    [
+      {
+        "key": {
+    		"keyShardPem": "1",
+    		"caCertPem": ""
+    	},
+        "targetIds": [
+          "targetId0",
+          "targetId1"
+        ]
+      },
+      {
+        "key": {
+    		"keyShardPem": "2",
+    		"caCertPem": ""
+    	},
+        "targetIds": [
+          "targetId2",
+          "targetId3"
+        ]
+      },
+      {
+        "key": {
+    		"keyShardPem": "3",
+    		"caCertPem": ""
+    	},
+        "targetIds": [
+          "targetId4",
+          "targetId5"
+        ]
+      },
+      {
+        "key": {
+    		"keyShardPem": "4",
+    		"caCertPem": ""
+    	},
+        "targetIds": [
+          "targetId6",
+          "targetId7"
+        ]
+      }
     ]
-  },
-  {
-    "key": {
-		"keyShardPem": "2",
-		"caCertPem": ""
-	},
-    "targetIds": [
-      "targetId2",
-      "targetId3"
-    ]
-  },
-  {
-    "key": {
-		"keyShardPem": "3",
-		"caCertPem": ""
-	},
-    "targetIds": [
-      "targetId4",
-      "targetId5"
-    ]
-  },
-  {
-    "key": {
-		"keyShardPem": "4",
-		"caCertPem": ""
-	},
-    "targetIds": [
-      "targetId6",
-      "targetId7"
-    ]
-  }
-]
+}
 `
 }
 

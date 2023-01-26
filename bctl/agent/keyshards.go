@@ -1,5 +1,9 @@
 package main
 
+/*
+Functions supporting the `keyShards` subcommand
+*/
+
 import (
 	"context"
 	"encoding/json"
@@ -11,8 +15,6 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/config/client"
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 )
-
-// TODO: key shard handler functions
 
 func getKeyShardConfig() (*config.KeyShardConfig, error) {
 	var keyShardConfig *config.KeyShardConfig
@@ -37,13 +39,13 @@ func getKeyShardConfig() (*config.KeyShardConfig, error) {
 func printKeyShardConfig() {
 	ks, err := getKeyShardConfig()
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
 	data, err := json.Marshal(ks)
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
@@ -53,7 +55,7 @@ func printKeyShardConfig() {
 func clearKeyShardConfig() {
 	ks, err := getKeyShardConfig()
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
@@ -63,7 +65,7 @@ func clearKeyShardConfig() {
 		fmt.Println("Agent's keyshard configuration is already empty")
 		return
 	} else if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to clear keyshard config: %s\n", err)
 		return
 	}
 
@@ -79,17 +81,17 @@ func addKeyShardData(path string) {
 
 	var ksData data.KeyShardData
 	if err = json.Unmarshal(rawData, &ksData); err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
 	ks, err := getKeyShardConfig()
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
-	for _, ksEntry := range ksData {
+	for _, ksEntry := range ksData.Keys {
 		if err = ks.AddKey(ksEntry); err != nil {
 			fmt.Printf("failed to add key: %s\n", err)
 			return
@@ -102,7 +104,7 @@ func addKeyShardData(path string) {
 func addTargetIds(targetIds []string) {
 	ks, err := getKeyShardConfig()
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 
@@ -119,7 +121,7 @@ func addTargetIds(targetIds []string) {
 func removeTargetIds(targetIds []string) {
 	ks, err := getKeyShardConfig()
 	if err != nil {
-		fmt.Printf("TODO: we messed up: %s\n", err)
+		fmt.Printf("error: failed to load keyshard config: %s\n", err)
 		return
 	}
 

@@ -67,8 +67,8 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 		var addedSomeTargets bool
 		for _, targetId := range newEntry.TargetIds {
 			// add any new targets
-			if !containsTarget(current[idx], targetId) {
-				current[idx].TargetIds = append(current[idx].TargetIds, targetId)
+			if !containsTarget(current.Keys[idx], targetId) {
+				current.Keys[idx].TargetIds = append(current.Keys[idx].TargetIds, targetId)
 				addedSomeTargets = true
 			}
 		}
@@ -78,7 +78,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 		}
 	} else {
 		// if the new entry doesn't already exist, just append it
-		current = append(current, newEntry)
+		current.Keys = append(current.Keys, newEntry)
 	}
 
 	c.data = current
@@ -102,9 +102,9 @@ func (c *KeyShardConfig) AddTarget(targetId string) error {
 	}
 
 	added := false
-	for idx := range current {
-		if !containsTarget(current[idx], targetId) {
-			current[idx].TargetIds = append(current[idx].TargetIds, targetId)
+	for idx := range current.Keys {
+		if !containsTarget(current.Keys[idx], targetId) {
+			current.Keys[idx].TargetIds = append(current.Keys[idx].TargetIds, targetId)
 			added = true
 		}
 	}
@@ -136,7 +136,7 @@ func (c *KeyShardConfig) LastKey(targetId string) (data.KeyEntry, error) {
 		return data.KeyEntry{}, err
 	}
 
-	return current[idx].KeyData, nil
+	return current.Keys[idx].KeyData, nil
 }
 
 // Remove all keys from the config
@@ -151,7 +151,7 @@ func (c *KeyShardConfig) Clear() error {
 		return configFetchError(err.Error())
 	}
 
-	if len(current) == 0 {
+	if len(current.Keys) == 0 {
 		return &NoOpError{}
 	}
 
@@ -188,8 +188,8 @@ func (c *KeyShardConfig) DeleteTarget(targetId string, hard bool) error {
 
 // get the index matching the given key
 func findEntry(keyShards data.KeyShardData, key data.KeyEntry) (int, error) {
-	for i := range keyShards {
-		if keyShards[i].KeyData.KeyShardPem == key.KeyShardPem {
+	for i := range keyShards.Keys {
+		if keyShards.Keys[i].KeyData.KeyShardPem == key.KeyShardPem {
 			return i, nil
 		}
 	}
@@ -209,8 +209,8 @@ func containsTarget(entry data.MappedKeyEntry, targetId string) bool {
 }
 
 func lastIndex(keyShards data.KeyShardData, targetId string) (int, error) {
-	for i := len(keyShards) - 1; i >= 0; i-- {
-		if containsTarget(keyShards[i], targetId) {
+	for i := len(keyShards.Keys) - 1; i >= 0; i-- {
+		if containsTarget(keyShards.Keys[i], targetId) {
 			return i, nil
 		}
 	}
@@ -229,26 +229,26 @@ func removeTarget(keyShards data.KeyShardData, targetId string, hard bool) (data
 
 	// we know the entry at keyShards[idx] contains the target
 	match := -1
-	for i := range keyShards[idx].TargetIds {
-		if keyShards[idx].TargetIds[i] == targetId {
+	for i := range keyShards.Keys[idx].TargetIds {
+		if keyShards.Keys[idx].TargetIds[i] == targetId {
 			match = i
 			break
 		}
 	}
 	if match == -1 {
 		// this really shouldn't be possible; better to check it than panic though!
-		return nil, fmt.Errorf("underlying list corrupted; the lock may be violated")
+		return data.KeyShardData{}, fmt.Errorf("underlying list corrupted; the lock may be violated")
 	}
 
 	// remove the target
-	keyShards[idx].TargetIds = append(keyShards[idx].TargetIds[:match], keyShards[idx].TargetIds[match+1:]...)
+	keyShards.Keys[idx].TargetIds = append(keyShards.Keys[idx].TargetIds[:match], keyShards.Keys[idx].TargetIds[match+1:]...)
 
 	// recursive case: delete until we hit a target error
 	if hard {
 		keyShards, err = removeTarget(keyShards, targetId, hard)
 		var targetError *TargetError
 		if err != nil && !errors.As(err, &targetError) {
-			return nil, err
+			return data.KeyShardData{}, err
 		}
 	}
 

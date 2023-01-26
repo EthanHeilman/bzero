@@ -141,12 +141,14 @@ func parseFlags() bool {
 	/* key-shard configuration command */
 	keyShardsCmd := flag.NewFlagSet("keyShards", flag.ExitOnError)
 
-	// TODO: figure out how we get targetName / namespace
-	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "TODO:")
-	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "TODO:")
-	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "TODO:")
-	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "TODO:")
-	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "TODO:")
+	// FIXME: figure out how we get targetName / namespace, or else this won't work with kube
+	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "Print the agent's keyshard config as a JSON string that can be saved to other agents.")
+	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "Remove all key shards from this agent. Any SplitCert targets using this agent as a proxy will be inaccessible.")
+	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "Save a JSON file with keyshard data to this agent. All targets specified in the data will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addKeys path/to/keys.json'")
+	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds from this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
+	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
+
+	// TODO: load the kube env vars before this even happens I think...
 
 	// check if we're in key-shard mode
 	if len(os.Args) > 1 && os.Args[1] == "keyShards" {
@@ -155,25 +157,30 @@ func parseFlags() bool {
 		keyShardsCmd.Parse(os.Args[2:])
 		if getKeyShards {
 			printKeyShardConfig()
+
 		} else if clearKeyShards {
 			clearKeyShardConfig()
+
 		} else if addKeyShards {
 			if len(keyShardsCmd.Args()) < 1 {
 				fmt.Println("error: no file path provided")
 			}
 			addKeyShardData(keyShardsCmd.Args()[0])
+
 		} else if addTargets {
 			if len(keyShardsCmd.Args()) < 1 {
 				fmt.Println("error: no target IDs provided")
 			}
 			addTargetIds(keyShardsCmd.Args())
+
 		} else if removeTargets {
 			if len(keyShardsCmd.Args()) < 1 {
-				fmt.Println("error: no file path provided")
+				fmt.Println("error: no target IDs provided")
 			}
 			removeTargetIds(keyShardsCmd.Args())
+
 		} else {
-			fmt.Println("YOU MESSED UP")
+			fmt.Println("Invalid option. Run 'bzero keyShards --help' for more information")
 		}
 
 		// no need to continue normal execution
