@@ -4,7 +4,7 @@ package message
 type SchemaVersion string
 
 const (
-	CurrentSchema SchemaVersion = "202204" // if the agent and daemon are both up to date, they send/receive messages with this version
+	CurrentSchema SchemaVersion = "202301" // if the agent and daemon are both up to date, they send/receive messages with this version
 )
 
 // Agent Output Streaming Messages
@@ -17,6 +17,7 @@ type StreamMessage struct {
 	More           bool          `json:"more"`            // new as of schemaVersion 202204: flagging this as false indicates no more content is coming
 	LogId          string        `json:"logId,omitempty"` // only used by Kube commands
 	Content        string        `json:"content"`
+	ContentBytes   []byte        `json:"contentBytes"` // new as of schemaVersion 202301
 }
 
 // Type restriction on our different kinds of agent output streams.

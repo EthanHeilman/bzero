@@ -84,6 +84,8 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 			for {
 				if n, err := lconn.Read(buf); !d.tmb.Alive() {
 					return nil
+				} else if n == 0 {
+					continue
 				} else if err != nil {
 					// print our error message
 					if err == io.EOF {
@@ -200,4 +202,11 @@ func (d *DialAction) sendOutputMessage(action dial.DialSubAction, payload interf
 func (d *DialAction) ReceiveStream(smessage smsg.StreamMessage) {
 	d.logger.Debugf("Dial action received %v stream, message count: %d", smessage.Type, len(d.streamInputChan)+1)
 	d.streamInputChan <- smessage
+}
+
+func (d *DialAction) ReceiveMrtap(action string, actionPayload []byte) error {
+	// the only MrTAP message that we would receive is the ack from the agent after stopping the dial action
+	// we don't do anything with it on the daemon side, so we receive it here and it will get logged
+	// but no particular action will be taken
+	return nil
 }

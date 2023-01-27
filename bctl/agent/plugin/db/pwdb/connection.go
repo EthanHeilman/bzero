@@ -8,21 +8,16 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/crunchydata/crunchy-proxy/protocol"
 )
-
-type PWDBConfig interface {
-	LastKey(targetId string) (data.KeyEntry, error)
-}
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
 func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host, role string) (net.Conn, error) {
 	connection, err := net.Dial("tcp", host)
 	if err != nil {
-		return nil, err
+		return nil, db.NewConnectionRefusedError(err)
 	}
-
-	logger.Info("SSL connections are enabled to the database")
 
 	/*
 	 * First determine if SSL is allowed by the backend. To do this, send an
@@ -39,13 +34,13 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 
 	/* Send the SSL request message. */
 	if _, err := connection.Write(message.Bytes()); err != nil {
-		return nil, fmt.Errorf("error sending initial SSL request to backend: %s", err)
+		return nil, fmt.Errorf("error sending initial SSL request to database: %s", err)
 	}
 
 	/* Receive SSL response message. */
 	response := make([]byte, 4096)
 	if _, err := connection.Read(response); err != nil {
-		return nil, fmt.Errorf("error receiving initial SSL response from backend: %s", err)
+		return nil, fmt.Errorf("error receiving initial SSL response from database: %s", err)
 	}
 
 	/*
@@ -54,7 +49,7 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 	 */
 	if len(response) > 0 && response[0] != 'S' {
 		connection.Close()
-		return nil, fmt.Errorf("the database does not allow SSL connections")
+		return nil, &db.DBNoTLSError{}
 	}
 	logger.Info("SSL connections are allowed by the database")
 
@@ -80,7 +75,7 @@ func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.Ke
 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
 
 	logger.Info("Loading client SSL certificate and key")
-	if cert, err := tlsKeyPair(logger, serviceUrl, keyData, role); err != nil {
+	if cert, err := generateClientCert(logger, serviceUrl, keyData, role); err != nil {
 		return nil, err
 	} else {
 		tlsConfig.Certificates = []tls.Certificate{cert}

@@ -67,6 +67,7 @@ func main() {
 					// but we still wait for it to signal that it's ready to die
 				case err := <-serverErrChan:
 					/* "If your daemon cleanup code isn't in this block, it's in the wrong place!" -management */
+					logger.Infof("WEVE GOTTEN SOMETHING ON THE ERR CHAN")
 					exit.HandleDaemonExit(err, logger)
 				}
 			}
@@ -173,14 +174,14 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	}
 
 	if err != nil {
-		errChan <- fmt.Errorf("failed to initialize %s server: %s", plugin, err)
+		errChan <- fmt.Errorf("failed to initialize %s server: %w", plugin, err)
 	} else {
 		// await external shutdown
 		go listenForShutdown(daemonShutdownChan, server)
 
 		// start accepting requests
 		if err := server.Start(); err != nil {
-			errChan <- fmt.Errorf("failed to start running %s server: %s", plugin, err)
+			errChan <- fmt.Errorf("failed to start %s server: %w", plugin, err)
 		}
 	}
 }
@@ -197,7 +198,7 @@ func newSshServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan
 	// Check if remote port is valid
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote port: %s", err)
+		return nil, fmt.Errorf("failed to parse remote port: %w", err)
 	}
 
 	params["connectionType"] = []string{string(dataconnection.Ssh)}

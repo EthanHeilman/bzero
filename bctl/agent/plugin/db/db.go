@@ -40,7 +40,7 @@ func New(logger *logger.Logger,
 	// Unmarshal the Syn payload
 	var syn db.DbActionParams
 	if err := json.Unmarshal(payload, &syn); err != nil {
-		return nil, fmt.Errorf("malformed Db plugin SYN payload %v", string(payload))
+		return nil, fmt.Errorf("malformed SYN payload: %s", err)
 	}
 
 	// Create our plugin
@@ -62,6 +62,8 @@ func New(logger *logger.Logger,
 		switch parsedAction {
 		case db.Dial:
 			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, serviceUrl, syn.RemoteHost, syn.RemotePort)
+		case db.Pwdb:
+			plugin.action, rerr = pwdb.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, serviceUrl, syn.RemoteHost, syn.RemotePort)
 		default:
 			rerr = fmt.Errorf("unhandled DB action")
 		}
@@ -69,7 +71,7 @@ func New(logger *logger.Logger,
 		if rerr != nil {
 			return nil, fmt.Errorf("failed to start DB plugin with action %s: %s", action, rerr)
 		} else {
-			plugin.logger.Infof("DB plugin started with %v action", action)
+			plugin.logger.Infof("DB plugin started with %s action", action)
 			return plugin, nil
 		}
 	}
@@ -86,7 +88,7 @@ func (d *DbPlugin) Kill() {
 }
 
 func (d *DbPlugin) Receive(action string, actionPayload []byte) ([]byte, error) {
-	d.logger.Debugf("DB plugin received message with %s action", action)
+	d.logger.Tracef("DB plugin received message with %s action", action)
 
 	if payload, err := d.action.Receive(action, actionPayload); err != nil {
 		return []byte{}, err

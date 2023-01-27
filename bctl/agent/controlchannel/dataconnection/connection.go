@@ -214,7 +214,7 @@ func (d *DataConnection) receive() {
 				if err := json.Unmarshal(message.Arguments[0], &dcMessage); err != nil {
 					d.logger.Errorf("error unmarshalling daemon connected websocket message. Error: %s", err)
 				} else {
-					d.logger.Infof("daemon connected. Using idle timeout %s", dcMessage.IdleTimeout)
+					d.logger.Infof("daemon connected. This daemon will exit if left idle for %s", dcMessage.IdleTimeout)
 					if d.daemonIdleTimeoutChan != nil {
 						d.logger.Errorf("received a daemon connect message after daemon was already connected")
 					} else {
@@ -427,9 +427,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 func (d *DataConnection) waitForDaemonToConnect(timeout time.Duration) {
 	select {
 	case <-d.tmb.Dying():
-		break
 	case <-d.daemonReadyChan:
-		break
 	case <-time.After(timeout):
 		d.Close(fmt.Errorf("timed out waiting for daemon to connect after %s", timeout), 10*time.Second)
 	}
@@ -450,7 +448,6 @@ func (d *DataConnection) waitForIdleTimeout(idleTimeout time.Duration) {
 				return
 			}
 			// Otherwise continue but reset the timer for idleTimeout
-			break
 		case <-time.After(idleTimeout):
 			d.Close(connection.NewIdleTimeoutConnectionClosedError(idleTimeout, lastDaemonEvent), 10*time.Second)
 		}

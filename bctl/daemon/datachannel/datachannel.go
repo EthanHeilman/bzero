@@ -16,6 +16,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
+	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
 	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
 )
@@ -444,6 +445,22 @@ func checkForKnownErrors(errString string) error {
 		serviceAccountConfigErrTokenized := strings.Split(errString, bzcert.ServiceAccountNotConfiguredMsg)
 		serviceAccountConfigErr := serviceAccountConfigErrTokenized[len(serviceAccountConfigErrTokenized)-1]
 		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf("%s", serviceAccountConfigErr)}
+	}
+
+	// The below errors are bundled together in a specific order to be able to prioritize specific, wrapped errors from
+	// higher-level generic ones
+	if strings.Contains(errString, db.ClientCertCosignErrorString) {
+		return &db.ClientCertCosignError{}
+	} else if strings.Contains(errString, db.DBNoTLSErrorString) {
+		return &db.DBNoTLSError{}
+	} else if strings.Contains(errString, db.ConnectionRefusedString) {
+		return &db.ConnectionRefusedError{}
+	} else if strings.Contains(errString, db.ConnectionFailedErrorString) {
+		return &db.ConnectionFailedError{}
+	}
+
+	if strings.Contains(errString, db.PwdbMissingKeyErrorString) {
+		return &db.PwdbMissingKeyError{}
 	}
 
 	// base case, we didn't find anything special

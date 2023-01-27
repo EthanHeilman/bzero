@@ -36,6 +36,7 @@ type DbServer struct {
 	tcpListener *net.TCPListener
 
 	// Db specific vars
+	action     bzdb.DbAction
 	remotePort int
 	remoteHost string
 	targetUser string
@@ -63,9 +64,9 @@ func New(logger *logger.Logger,
 	headers http.Header,
 	agentPubKey *keypair.PublicKey,
 ) (*DbServer, error) {
-	// TODO: this is a placeholder until we have distinct db plugin actions
-	if action == "dial" {
-		targetUser = ""
+	act := bzdb.DbAction(action)
+	if act == "" {
+		return nil, fmt.Errorf("unrecognized db action")
 	}
 
 	server := &DbServer{
@@ -78,6 +79,7 @@ func New(logger *logger.Logger,
 		targetId:    targetId,
 		remoteHost:  remoteHost,
 		remotePort:  remotePort,
+		action:      act,
 		agentPubKey: agentPubKey,
 	}
 
@@ -99,12 +101,37 @@ func New(logger *logger.Logger,
 }
 
 func (d *DbServer) Start() error {
+	// Test connection
+	// First connection that comes in is a no-op from the OS, we use that to test the connection
+	d.logger.Infof("Testing connection")
+	// raddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%s", d.localPort))
+	// if err != nil {
+	// 	return fmt.Errorf("failed to resolve remote address: %s", err)
+	// }
+
+	server, _ := net.Pipe()
+	tcpServer, ok := server.(*net.TCPConn)
+	if !ok {
+		d.logger.Infof("THINGS ARE NOT OKAY")
+	}
+	defer server.Close()
+
+	d.logger.Info("Dialing")
+	if err := d.newAction(tcpServer); err != nil {
+		d.logger.Infof("WE CORRECTLY GOT AN ERROR")
+		// d.conn.Close(err, connectionCloseTimeout)
+		return err
+	}
+
+	d.logger.Info("We didn't error and that's bad")
+
+	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
+
 	// Now create our local listener for TCP connections
-	d.logger.Infof("Resolving TCP address for %s:%s", d.localHost, d.localPort)
-	localTcpAddress, err := net.ResolveTCPAddr("tcp", d.localHost+":"+d.localPort)
+	localTcpAddress, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		d.conn.Close(err, connectionCloseTimeout)
-		return fmt.Errorf("failed to resolve TCP address %s", err)
+		return fmt.Errorf("failed to resolve address %s: %s", addr, err)
 	}
 
 	d.logger.Infof("Setting up TCP listener")
@@ -114,10 +141,9 @@ func (d *DbServer) Start() error {
 		return fmt.Errorf("failed to open local port to listen: %s", err)
 	}
 
-	// Do nothing with the first no-op call
-	d.tcpListener.AcceptTCP()
-
 	go d.handleConnections()
+
+	d.logger.Infof("Listening on %s", addr)
 
 	return nil
 }
@@ -144,25 +170,38 @@ func (d *DbServer) handleConnections() {
 		conn, err := d.tcpListener.AcceptTCP()
 		if err != nil {
 			d.logger.Errorf("failed to accept connection: %s", err)
-			continue
+			return
 		}
 
 		d.logger.Infof("Accepting new tcp connection")
 
 		// create our new datachannel in its own go routine so that we can accept other tcp connections
 		go func() {
-			// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
-			dcId := uuid.New().String()
-			subLogger := d.logger.GetDatachannelLogger(dcId)
-			pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
-			plugin := db.New(pluginLogger, d.targetUser, d.targetId)
-			if err := plugin.StartAction(bzdb.Dial, conn); err != nil {
-				d.logger.Errorf("error starting action: %s", err)
-			} else if err := d.newDataChannel(dcId, string(bzdb.Dial), plugin); err != nil {
-				d.logger.Errorf("error starting datachannel: %s", err)
+			if err := d.newAction(conn); err != nil {
+				d.Close(err)
 			}
 		}()
 	}
+}
+
+func (d *DbServer) newAction(conn *net.TCPConn) error {
+	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
+	dcId := uuid.New().String()
+	subLogger := d.logger.GetDatachannelLogger(dcId)
+	pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
+
+	plugin := db.New(pluginLogger, d.targetUser, d.targetId)
+
+	if err := d.newDataChannel(dcId, string(d.action), plugin); err != nil {
+		return fmt.Errorf("error starting datachannel: %w", err)
+	}
+
+	d.logger.Infof("Starting plugin action")
+	if err := plugin.StartAction(d.action, conn); err != nil {
+		return fmt.Errorf("error starting action: %w", err)
+	}
+
+	return nil
 }
 
 // for creating new datachannels

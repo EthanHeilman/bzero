@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db/actions/dial"
+	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db/actions/pwdb"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin"
 	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
@@ -16,6 +17,7 @@ import (
 // Perhaps unnecessary but it is nice to make sure that each action is implementing a common function set
 type IDbDaemonAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
+	ReceiveMrtap(action string, actionPayload []byte) error
 	Start(lconn *net.TCPConn) error
 	Done() <-chan struct{}
 	Err() error
@@ -61,16 +63,18 @@ func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn *net.TCPConn) er
 	switch action {
 	case bzdb.Dial:
 		d.action = dial.New(actLogger, requestId, d.targetUser, d.targetId, d.outboxQueue, d.doneChan)
+	case bzdb.Pwdb:
+		d.action = pwdb.New(actLogger, d.targetUser, d.targetId, d.outboxQueue, d.doneChan)
 	default:
 		return fmt.Errorf("unrecognized db action: %s", action)
 	}
 
-	d.logger.Infof("db plugin created %s action", action)
-
 	// send local tcp connection to action
 	if err := d.action.Start(conn); err != nil {
-		return fmt.Errorf("%s error: %s", action, err)
+		return fmt.Errorf("failed to start %s action: %w", action, err)
 	}
+
+	d.logger.Infof("db plugin created %s action", action)
 
 	return nil
 }
@@ -91,24 +95,25 @@ func (d *DbDaemonPlugin) Err() error {
 }
 
 func (d *DbDaemonPlugin) Outbox() <-chan plugin.ActionWrapper {
+	d.logger.Infof("Someone requested something from the outbox")
 	return d.outboxQueue
 }
 
 func (d *DbDaemonPlugin) ReceiveStream(smessage smsg.StreamMessage) {
-	d.logger.Debugf("db plugin received %v stream", smessage.Type)
+	d.logger.Tracef("db plugin received %s stream", smessage.Type)
 
 	if d.action != nil {
 		d.action.ReceiveStream(smessage)
 	} else {
-		d.logger.Debugf("db plugin received a stream message before an action was created. Ignoring")
+		d.logger.Debugf("ignoring received stream message because it was sent before an action was created")
 	}
 }
 
 func (d *DbDaemonPlugin) ReceiveMrtap(action string, actionPayload []byte) error {
-	d.logger.Debugf("Received a MrTAP message with action: %s", action)
-
-	// the only MrTAP message that we would receive is the ack from the agent after stopping the dial action
-	// we don't do anything with it on the daemon side, so we receive it here and it will get logged
-	// but no particular action will be taken
-	return nil
+	if d.action != nil {
+		return d.action.ReceiveMrtap(action, actionPayload)
+	} else {
+		d.logger.Debugf("ignoring received mrtap because it was sent before an action was created")
+		return nil
+	}
 }
