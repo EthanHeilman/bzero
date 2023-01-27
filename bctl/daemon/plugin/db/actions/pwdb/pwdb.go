@@ -2,7 +2,6 @@ package pwdb
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -73,6 +72,7 @@ func (p *Pwdb) Start(lconn *net.TCPConn) error {
 			p.logger.Infof("Successfully connected")
 		}
 	case <-p.tmb.Dying():
+		return p.tmb.Err()
 		// TODO: check if tomb was killed because of error
 		// If the connect call fails, we'll get a mrtap error message which gets processed in the datachannel
 		// but ultimately concludes with the plugin being killed which is why we listen to the tmb in the fail case
@@ -182,8 +182,8 @@ func (p *Pwdb) Err() error {
 	return p.tmb.Err()
 }
 
-func (p *Pwdb) Kill() {
-	p.tmb.Kill(fmt.Errorf("received stop request from higher ups")) // kills all datachannel, plugin, and action goroutines
+func (p *Pwdb) Kill(err error) {
+	p.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
 	p.tmb.Wait()
 }
 

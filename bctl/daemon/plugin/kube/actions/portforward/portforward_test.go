@@ -193,7 +193,7 @@ var _ = Describe("Daemon PortForward action", Ordered, func() {
 				})
 
 				By("ending when it is killed")
-				go p.Kill()
+				go p.Kill(nil)
 
 				time.Sleep(time.Second)
 

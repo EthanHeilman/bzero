@@ -67,7 +67,6 @@ func main() {
 					// but we still wait for it to signal that it's ready to die
 				case err := <-serverErrChan:
 					/* "If your daemon cleanup code isn't in this block, it's in the wrong place!" -management */
-					logger.Infof("WEVE GOTTEN SOMETHING ON THE ERR CHAN")
 					exit.HandleDaemonExit(err, logger)
 				}
 			}

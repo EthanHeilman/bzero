@@ -52,9 +52,11 @@ func New(
 	}
 }
 
-func (e *ExecAction) Kill() {
-	e.tmb.Kill(nil)
-	e.tmb.Wait()
+func (e *ExecAction) Kill(err error) {
+	if e.tmb.Alive() {
+		e.tmb.Kill(err)
+		e.tmb.Wait()
+	}
 }
 
 func (e *ExecAction) Done() <-chan struct{} {

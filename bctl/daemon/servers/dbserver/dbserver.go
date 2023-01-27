@@ -101,29 +101,20 @@ func New(logger *logger.Logger,
 }
 
 func (d *DbServer) Start() error {
-	// Test connection
-	// First connection that comes in is a no-op from the OS, we use that to test the connection
+	// Test connection so that we can make some errors synchronous, we don't have control over how tunnelling
+	// protocols decide to display error, if they even do. This means we can do our best to catch and display
+	// to the user while we still have their attention
 	d.logger.Infof("Testing connection")
-	// raddr, err := net.ResolveTCPAddr("tcp", fmt.Sprintf(":%s", d.localPort))
-	// if err != nil {
-	// 	return fmt.Errorf("failed to resolve remote address: %s", err)
-	// }
 
 	server, _ := net.Pipe()
-	tcpServer, ok := server.(*net.TCPConn)
-	if !ok {
-		d.logger.Infof("THINGS ARE NOT OKAY")
-	}
+	tcpServer := server.(*net.TCPConn)
 	defer server.Close()
 
-	d.logger.Info("Dialing")
 	if err := d.newAction(tcpServer); err != nil {
-		d.logger.Infof("WE CORRECTLY GOT AN ERROR")
-		// d.conn.Close(err, connectionCloseTimeout)
 		return err
 	}
 
-	d.logger.Info("We didn't error and that's bad")
+	d.logger.Infof("Connection passed all tests")
 
 	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
 

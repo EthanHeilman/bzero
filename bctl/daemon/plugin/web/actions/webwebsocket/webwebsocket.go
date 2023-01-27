@@ -129,9 +129,11 @@ func (w *WebWebsocketAction) handleWebsocketRequest(writer http.ResponseWriter, 
 	}
 }
 
-func (w *WebWebsocketAction) Kill() {
-	w.tmb.Kill(fmt.Errorf("death requested by higher ups"))
-	w.tmb.Wait()
+func (w *WebWebsocketAction) Kill(err error) {
+	if w.tmb.Alive() {
+		w.tmb.Kill(err)
+		w.tmb.Wait()
+	}
 }
 
 func (w *WebWebsocketAction) Done() <-chan struct{} {

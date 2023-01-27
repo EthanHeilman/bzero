@@ -3,7 +3,6 @@ package dial
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -185,8 +184,8 @@ func (d *DialAction) Err() error {
 	return d.err
 }
 
-func (d *DialAction) Kill() {
-	d.tmb.Kill(fmt.Errorf("received stop request from higher ups")) // kills all datachannel, plugin, and action goroutines
+func (d *DialAction) Kill(err error) {
+	d.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
 	d.tmb.Wait()
 }
 

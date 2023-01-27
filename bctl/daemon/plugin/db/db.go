@@ -21,7 +21,7 @@ type IDbDaemonAction interface {
 	Start(lconn *net.TCPConn) error
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type DbDaemonPlugin struct {
@@ -79,10 +79,10 @@ func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn *net.TCPConn) er
 	return nil
 }
 
-func (d *DbDaemonPlugin) Kill() {
+func (d *DbDaemonPlugin) Kill(err error) {
 	d.killed = true
 	if d.action != nil {
-		d.action.Kill()
+		d.action.Kill(err)
 	}
 }
 
@@ -95,7 +95,6 @@ func (d *DbDaemonPlugin) Err() error {
 }
 
 func (d *DbDaemonPlugin) Outbox() <-chan plugin.ActionWrapper {
-	d.logger.Infof("Someone requested something from the outbox")
 	return d.outboxQueue
 }
 

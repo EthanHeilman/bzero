@@ -114,7 +114,7 @@ func (m *Mrtap) Recover(errMessage bzerr.ErrorMessage) error {
 		if errMessage.HPointer == "" {
 			return fmt.Errorf("error message hpointer empty")
 		} else if pair := m.pipelineMap.GetPair(errMessage.HPointer); pair == nil && !m.recovering {
-			m.logger.Infof("agent error is not on a message sent by this datachannel")
+			m.logger.Infof("agent error does not correspond to a message sent by this datachannel")
 			return nil // not a fatal error
 		} else if m.recovering {
 			m.logger.Infof("ignoring error message because we're already in recovery")
@@ -146,7 +146,7 @@ func (m *Mrtap) resend(nonce string) {
 	// TODO: CWC-2093: Remove this once all agents update
 	synAckNonceConstraint, err := semver.NewConstraint("> 2.0")
 	if err != nil {
-		m.logger.Errorf("Not resending any messages in pipeline because unable to create SynAck nonce versioning constraint")
+		m.logger.Errorf("malformed version constraint: %s", err)
 		return
 	}
 
@@ -157,12 +157,12 @@ func (m *Mrtap) resend(nonce string) {
 		if shouldCheckNonce {
 			// Get hash of last acked Data msg
 			if m.lastAckedData == nil {
-				m.logger.Info("Not resending any messages in pipeline because lastAckedData msg is nil")
+				m.logger.Info("Nothing to resend")
 				return
 			}
 			lastAckedDataHash := m.lastAckedData.Hash()
 			if lastAckedDataHash == "" {
-				m.logger.Errorf("Not resending any messages in pipeline because failed to hash lastAckedData msg")
+				m.logger.Errorf("failed to hash the last ack'ed sent message")
 				return
 			}
 
@@ -176,7 +176,7 @@ func (m *Mrtap) resend(nonce string) {
 			// TODO: CWC-2093: Remove this check once all agents update, and
 			// update code to always check the nonce.
 			if nonce != lastAckedDataHash {
-				m.logger.Errorf("Not resending any messages in pipeline because nonce not equal to lastAckedDataHash")
+				m.logger.Errorf("Recovery message does not point to the last ack'd sent message")
 				return
 			}
 		}

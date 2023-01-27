@@ -51,9 +51,11 @@ func New(logger *logger.Logger, requestId string, outboxQueue chan plugin.Action
 	}
 }
 
-func (w *WebDialAction) Kill() {
-	w.tmb.Killf("we were told to die")
-	w.tmb.Wait()
+func (w *WebDialAction) Kill(err error) {
+	if w.tmb.Alive() {
+		w.tmb.Kill(err)
+		w.tmb.Wait()
+	}
 }
 
 func (w *WebDialAction) Done() <-chan struct{} {

@@ -53,7 +53,7 @@ type IPlugin interface {
 	Outbox() <-chan bzplugin.ActionWrapper
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type DataChannel struct {
@@ -123,7 +123,7 @@ func New(
 			select {
 			case <-dc.tmb.Dying():
 				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err())
-				dc.plugin.Kill()
+				dc.plugin.Kill(dc.tmb.Err())
 				return nil
 			case <-dc.plugin.Done():
 				dc.logger.Infof("%s is done", action)

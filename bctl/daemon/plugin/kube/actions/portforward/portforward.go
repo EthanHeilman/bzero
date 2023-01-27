@@ -94,8 +94,11 @@ func New(
 	}
 }
 
-func (p *PortForwardAction) Kill() {
+func (p *PortForwardAction) Kill(err error) {
 	close(p.cancelChan)
+	if p.tmb.Alive() {
+		p.tmb.Kill(err)
+	}
 }
 
 func (p *PortForwardAction) Done() <-chan struct{} {
