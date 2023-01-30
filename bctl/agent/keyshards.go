@@ -50,8 +50,10 @@ func printKeyShardConfig() {
 		return
 	}
 
+	// try to pretty-print
 	var prettyJSON bytes.Buffer
 	if err := json.Indent(&prettyJSON, []byte(data), "", "    "); err != nil {
+		// if that fails for some reason, just barf out the raw data
 		fmt.Printf("%s\n", data)
 		return
 	}
