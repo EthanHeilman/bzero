@@ -134,8 +134,33 @@ func (e *PwdbUnknownAuthorityError) Unwrap() error { return e.innerError }
 // Error to communicate if a certificate has expired
 const ServerCertificateExpiredString = "certificate has expired"
 
-type ServerCertificateExpired error
+type ServerCertificateExpired struct {
+	err error
+}
 
 func NewServerCertificateExpired(err error) error {
-	return ServerCertificateExpired(err)
+	return &ServerCertificateExpired{
+		err: err,
+	}
+}
+
+func (e *ServerCertificateExpired) Error() string {
+	return e.err.Error()
+}
+
+// Error to catch mismatched server name on certificate
+const IncorrectServerNameString = "certificate is not valid for any names"
+
+type IncorrectServerName struct {
+	err error
+}
+
+func NewIncorrectServerName(err error) error {
+	return &IncorrectServerName{
+		err: err,
+	}
+}
+
+func (e *IncorrectServerName) Error() string {
+	return e.err.Error()
 }

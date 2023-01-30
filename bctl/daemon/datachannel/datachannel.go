@@ -459,6 +459,8 @@ func checkForKnownErrors(errString string) error {
 		return &db.PwdbUnknownAuthorityError{}
 	} else if strings.Contains(errString, db.ServerCertificateExpiredString) {
 		return db.NewServerCertificateExpired(fmt.Errorf(errString))
+	} else if strings.Contains(errString, db.IncorrectServerNameString) {
+		return db.NewIncorrectServerName(fmt.Errorf(errString))
 	} else if strings.Contains(errString, db.ConnectionFailedErrorString) {
 		return &db.ConnectionFailedError{}
 	}
