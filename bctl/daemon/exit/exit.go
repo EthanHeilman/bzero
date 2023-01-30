@@ -32,6 +32,7 @@ const (
 	ClientCertCosignError         = 13
 	PwdbMissingKey                = 14
 	PwdbUnkownAuthority           = 15
+	ServerCertificateExpired      = 16
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -62,6 +63,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var clientCosignError *db.ClientCertCosignError
 	var pwdbMissingKeyError *db.PwdbMissingKeyError
 	var pwdbUnknownAuthorityError *db.PwdbUnknownAuthorityError
+	var serverCertExpired db.ServerCertificateExpired
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
@@ -113,6 +115,9 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	} else if errors.As(err, &pwdbUnknownAuthorityError) {
 		logger.Error(err)
 		os.Exit(PwdbUnkownAuthority)
+	} else if errors.As(err, &serverCertExpired) {
+		logger.Error(err)
+		os.Exit(ServerCertificateExpired)
 	}
 
 	logger.Errorf("exiting with error: %s", err)

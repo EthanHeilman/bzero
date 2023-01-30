@@ -444,7 +444,7 @@ func checkForKnownErrors(errString string) error {
 	if strings.Contains(errString, bzcert.ServiceAccountNotConfiguredMsg) {
 		serviceAccountConfigErrTokenized := strings.Split(errString, bzcert.ServiceAccountNotConfiguredMsg)
 		serviceAccountConfigErr := serviceAccountConfigErrTokenized[len(serviceAccountConfigErrTokenized)-1]
-		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf("%s", serviceAccountConfigErr)}
+		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf(serviceAccountConfigErr)}
 	}
 
 	// The below errors are bundled together in a specific order to be able to prioritize specific, wrapped errors from
@@ -457,6 +457,8 @@ func checkForKnownErrors(errString string) error {
 		return &db.ConnectionRefusedError{}
 	} else if strings.Contains(errString, db.UnrecognizedRootCertErrorString) {
 		return &db.PwdbUnknownAuthorityError{}
+	} else if strings.Contains(errString, db.ServerCertificateExpiredString) {
+		return db.NewServerCertificateExpired(fmt.Errorf(errString))
 	} else if strings.Contains(errString, db.ConnectionFailedErrorString) {
 		return &db.ConnectionFailedError{}
 	}

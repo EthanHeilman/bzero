@@ -116,7 +116,7 @@ type PwdbUnknownAuthorityError struct {
 	innerError error
 }
 
-func NewPwdbUnknownAuthorityErrory(err error) error {
+func NewPwdbUnknownAuthorityError(err error) error {
 	return &PwdbUnknownAuthorityError{
 		innerError: err,
 	}
@@ -130,3 +130,12 @@ func (e *PwdbUnknownAuthorityError) Error() string {
 }
 
 func (e *PwdbUnknownAuthorityError) Unwrap() error { return e.innerError }
+
+// Error to communicate if a certificate has expired
+const ServerCertificateExpiredString = "certificate has expired"
+
+type ServerCertificateExpired error
+
+func NewServerCertificateExpired(err error) error {
+	return ServerCertificateExpired(err)
+}
