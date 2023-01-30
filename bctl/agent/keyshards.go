@@ -5,6 +5,7 @@ Functions supporting the `keyShards` subcommand
 */
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -49,7 +50,13 @@ func printKeyShardConfig() {
 		return
 	}
 
-	fmt.Printf("%s\n", data)
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, []byte(data), "", "    "); err != nil {
+		fmt.Printf("%s\n", data)
+		return
+	}
+
+	fmt.Printf("%s\n", prettyJSON.String())
 }
 
 func clearKeyShardConfig() {

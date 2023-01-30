@@ -139,7 +139,7 @@ func parseFlags() bool {
 	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
 	/* key-shard configuration command */
-	keyShardsCmd := flag.NewFlagSet("keyShards", flag.ExitOnError)
+	keyShardsCmd := flag.NewFlagSet("keyshards", flag.ExitOnError)
 
 	// FIXME: figure out how we get targetName / namespace, or else this won't work with kube
 	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "Print the agent's keyshard config as a JSON string that can be saved to other agents.")
