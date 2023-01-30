@@ -105,12 +105,7 @@ func (d *DbServer) Start() error {
 	// protocols decide to display error, if they even do. This means we can do our best to catch and display
 	// to the user while we still have their attention
 	d.logger.Infof("Testing connection")
-
-	server, _ := net.Pipe()
-	tcpServer := server.(*net.TCPConn)
-	defer server.Close()
-
-	if err := d.newAction(tcpServer); err != nil {
+	if err := d.newAction(nil); err != nil {
 		return err
 	}
 

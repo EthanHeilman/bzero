@@ -41,7 +41,8 @@ type Pwdb struct {
 	keyshardConfig PWDBConfig
 
 	serviceUrl       string
-	remoteAddress    string
+	remoteHost       string
+	remotePort       int
 	remoteConnection *net.Conn
 }
 
@@ -59,7 +60,8 @@ func New(logger *logger.Logger,
 		keyshardConfig:   keyshardConfig,
 		serviceUrl:       serviceUrl,
 		streamOutputChan: ch,
-		remoteAddress:    fmt.Sprintf("%s:%d", remoteHost, remotePort),
+		remoteHost:       remoteHost,
+		remotePort:       remotePort,
 	}, nil
 }
 
@@ -99,7 +101,7 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 }
 
 func (p *Pwdb) start(targetId, targetUser, action string) error {
-	p.logger.Infof("Connecting to database at %s", p.remoteAddress)
+	p.logger.Infof("Connecting to database at %s:%s", p.remoteHost, p.remotePort)
 
 	// Grab our key shard data from the vault
 	keydata, err := p.keyshardConfig.LastKey(targetId)
@@ -109,7 +111,7 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 	p.logger.Info("Loaded SplitCert key")
 
 	// Make a tls connection using pwdb to database
-	if conn, err := Connect(p.logger, p.serviceUrl, keydata, p.remoteAddress, targetUser); err != nil {
+	if conn, err := Connect(p.logger, p.serviceUrl, keydata, p.remoteHost, p.remotePort, targetUser); err != nil {
 		return db.NewConnectionFailedError(err)
 	} else {
 		p.remoteConnection = &conn

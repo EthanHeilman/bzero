@@ -79,6 +79,10 @@ func (p *Pwdb) Start(lconn *net.TCPConn) error {
 		// return &db.ConnectionRefusedError{}
 	}
 
+	if lconn == nil {
+		return nil
+	}
+
 	go p.readFromConnection(lconn)
 	go p.writeToConnection(lconn)
 

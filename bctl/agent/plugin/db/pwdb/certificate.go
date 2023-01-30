@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
@@ -41,15 +40,17 @@ func generateClientCert(logger *logger.Logger, serviceUrl string, keyData data.K
 
 	// Create a split certificate
 	clientCertificateTemplate, _ := template.ClientCertificate(targetUser, time.Hour)
+	clientCertificateTemplate.DNSNames = []string{"localhost"}
+	clientCertificateTemplate.Issuer.CommonName = ""
 	clientCert, err := splitclient.Generate(rand.Reader, clientCertificateTemplate, agentCA.X509(), &certKey.PublicKey, agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, fmt.Errorf("failed to create new client certificate: %w", err)
 	}
 
-	logger.Infof("It took %s to generate the client certificate with key size %d", time.Since(start).String(), rsaKeyLength)
+	logger.Infof("It took %s to generate the client certificate with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
 
 	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
-		log.Printf("Client certificate partially signed")
+		logger.Infof("Client certificate partially signed")
 	}
 
 	signedCert, err := client.RequestSignature(serviceUrl, targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())

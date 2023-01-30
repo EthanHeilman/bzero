@@ -143,18 +143,7 @@ func (d *Dial) start(dialActionRequest dial.DialActionPayload, action string) ([
 
 	var remoteConnection net.Conn
 	var err error
-	if dialActionRequest.TargetUser == "" {
-		remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
-	} else {
-		// Grab our key shard data from the vault
-		keydata, kerr := d.keyshardConfig.LastKey(dialActionRequest.TargetId)
-		if kerr != nil {
-			return nil, fmt.Errorf("failed to establish connection to db: %s", kerr)
-		}
-		d.logger.Info("Loaded key shard data")
-
-		remoteConnection, err = pwdb.Connect(d.logger, d.serviceUrl, keydata, d.remoteAddress.String(), dialActionRequest.TargetUser)
-	}
+	remoteConnection, err = net.DialTimeout("tcp", d.remoteAddress.String(), dialTCPTimeout)
 
 	// For each start, call the dial the TCP address
 	if err != nil {

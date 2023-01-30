@@ -455,6 +455,8 @@ func checkForKnownErrors(errString string) error {
 		return &db.DBNoTLSError{}
 	} else if strings.Contains(errString, db.ConnectionRefusedString) {
 		return &db.ConnectionRefusedError{}
+	} else if strings.Contains(errString, db.UnrecognizedRootCertErrorString) {
+		return &db.PwdbUnknownAuthorityError{}
 	} else if strings.Contains(errString, db.ConnectionFailedErrorString) {
 		return &db.ConnectionFailedError{}
 	}

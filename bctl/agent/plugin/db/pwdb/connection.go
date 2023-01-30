@@ -3,6 +3,7 @@ package pwdb
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 
@@ -13,8 +14,8 @@ import (
 )
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host, role string) (net.Conn, error) {
-	connection, err := net.Dial("tcp", host)
+func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host string, port int, role string) (net.Conn, error) {
+	connection, err := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
 	if err != nil {
 		return nil, db.NewConnectionRefusedError(err)
 	}
@@ -59,16 +60,16 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 		return nil, err
 	}
 
-	logger.Debug("Connection successfully upgraded.")
+	logger.Debug("Connection successfully upgraded")
 	return connection, nil
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, connection net.Conn, hostPort, role string) (net.Conn, error) {
+func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, connection net.Conn, hostName, role string) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
-		InsecureSkipVerify: true,
-		RootCAs:            x509.NewCertPool(),
+		ServerName: hostName,
+		RootCAs:    x509.NewCertPool(),
 	}
 
 	logger.Info("Loading CA Certificate")
@@ -83,5 +84,14 @@ func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.Ke
 
 	logger.Info("Upgrading to SSL connection")
 	client := tls.Client(connection, &tlsConfig)
+
+	// Handshake now instead of on first write so we can bubble up error at the right time
+	var unknownRootCert x509.UnknownAuthorityError
+	if err := client.Handshake(); errors.As(err, &unknownRootCert) {
+		return nil, db.NewPwdbUnknownAuthorityErrory(err)
+	} else if err != nil {
+		return nil, err
+	}
+
 	return client, nil
 }

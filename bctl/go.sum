@@ -64,6 +64,10 @@ github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kd
 github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 h1:0CwZNZbxp69SHPdPJAN/hZIm0C4OItdklCFmMRWYpio=
 github.com/bastionzero/go-toolkit v0.1.17 h1:blSmycVw/1Vi8d7SQe8esZkRK8WeQAFe4grRteNg0j8=
 github.com/bastionzero/go-toolkit v0.1.17/go.mod h1:7SFiWPkfr5de6zPAKlca3BjO/nZ81onwkBtC5cQZwIA=
+github.com/bastionzero/go-toolkit v0.1.18 h1:xkznKwopd/wehAo2ShzHUUWDQ1LXKrcgEnIRs76Q+mo=
+github.com/bastionzero/go-toolkit v0.1.18/go.mod h1:7SFiWPkfr5de6zPAKlca3BjO/nZ81onwkBtC5cQZwIA=
+github.com/bastionzero/go-toolkit v0.1.19 h1:J1AzdHwi7OpCGRcvG6ZFTopZ/lPkHUGhsXWSPVo5Sqo=
+github.com/bastionzero/go-toolkit v0.1.19/go.mod h1:7SFiWPkfr5de6zPAKlca3BjO/nZ81onwkBtC5cQZwIA=
 github.com/bastionzero/keysplitting v0.4.0 h1:lpV5uZ4/5Foljg6ZnbILpPX7LkC706+rr04y6KxAGus=
 github.com/bastionzero/keysplitting v0.4.0/go.mod h1:o89uy0lLxocDixHlzOQgke7W6mUmehyn9MVVqignpMc=
 github.com/buger/jsonparser v1.1.1/go.mod h1:6RYKKt7H4d4+iWqouImQ9R2FZql3VbhNgx27UK13J/0=
