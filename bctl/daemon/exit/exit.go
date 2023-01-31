@@ -18,7 +18,7 @@ import (
 const (
 	Success                       = 0
 	UnspecifiedError              = 1
-	BZCertIdTokenError            = 2
+	BZCertIdTokenError            = 2 // Same exit code used when daemon panics
 	CancelledByUser               = 3
 	UserNotFound                  = 4
 	ZliConfigError                = 5
@@ -28,7 +28,7 @@ const (
 	IdleTimeout                   = 9
 	ConnectionRefused             = 10
 	ConnectionFailed              = 11
-	DBNoTLSError                  = 12
+	TLSDisabledError              = 12
 	ClientCertCosignError         = 13
 	PwdbMissingKey                = 14
 	PwdbUnkownAuthority           = 15
@@ -61,7 +61,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var idleTimeoutError *connection.IdleTimeoutConnectionClosedError
 	var connectionRefused *db.ConnectionRefusedError
 	var connectionFailed *db.ConnectionFailedError
-	var dbNoTLSError *db.DBNoTLSError
+	var tlsDisabledError *db.TLSDisabledError
 	var clientCosignError *db.ClientCertCosignError
 	var pwdbMissingKeyError *db.PwdbMissingKeyError
 	var pwdbUnknownAuthorityError *db.PwdbUnknownAuthorityError
@@ -104,8 +104,8 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 		os.Exit(ConnectionRefused)
 	} else if errors.As(err, &connectionFailed) {
 		os.Exit(ConnectionFailed)
-	} else if errors.As(err, &dbNoTLSError) {
-		os.Exit(DBNoTLSError)
+	} else if errors.As(err, &tlsDisabledError) {
+		os.Exit(TLSDisabledError)
 	} else if errors.As(err, &clientCosignError) {
 		os.Exit(ClientCertCosignError)
 	} else if errors.As(err, &pwdbMissingKeyError) {

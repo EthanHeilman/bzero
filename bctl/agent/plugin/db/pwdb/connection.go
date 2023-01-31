@@ -51,7 +51,7 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 	 */
 	if len(response) > 0 && response[0] != 'S' {
 		connection.Close()
-		return nil, &db.DBNoTLSError{}
+		return nil, &db.TLSDisabledError{}
 	}
 	logger.Info("SSL connections are allowed by the database")
 

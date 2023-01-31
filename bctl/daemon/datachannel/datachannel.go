@@ -451,8 +451,8 @@ func checkForKnownErrors(errString string) error {
 	// higher-level generic ones
 	if strings.Contains(errString, db.ClientCertCosignErrorString) {
 		return &db.ClientCertCosignError{}
-	} else if strings.Contains(errString, db.DBNoTLSErrorString) {
-		return &db.DBNoTLSError{}
+	} else if strings.Contains(errString, db.TLSDisabledErrorString) {
+		return &db.TLSDisabledError{}
 	} else if strings.Contains(errString, db.ConnectionRefusedString) {
 		return &db.ConnectionRefusedError{}
 	} else if strings.Contains(errString, db.UnrecognizedRootCertErrorString) {

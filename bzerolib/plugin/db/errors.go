@@ -49,12 +49,12 @@ func (e *ConnectionFailedError) Unwrap() error { return e.innerError }
 
 // PwdbConfigErrors are best guesses that the database has been misconfigured leading to issues in
 // the pwdb auth process
-const DBNoTLSErrorString = "database does not accept ssl connections"
+const TLSDisabledErrorString = "database does not accept ssl connections"
 
-type DBNoTLSError struct{}
+type TLSDisabledError struct{}
 
-func (e *DBNoTLSError) Error() string {
-	return DBNoTLSErrorString
+func (e *TLSDisabledError) Error() string {
+	return TLSDisabledErrorString
 }
 
 // This error is triggered if bastion fails to co-sign client certificate
