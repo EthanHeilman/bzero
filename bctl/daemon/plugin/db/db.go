@@ -62,7 +62,7 @@ func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn *net.TCPConn) er
 
 	switch action {
 	case bzdb.Dial:
-		d.action = dial.New(actLogger, requestId, d.targetUser, d.targetId, d.outboxQueue, d.doneChan)
+		d.action = dial.New(actLogger, requestId, d.outboxQueue, d.doneChan)
 	case bzdb.Pwdb:
 		d.action = pwdb.New(actLogger, d.targetUser, d.targetId, d.outboxQueue, d.doneChan)
 	default:

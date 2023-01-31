@@ -61,7 +61,7 @@ func New(logger *logger.Logger,
 
 		switch parsedAction {
 		case db.Dial:
-			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, serviceUrl, syn.RemoteHost, syn.RemotePort)
+			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, syn.RemoteHost, syn.RemotePort)
 		case db.Pwdb:
 			plugin.action, rerr = pwdb.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, serviceUrl, syn.RemoteHost, syn.RemotePort)
 		default:
