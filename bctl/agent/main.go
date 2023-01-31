@@ -343,7 +343,7 @@ func NewKubeAgent(
 }
 
 func getAgentVersion() string {
-	return "$AGENT_VERSION"
+	return "7.6.0"
 }
 
 func getAgentType() AgentType {
