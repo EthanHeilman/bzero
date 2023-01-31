@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -16,7 +17,7 @@ import (
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
 func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host string, port int, role string) (net.Conn, error) {
-	connection, err := net.Dial("tcp", fmt.Sprintf("%s:%d", host, port))
+	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 5*time.Second)
 	if err != nil {
 		return nil, db.NewConnectionRefusedError(err)
 	}
@@ -89,9 +90,15 @@ func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.Ke
 	logger.Info("Initiating SSL Handshake")
 	// Handshake now instead of on first write so we can bubble up error at the right time
 	var unknownRootCert x509.UnknownAuthorityError
-	if err := client.Handshake(); err == nil {
+	err := client.Handshake()
+	if err == nil {
 		return client, nil
-	} else if errors.As(err, &unknownRootCert) {
+	}
+
+	// If we're parsing an error, then we need to make sure we're closing the connection after
+	defer connection.Close()
+
+	if errors.As(err, &unknownRootCert) {
 		return nil, db.NewPwdbUnknownAuthorityError(err)
 	} else if strings.Contains(err.Error(), db.ServerCertificateExpiredString) {
 		return nil, db.NewServerCertificateExpired(err)

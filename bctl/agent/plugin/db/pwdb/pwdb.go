@@ -101,7 +101,7 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 }
 
 func (p *Pwdb) start(targetId, targetUser, action string) error {
-	p.logger.Infof("Connecting to database at %s:%s", p.remoteHost, p.remotePort)
+	p.logger.Infof("Connecting to database at %s:%d", p.remoteHost, p.remotePort)
 
 	// Grab our key shard data from the vault
 	keydata, err := p.keyshardConfig.LastKey(targetId)
