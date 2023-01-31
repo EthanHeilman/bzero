@@ -111,9 +111,8 @@ func (d *DbServer) Start() error {
 
 	d.logger.Infof("Connection passed all tests")
 
-	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
-
 	// Now create our local listener for TCP connections
+	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
 	localTcpAddress, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		d.conn.Close(err, connectionCloseTimeout)

@@ -89,15 +89,15 @@ func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.Ke
 	logger.Info("Initiating SSL Handshake")
 	// Handshake now instead of on first write so we can bubble up error at the right time
 	var unknownRootCert x509.UnknownAuthorityError
-	if err := client.Handshake(); errors.As(err, &unknownRootCert) {
+	if err := client.Handshake(); err == nil {
+		return client, nil
+	} else if errors.As(err, &unknownRootCert) {
 		return nil, db.NewPwdbUnknownAuthorityError(err)
 	} else if strings.Contains(err.Error(), db.ServerCertificateExpiredString) {
 		return nil, db.NewServerCertificateExpired(err)
 	} else if strings.Contains(err.Error(), db.IncorrectServerNameString) {
 		return nil, db.NewIncorrectServerName(err)
-	} else if err != nil {
+	} else {
 		return nil, err
 	}
-
-	return client, nil
 }

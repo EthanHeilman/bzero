@@ -45,6 +45,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	if err == nil {
 		os.Exit(Success)
 	}
+
 	// https://go.dev/blog/go1.13-errors targets
 	var initialIdTokenError *bzcert.InitialIdTokenError
 	var currentIdTokenError *bzcert.CurrentIdTokenError
@@ -100,28 +101,20 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 		logger.Error(err)
 		os.Exit(CancelledByUser)
 	} else if errors.As(err, &connectionRefused) {
-		logger.Error(err)
 		os.Exit(ConnectionRefused)
 	} else if errors.As(err, &connectionFailed) {
-		logger.Error(err)
 		os.Exit(ConnectionFailed)
 	} else if errors.As(err, &dbNoTLSError) {
-		logger.Error(err)
 		os.Exit(DBNoTLSError)
 	} else if errors.As(err, &clientCosignError) {
-		logger.Error(err)
 		os.Exit(ClientCertCosignError)
 	} else if errors.As(err, &pwdbMissingKeyError) {
-		logger.Error(err)
 		os.Exit(PwdbMissingKey)
 	} else if errors.As(err, &pwdbUnknownAuthorityError) {
-		logger.Error(err)
 		os.Exit(PwdbUnkownAuthority)
 	} else if errors.As(err, &serverCertExpired) {
-		logger.Error(err)
 		os.Exit(ServerCertificateExpired)
 	} else if errors.As(err, &incorrectServerName) {
-		logger.Error(err)
 		os.Exit(IncorrectServerName)
 	}
 
