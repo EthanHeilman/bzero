@@ -62,11 +62,8 @@ func LookupOrCreateFromList(username string) (*UnixUser, error) {
 	if usr, err := Lookup(username); errors.As(err, &unknownUser) {
 		if opts, ok := managedUsers[username]; !ok {
 			return nil, &UserNotFoundError{}
-		} else if err := userAdd(username, opts); err != nil {
-			return nil, err
 		} else {
-			// make sure we really did create the user
-			return validateUserCreation(username)
+			return Create(username, opts)
 		}
 	} else if err != nil {
 		return nil, err
@@ -75,7 +72,7 @@ func LookupOrCreateFromList(username string) (*UnixUser, error) {
 		// for users whose sudoers files are broken
 		// if this is a managed user, make sure it's in sudoers if it should be
 		if opts, ok := managedUsers[username]; ok && opts.Sudoer {
-			if err := addUserToSudoers(username, opts); err != nil {
+			if err := addUserToSudoers(username, opts.SudoersFile); err != nil {
 				return nil, err
 			}
 		}
@@ -88,14 +85,14 @@ func Create(username string, options UserAddOptions) (*UnixUser, error) {
 	if usr, err := Lookup(username); errors.As(err, &unknownUser) {
 		if err := userAdd(username, options); err != nil {
 			return nil, err
-		} else {
-			// add to sudoers if this user is supposed to be
-			if err := addUserToSudoers(username, options); err != nil {
+		} else if options.Sudoer {
+			if err := addUserToSudoers(username, options.SudoersFile); err != nil {
 				return nil, err
 			}
-			// make sure we really did create the user
-			return validateUserCreation(username)
 		}
+
+		// make sure we really did create the user
+		return validateUserCreation(username)
 	} else if err != nil {
 		return nil, err
 	} else {
@@ -145,12 +142,9 @@ func userAdd(username string, options UserAddOptions) error {
 }
 
 // add this user to their specified sudoers file. If none is specified, use the default
-func addUserToSudoers(username string, options UserAddOptions) error {
-	if options.Sudoer {
-		if options.SudoersFile == nil {
-			options.SudoersFile = sudoers.NewDefault()
-		}
-		return options.SudoersFile.AddUser(username)
+func addUserToSudoers(username string, file sudoers.ISudoersFile) error {
+	if file == nil {
+		file = sudoers.NewDefault()
 	}
-	return nil
+	return file.AddUser(username)
 }

@@ -127,7 +127,8 @@ var _ = Describe("Unix", Ordered, func() {
 
 	Context("Create User", func() {
 		It("creates a new user", func() {
-			testSudoersFile := sudoers.New(filepath.Join(bzeroDaddyPath, "test-sudoers"))
+			testSudoersFileName := "test-sudoers"
+			testSudoersFile := sudoers.New(filepath.Join(bzeroDaddyPath, testSudoersFileName))
 			managedUsers["ssm-user"] = UserAddOptions{
 				Sudoer:      true,
 				SudoersFile: testSudoersFile,
@@ -145,6 +146,11 @@ var _ = Describe("Unix", Ordered, func() {
 			By("creating a user it is allowed to")
 			setRunCommand("ssm-user")
 			_, err = LookupOrCreateFromList("ssm-user")
+			Expect(err).To(BeNil())
+
+			// check that our sudoers line was added correctly
+			fileBytes, err := os.ReadFile(filepath.Join(bzeroDaddyPath, testSudoersFileName))
+			Expect(string(fileBytes)).To(ContainSubstring("ssm-user"))
 			Expect(err).To(BeNil())
 
 			By("adding a normal user with the specified options")
@@ -168,7 +174,8 @@ var _ = Describe("Unix", Ordered, func() {
 			Expect(err).To(BeNil())
 
 			// check that our sudoers line was added correctly
-			fileBytes, err := os.ReadFile(filepath.Join(bzeroDaddyPath, "test-sudoers"))
+			fileBytes, err = os.ReadFile(filepath.Join(bzeroDaddyPath, testSudoersFileName))
+			Expect(string(fileBytes)).To(ContainSubstring(sudoerUserName))
 			Expect(err).To(BeNil())
 
 			expectedSudoerEntry := fmt.Sprintf("%s ALL=(ALL) NOPASSWD:ALL", sudoerUserName)
