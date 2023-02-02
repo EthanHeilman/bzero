@@ -223,7 +223,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 				d.logger.Error(err)
 			}
 		case <-time.After(checkOutboxInterval):
-			d.logger.Infof("checking outbox interval: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.mrtap.IsPipelineEmpty())
+			d.logger.Infof("Checking for any remaining messages: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.mrtap.IsPipelineEmpty())
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.mrtap.IsPipelineEmpty() {
 				return

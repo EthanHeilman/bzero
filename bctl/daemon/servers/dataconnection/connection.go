@@ -187,7 +187,7 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.logger.Debugf("sent %s message", message.MessageType)
+					conn.logger.Tracef("Sending %s message", message.MessageType)
 				}
 			}
 		}
@@ -211,7 +211,8 @@ func (d *DataConnection) receive() {
 
 // Returns error on connection closed
 func (d *DataConnection) processInbound(message signalr.SignalRMessage) error {
-	d.logger.Infof("processing new inbound %s message", message.Target)
+	d.logger.Tracef("Processing new inbound %s message", message.Target)
+
 	switch message.Target {
 	case closeConnection:
 		var cdwMessage CloseDaemonWebsocketMessage
@@ -299,7 +300,7 @@ func (d *DataConnection) sendRemainingMessages() {
 		if err := d.client.Send(*message); err != nil {
 			d.logger.Errorf("failed to send message: %s", err)
 		} else {
-			d.logger.Debugf("sent %s message", message.MessageType)
+			d.logger.Tracef("Sending %s message", message.MessageType)
 		}
 	}
 

@@ -177,7 +177,7 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.logger.Debugf("sent %s message", message.MessageType)
+					conn.logger.Tracef("Sending %s message", message.MessageType)
 				}
 			}
 		}
@@ -272,7 +272,7 @@ func (d *DataConnection) receive() {
 
 func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error {
 	dcId := odMessage.DataChannelId
-	d.logger.Infof("got new open data channel control message for id: %s", dcId)
+	d.logger.Infof("Opening new datachannel with id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := d.logger.GetComponentLogger("mrtap")
@@ -287,7 +287,7 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 
 func (d *DataConnection) closeDataChannel(cdMessage CloseDataChannelMessage) error {
 	dcId := cdMessage.DataChannelId
-	d.logger.Infof("got new close data channel control message for %s", dcId)
+	d.logger.Infof("Closing datachannel with id: %s", dcId)
 
 	if ok := d.broker.CloseChannel(dcId, fmt.Errorf("received close data channel control message from daemon")); !ok {
 		return fmt.Errorf("agent connection does not have a datachannel with id: %s", dcId)
@@ -341,7 +341,7 @@ func (d *DataConnection) sendRemainingMessages() {
 		if err := d.client.Send(*message); err != nil {
 			d.logger.Errorf("failed to send message: %s", err)
 		} else {
-			d.logger.Debugf("sent %s message", message.MessageType)
+			d.logger.Tracef("Sending %s message", message.MessageType)
 		}
 	}
 
