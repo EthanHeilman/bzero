@@ -41,10 +41,10 @@ type Pwdb struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig PWDBConfig
 
-	serviceUrl       string
-	remoteHost       string
-	remotePort       int
-	remoteConnection *net.Conn
+	serviceUrl string
+	remoteHost string
+	remotePort int
+	remoteConn net.Conn
 }
 
 func New(logger *logger.Logger,
@@ -69,8 +69,8 @@ func New(logger *logger.Logger,
 func (p *Pwdb) Kill() {
 	if p.tmb.Alive() {
 		p.tmb.Kill(nil)
-		if p.remoteConnection != nil {
-			(*p.remoteConnection).Close()
+		if p.remoteConn != nil {
+			p.remoteConn.Close()
 		}
 		p.tmb.Wait()
 	}
@@ -116,7 +116,7 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 	if conn, err := Connect(p.logger, p.serviceUrl, keydata, p.remoteHost, p.remotePort, targetUser); err != nil {
 		return db.NewConnectionFailedError(err)
 	} else {
-		p.remoteConnection = &conn
+		p.remoteConn = conn
 	}
 	p.logger.Infof("Successfully established SplitCert connection")
 
@@ -127,13 +127,13 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 }
 
 func (p *Pwdb) writeToConnection(data []byte) error {
-	if (*p.remoteConnection) == nil {
+	if p.remoteConn == nil {
 		return fmt.Errorf("attempted to write to connection before it was established")
 	}
 
 	// Set a deadline for the write so we don't block forever
-	(*p.remoteConnection).SetWriteDeadline(time.Now().Add(writeDeadline))
-	if _, err := (*p.remoteConnection).Write(data); !p.tmb.Alive() {
+	p.remoteConn.SetWriteDeadline(time.Now().Add(writeDeadline))
+	if _, err := p.remoteConn.Write(data); !p.tmb.Alive() {
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("error writing to local connection: %s", err)
@@ -150,7 +150,7 @@ func (p *Pwdb) readFromConnection() error {
 
 	for {
 		// this line blocks until it reads output or error
-		if n, err := (*p.remoteConnection).Read(buf); !p.tmb.Alive() {
+		if n, err := p.remoteConn.Read(buf); !p.tmb.Alive() {
 			return nil
 		} else if n == 0 {
 			continue
