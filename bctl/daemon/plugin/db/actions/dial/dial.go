@@ -81,7 +81,7 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 			for {
 				if n, err := lconn.Read(buf); !d.tmb.Alive() {
 					return nil
-				} else if n == 0 {
+				} else if n == 0 && err != io.EOF {
 					continue
 				} else if err != nil {
 					// print our error message
