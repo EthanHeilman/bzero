@@ -79,7 +79,7 @@ func (p *Pwdb) Kill() {
 func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 	switch pwdb.PwdbSubAction(action) {
 	case pwdb.Connect:
-		var connectReq pwdb.PwdbConnectPayload
+		var connectReq pwdb.ConnectPayload
 		if err := json.Unmarshal(actionPayload, &connectReq); err != nil {
 			return nil, fmt.Errorf("malformed connect request payload: %s", err)
 		}
@@ -87,12 +87,16 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 		return nil, p.start(connectReq.TargetId, connectReq.TargetUser, action)
 	case pwdb.Input:
 		// Deserialize the action payload, the only action passed is inputReq
-		var inputReq pwdb.PwdbInputPayload
+		var inputReq pwdb.InputPayload
 		if err := json.Unmarshal(actionPayload, &inputReq); err != nil {
 			return nil, fmt.Errorf("malformed input payload: %s", err)
 		}
 
-		return nil, p.writeToConnection(inputReq.Data)
+		if data, err := base64.StdEncoding.DecodeString(inputReq.Data); err != nil {
+			return nil, fmt.Errorf("input message contained malformed base64 encoded data: %s", err)
+		} else {
+			return nil, p.writeToConnection(data)
+		}
 	case pwdb.Close:
 		p.logger.Infof("Closing because the daemon asked for it")
 		p.Kill()
@@ -179,7 +183,6 @@ func (p *Pwdb) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType,
 		Action:         string(db.Pwdb),
 		Type:           streamType,
 		More:           more,
-		ContentBytes:   contentBytes,
 		Content:        base64.StdEncoding.EncodeToString(contentBytes),
 	}
 }

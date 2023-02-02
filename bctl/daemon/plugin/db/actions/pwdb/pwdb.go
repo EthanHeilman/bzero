@@ -60,7 +60,7 @@ func New(
 func (p *Pwdb) Start(lconn net.Conn) error {
 	p.logger.Infof("Establishing SplitCert connection")
 	// Send message to agent so that we can test the connection
-	payload := pwdb.PwdbConnectPayload{
+	payload := pwdb.ConnectPayload{
 		TargetUser:           p.targetUser,
 		TargetId:             p.targetId,
 		StreamMessageVersion: smsg.CurrentSchema,
@@ -122,12 +122,12 @@ func (p *Pwdb) readFromConnection(lconn net.Conn) error {
 			}
 
 			// close the connection at the agent
-			p.sendOutputMessage(pwdb.Close, pwdb.PwdbConnectPayload{})
+			p.sendOutputMessage(pwdb.Close, pwdb.ConnectPayload{})
 			return err
 		} else {
-			payload := pwdb.PwdbInputPayload{
+			payload := pwdb.InputPayload{
 				SequenceNumber: sequenceNumber,
-				Data:           buf[:n],
+				Data:           base64.StdEncoding.EncodeToString(buf[:n]),
 			}
 			p.sendOutputMessage(pwdb.Input, payload)
 
@@ -155,7 +155,11 @@ func (p *Pwdb) writeToConnection(lconn net.Conn) error {
 			for streamMessage, ok := streamMessages[expectedSequenceNumber]; ok; streamMessage, ok = streamMessages[expectedSequenceNumber] {
 				p.logger.Infof("Writing sequence number %d", expectedSequenceNumber)
 
-				cntnt, _ := base64.StdEncoding.DecodeString(streamMessage.Content)
+				cntnt, err := base64.StdEncoding.DecodeString(streamMessage.Content)
+				if err != nil {
+					p.logger.Errorf("failed to decode stream message content: %s", err)
+					return err
+				}
 
 				switch streamMessage.Type {
 				case smsg.Stream:
