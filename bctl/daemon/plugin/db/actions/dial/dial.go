@@ -54,18 +54,13 @@ func New(
 	return dial
 }
 
-func (d *DialAction) Start(lconn *net.TCPConn) error {
+func (d *DialAction) Start(lconn net.Conn) error {
 	// Build and send the action payload to start the tcp connection on the agent
 	payload := dial.DialActionPayload{
 		RequestId:            d.requestId,
 		StreamMessageVersion: smsg.CurrentSchema,
 	}
 	d.sendOutputMessage(dial.DialStart, payload)
-
-	// FIXME: @Lucie -- ignoring the test connection
-	if lconn == nil {
-		return nil
-	}
 
 	// Listen to stream messages coming from the agent, and forward to our local connection
 	d.tmb.Go(func() error {
@@ -183,8 +178,10 @@ func (d *DialAction) Err() error {
 }
 
 func (d *DialAction) Kill(err error) {
-	d.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
-	d.tmb.Wait()
+	if d.tmb.Alive() {
+		d.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
+		d.tmb.Wait()
+	}
 }
 
 func (d *DialAction) sendOutputMessage(action dial.DialSubAction, payload interface{}) {

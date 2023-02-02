@@ -105,7 +105,10 @@ func (d *DbServer) Start() error {
 	// protocols decide to display error, if they even do. This means we can do our best to catch and display
 	// to the user while we still have their attention
 	d.logger.Infof("Testing connection")
-	if err := d.newAction(nil); err != nil {
+
+	server, _ := net.Pipe()
+	defer server.Close()
+	if err := d.newAction(server); err != nil {
 		return err
 	}
 
@@ -169,7 +172,7 @@ func (d *DbServer) handleConnections() {
 	}
 }
 
-func (d *DbServer) newAction(conn *net.TCPConn) error {
+func (d *DbServer) newAction(conn net.Conn) error {
 	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
 	dcId := uuid.New().String()
 	subLogger := d.logger.GetDatachannelLogger(dcId)

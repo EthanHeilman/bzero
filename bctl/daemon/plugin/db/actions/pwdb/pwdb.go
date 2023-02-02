@@ -57,7 +57,7 @@ func New(
 	}
 }
 
-func (p *Pwdb) Start(lconn *net.TCPConn) error {
+func (p *Pwdb) Start(lconn net.Conn) error {
 	p.logger.Infof("Establishing SplitCert connection")
 	// Send message to agent so that we can test the connection
 	payload := pwdb.PwdbConnectPayload{
@@ -77,10 +77,6 @@ func (p *Pwdb) Start(lconn *net.TCPConn) error {
 		}
 	case <-p.tmb.Dying():
 		return p.tmb.Err()
-	}
-
-	if lconn == nil {
-		return nil
 	}
 
 	go func() {
@@ -106,7 +102,7 @@ func (p *Pwdb) Start(lconn *net.TCPConn) error {
 	return nil
 }
 
-func (p *Pwdb) readFromConnection(lconn *net.TCPConn) error {
+func (p *Pwdb) readFromConnection(lconn net.Conn) error {
 	defer close(p.doneChan)
 
 	// listen to messages coming from the local tcp connection and sends them to the agent
@@ -140,7 +136,7 @@ func (p *Pwdb) readFromConnection(lconn *net.TCPConn) error {
 	}
 }
 
-func (p *Pwdb) writeToConnection(lconn *net.TCPConn) error {
+func (p *Pwdb) writeToConnection(lconn net.Conn) error {
 	// this will make sure we stop reading when we're done writing
 	defer lconn.Close()
 
