@@ -18,7 +18,7 @@ import (
 type IDbDaemonAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	ReceiveMrtap(action string, actionPayload []byte) error
-	Start(lconn *net.TCPConn) error
+	Start(lconn net.Conn) error
 	Done() <-chan struct{}
 	Err() error
 	Kill(err error)
@@ -52,7 +52,7 @@ func New(logger *logger.Logger, targetUser string, targetId string) *DbDaemonPlu
 	}
 }
 
-func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn *net.TCPConn) error {
+func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn net.Conn) error {
 	if d.killed {
 		return fmt.Errorf("plugin has already been killed, cannot create a new shell action")
 	}
