@@ -1,6 +1,7 @@
 package pwdb
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -179,5 +180,6 @@ func (p *Pwdb) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType,
 		Type:           streamType,
 		More:           more,
 		ContentBytes:   contentBytes,
+		Content:        base64.StdEncoding.EncodeToString(contentBytes),
 	}
 }
