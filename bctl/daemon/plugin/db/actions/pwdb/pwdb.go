@@ -2,6 +2,7 @@ package pwdb
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -70,26 +71,41 @@ func (p *Pwdb) Start(lconn *net.TCPConn) error {
 	case msg := <-p.mrtapInputChan:
 		if msg.Action == string(pwdb.Connect) {
 			p.logger.Infof("Successfully connected")
+		} else {
+			return fmt.Errorf("mrzap message did not correlate with the expected action taken")
 		}
 	case <-p.tmb.Dying():
 		return p.tmb.Err()
-		// TODO: check if tomb was killed because of error
-		// If the connect call fails, we'll get a mrtap error message which gets processed in the datachannel
-		// but ultimately concludes with the plugin being killed which is why we listen to the tmb in the fail case
-		// return &db.ConnectionRefusedError{}
 	}
 
 	if lconn == nil {
 		return nil
 	}
 
-	go p.readFromConnection(lconn)
-	go p.writeToConnection(lconn)
+	go func() {
+		for {
+			select {
+			case <-p.tmb.Dying():
+				return
+			case <-p.mrtapInputChan:
+				// receive mrtap messages, however we don't have anything to do with them so this statement prevents
+				// the chan from filling up and blocking
+			}
+		}
+	}()
+
+	p.tmb.Go(func() error {
+		p.tmb.Go(func() error {
+			return p.readFromConnection(lconn)
+		})
+
+		return p.writeToConnection(lconn)
+	})
 
 	return nil
 }
 
-func (p *Pwdb) readFromConnection(lconn *net.TCPConn) {
+func (p *Pwdb) readFromConnection(lconn *net.TCPConn) error {
 	defer close(p.doneChan)
 
 	// listen to messages coming from the local tcp connection and sends them to the agent
@@ -98,8 +114,8 @@ func (p *Pwdb) readFromConnection(lconn *net.TCPConn) {
 
 	for {
 		if n, err := lconn.Read(buf); !p.tmb.Alive() {
-			return
-		} else if n == 0 {
+			return nil
+		} else if n == 0 && err != io.EOF {
 			continue
 		} else if err != nil {
 			if err == io.EOF {
@@ -110,7 +126,7 @@ func (p *Pwdb) readFromConnection(lconn *net.TCPConn) {
 
 			// close the connection at the agent
 			p.sendOutputMessage(pwdb.Close, pwdb.PwdbConnectPayload{})
-			return
+			return err
 		} else {
 			payload := pwdb.PwdbInputPayload{
 				SequenceNumber: sequenceNumber,
@@ -123,7 +139,7 @@ func (p *Pwdb) readFromConnection(lconn *net.TCPConn) {
 	}
 }
 
-func (p *Pwdb) writeToConnection(lconn *net.TCPConn) {
+func (p *Pwdb) writeToConnection(lconn *net.TCPConn) error {
 	// this will make sure we stop reading when we're done writing
 	defer lconn.Close()
 
@@ -134,19 +150,13 @@ func (p *Pwdb) writeToConnection(lconn *net.TCPConn) {
 	for {
 		select {
 		case <-p.tmb.Dying():
-			return
-		case <-p.mrtapInputChan:
-			// receive mrtap messages, however we don't have anything to do with them so this statement prevents
-			// the chan from filling up and blocking
-			continue
+			return nil
 		case msg := <-p.streamInputChan:
 			// add stream message to our dict so we can then loop them and process them in order
 			streamMessages[msg.SequenceNumber] = msg
 
 			for streamMessage, ok := streamMessages[expectedSequenceNumber]; ok; streamMessage, ok = streamMessages[expectedSequenceNumber] {
-				if !p.tmb.Alive() {
-					return
-				}
+				p.logger.Infof("Writing sequence number %d", expectedSequenceNumber)
 
 				switch streamMessage.Type {
 				case smsg.Stream:
@@ -154,14 +164,13 @@ func (p *Pwdb) writeToConnection(lconn *net.TCPConn) {
 					lconn.SetWriteDeadline(time.Now().Add(writeDeadline))
 					if _, err := lconn.Write(streamMessage.ContentBytes); err != nil {
 						p.logger.Errorf("error writing to local TCP connection: %s", err)
-						p.tmb.Kill(nil)
-						return
+						return err
 					}
 
 					// if the stream is done, we close
 					if !streamMessage.More {
 						p.logger.Errorf("remote tcp connection has been closed, closing local tcp connection")
-						return
+						return fmt.Errorf("stream end")
 					}
 				case smsg.Error:
 					p.logger.Infof("agent hit an error trying to read from remote connection: %s", string(streamMessage.ContentBytes))
@@ -187,8 +196,10 @@ func (p *Pwdb) Err() error {
 }
 
 func (p *Pwdb) Kill(err error) {
-	p.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
-	p.tmb.Wait()
+	if p.tmb.Alive() {
+		p.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
+		p.tmb.Wait()
+	}
 }
 
 func (p *Pwdb) sendOutputMessage(action pwdb.PwdbSubAction, payload interface{}) {

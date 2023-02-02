@@ -50,7 +50,7 @@ func generateClientCert(logger *logger.Logger, serviceUrl string, keyData data.K
 	logger.Infof("It took %s to generate the client certificate with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
 
 	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
-		logger.Infof("Client certificate partially signed")
+		logger.Infof("Generated SplitCert client certificate")
 	}
 
 	signedCert, err := client.RequestSignature(serviceUrl, targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())

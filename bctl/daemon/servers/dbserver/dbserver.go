@@ -201,7 +201,7 @@ func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemo
 		RemoteHost: d.remoteHost,
 	}
 
-	mtLogger := d.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, d.agentPubKey, d.cert)
 	if err != nil {
 		return err

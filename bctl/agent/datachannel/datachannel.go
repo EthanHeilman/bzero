@@ -218,7 +218,7 @@ func (d *DataChannel) Receive(agentMessage am.AgentMessage) {
 }
 
 func (d *DataChannel) processInput(agentMessage am.AgentMessage) {
-	d.logger.Infof("received message type: %s", agentMessage.MessageType)
+	d.logger.Infof("Received message type: %s", agentMessage.MessageType)
 
 	switch am.MessageType(agentMessage.MessageType) {
 	case am.Mrtap:

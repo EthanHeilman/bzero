@@ -93,6 +93,7 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 
 		return nil, p.writeToConnection(inputReq.Data)
 	case pwdb.Close:
+		p.logger.Infof("Closing because the daemon asked for it")
 		p.Kill()
 		return actionPayload, nil
 	default:
@@ -126,10 +127,8 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 
 func (p *Pwdb) writeToConnection(data []byte) error {
 	if (*p.remoteConnection) == nil {
-		return fmt.Errorf("attempted to write to connection for it was established")
+		return fmt.Errorf("attempted to write to connection before it was established")
 	}
-	// Send this data to our remote connection
-	p.logger.Trace("Received data from daemon, writing to connection")
 
 	// Set a deadline for the write so we don't block forever
 	(*p.remoteConnection).SetWriteDeadline(time.Now().Add(writeDeadline))
@@ -172,6 +171,7 @@ func (p *Pwdb) readFromConnection() error {
 }
 
 func (p *Pwdb) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType, more bool, contentBytes []byte) {
+	p.logger.Infof("Sending sequence number %d", sequenceNumber)
 	p.streamOutputChan <- smsg.StreamMessage{
 		SchemaVersion:  p.streamMessageVersion,
 		SequenceNumber: sequenceNumber,
