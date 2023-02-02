@@ -1,6 +1,7 @@
 package pwdb
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -158,11 +159,13 @@ func (p *Pwdb) writeToConnection(lconn *net.TCPConn) error {
 			for streamMessage, ok := streamMessages[expectedSequenceNumber]; ok; streamMessage, ok = streamMessages[expectedSequenceNumber] {
 				p.logger.Infof("Writing sequence number %d", expectedSequenceNumber)
 
+				cntnt, _ := base64.StdEncoding.DecodeString(streamMessage.Content)
+
 				switch streamMessage.Type {
 				case smsg.Stream:
 					// Set a deadline for the write so we don't block forever
 					lconn.SetWriteDeadline(time.Now().Add(writeDeadline))
-					if _, err := lconn.Write(streamMessage.ContentBytes); err != nil {
+					if _, err := lconn.Write(cntnt); err != nil {
 						p.logger.Errorf("error writing to local TCP connection: %s", err)
 						return err
 					}
@@ -173,7 +176,7 @@ func (p *Pwdb) writeToConnection(lconn *net.TCPConn) error {
 						return fmt.Errorf("stream end")
 					}
 				case smsg.Error:
-					p.logger.Infof("agent hit an error trying to read from remote connection: %s", string(streamMessage.ContentBytes))
+					p.logger.Infof("agent hit an error trying to read from remote connection: %s", string(cntnt))
 				default:
 					p.logger.Errorf("unhandled stream type: %s", streamMessage.Type)
 				}
@@ -212,7 +215,7 @@ func (p *Pwdb) sendOutputMessage(action pwdb.PwdbSubAction, payload interface{})
 }
 
 func (p *Pwdb) ReceiveStream(smessage smsg.StreamMessage) {
-	p.logger.Tracef("Dial action received %s stream, message count: %d", smessage.Type, len(p.streamInputChan)+1)
+	p.logger.Infof("Dial action received %s stream, message count: %d", smessage.Type, len(p.streamInputChan)+1)
 
 	select {
 	case p.streamInputChan <- smessage:
