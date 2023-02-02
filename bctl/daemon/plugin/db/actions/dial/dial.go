@@ -62,6 +62,11 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 	}
 	d.sendOutputMessage(dial.DialStart, payload)
 
+	// FIXME: @Lucie -- ignoring the test connection
+	if lconn == nil {
+		return nil
+	}
+
 	// Listen to stream messages coming from the agent, and forward to our local connection
 	d.tmb.Go(func() error {
 		defer lconn.Close()

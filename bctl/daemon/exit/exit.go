@@ -18,7 +18,6 @@ import (
 const (
 	Success                       = 0
 	UnspecifiedError              = 1
-	BZCertIdTokenError            = 2 // Same exit code used when daemon panics
 	CancelledByUser               = 3
 	UserNotFound                  = 4
 	ZliConfigError                = 5
@@ -34,6 +33,7 @@ const (
 	PwdbUnkownAuthority           = 15
 	ServerCertificateExpired      = 16
 	IncorrectServerName           = 17
+	BZCertIdTokenError            = 18
 )
 
 // This should be the one and only path by which the daemon exits;
