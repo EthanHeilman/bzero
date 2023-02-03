@@ -12,7 +12,7 @@ const (
 	Close   PwdbSubAction = "db/pwdb/close"
 )
 
-type PwdbConnectPayload struct {
+type ConnectPayload struct {
 	TargetUser string `json:"targetUser"`
 	TargetId   string `json:"targetId"`
 
@@ -20,7 +20,7 @@ type PwdbConnectPayload struct {
 	StreamMessageVersion smsg.SchemaVersion `json:"streamMessageVersion"`
 }
 
-type PwdbInputPayload struct {
+type InputPayload struct {
 	SequenceNumber int    `json:"sequenceNumber"`
-	Data           []byte `json:"data"`
+	Data           string `json:"data"`
 }
