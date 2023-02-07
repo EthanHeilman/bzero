@@ -21,7 +21,7 @@ const (
 	rsaKeyLength = 2048
 )
 
-func generateClientCert(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
+func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
 	ret := tls.Certificate{}
 
 	start := time.Now()
@@ -53,7 +53,7 @@ func generateClientCert(logger *logger.Logger, serviceUrl string, keyData data.K
 		logger.Infof("Generated SplitCert client certificate")
 	}
 
-	signedCert, err := client.RequestSignature(serviceUrl, targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
+	signedCert, err := bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, db.NewClientCertCosignError(err)
 	}

@@ -13,6 +13,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh"
@@ -62,7 +63,8 @@ type DataChannel struct {
 	// backward compatability code for when the payload used to come with extra quotes
 	payloadClean bool
 
-	serviceUrl string
+	// Client for sending requests to and from bastion
+	bastion *client.BastionClient
 }
 
 func New(
@@ -71,7 +73,7 @@ func New(
 	conn connection.Connection,
 	keyshardConfig pwdb.PWDBConfig,
 	mrtap IMrtap,
-	serviceUrl string,
+	bastion *client.BastionClient,
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {
@@ -82,7 +84,7 @@ func New(
 		conn:           conn,
 		keyshardConfig: keyshardConfig,
 		mrtap:          mrtap,
-		serviceUrl:     serviceUrl,
+		bastion:        bastion,
 		inputChan:      make(chan am.AgentMessage, 50),
 		outputChan:     make(chan am.AgentMessage, 10),
 	}
@@ -329,7 +331,7 @@ func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string,
 	case bzplugin.Web:
 		d.plugin, err = web.New(subLogger, streamOutputChan, action, payload)
 	case bzplugin.Db:
-		d.plugin, err = db.New(subLogger, streamOutputChan, d.keyshardConfig, d.serviceUrl, action, payload)
+		d.plugin, err = db.New(subLogger, streamOutputChan, d.keyshardConfig, d.bastion, action, payload)
 	default:
 		return fmt.Errorf("unrecognized plugin name %s", string(pluginName))
 	}

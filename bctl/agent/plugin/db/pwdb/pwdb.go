@@ -11,6 +11,7 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/pwdb"
@@ -41,7 +42,7 @@ type Pwdb struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig PWDBConfig
 
-	serviceUrl string
+	bastion    *client.BastionClient
 	remoteHost string
 	remotePort int
 	remoteConn net.Conn
@@ -51,7 +52,7 @@ func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
 	keyshardConfig PWDBConfig,
-	serviceUrl string,
+	bastion *client.BastionClient,
 	remoteHost string,
 	remotePort int) (*Pwdb, error) {
 
@@ -59,7 +60,7 @@ func New(logger *logger.Logger,
 		logger:           logger,
 		doneChan:         doneChan,
 		keyshardConfig:   keyshardConfig,
-		serviceUrl:       serviceUrl,
+		bastion:          bastion,
 		streamOutputChan: ch,
 		remoteHost:       remoteHost,
 		remotePort:       remotePort,
@@ -117,7 +118,7 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 	p.logger.Info("Loaded SplitCert key")
 
 	// Make a tls connection using pwdb to database
-	if conn, err := Connect(p.logger, p.serviceUrl, keydata, p.remoteHost, p.remotePort, targetUser); err != nil {
+	if conn, err := Connect(p.logger, keydata, p.bastion, targetUser, p.remoteHost, p.remotePort); err != nil {
 		return db.NewConnectionFailedError(err)
 	} else {
 		p.remoteConn = conn

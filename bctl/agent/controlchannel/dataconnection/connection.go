@@ -27,6 +27,7 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -277,10 +278,12 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
+	bastion := client.New(d.serviceUrl, d.agentIdentityProvider)
+
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, d.serviceUrl, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, bastion, dcId, odMessage.Syn)
 		return err
 	}
 }

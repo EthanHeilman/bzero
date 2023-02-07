@@ -10,13 +10,14 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/crunchydata/crunchy-proxy/protocol"
 )
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, host string, port int, role string) (net.Conn, error) {
+func Connect(logger *logger.Logger, keyData data.KeyEntry, bastion *client.BastionClient, role, host string, port int) (net.Conn, error) {
 	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 5*time.Second)
 	if err != nil {
 		return nil, db.NewConnectionRefusedError(err)
@@ -57,7 +58,7 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 	logger.Info("SSL connections are allowed by the database")
 
 	logger.Info("Attempting to upgrade connection...")
-	connection, err = upgradeConnection(logger, serviceUrl, keyData, connection, host, role)
+	connection, err = upgradeConnection(logger, bastion, keyData, connection, host, role)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +68,7 @@ func Connect(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, ho
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.KeyEntry, connection net.Conn, hostName, role string) (net.Conn, error) {
+func upgradeConnection(logger *logger.Logger, bastion *client.BastionClient, keyData data.KeyEntry, connection net.Conn, hostName, role string) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
 		ServerName: hostName,
@@ -78,7 +79,7 @@ func upgradeConnection(logger *logger.Logger, serviceUrl string, keyData data.Ke
 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
 
 	logger.Info("Loading client SSL certificate and key")
-	if cert, err := generateClientCert(logger, serviceUrl, keyData, role); err != nil {
+	if cert, err := generateClientCert(logger, bastion, keyData, role); err != nil {
 		return nil, err
 	} else {
 		tlsConfig.Certificates = []tls.Certificate{cert}
