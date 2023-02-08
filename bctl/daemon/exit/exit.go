@@ -17,7 +17,7 @@ import (
 // Daemon Exit Codes
 const (
 	Success                       = 0
-	UnspecifiedError              = 1
+	UnspecifiedError              = 1 // code 2 is reserved for when the daemon panics
 	CancelledByUser               = 3
 	UserNotFound                  = 4
 	ZliConfigError                = 5

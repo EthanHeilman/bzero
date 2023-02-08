@@ -80,13 +80,6 @@ func (e *ClientCertCosignError) Error() string {
 func (e *ClientCertCosignError) Unwrap() error { return e.innerError }
 
 // Something has gone wrong with the authentication process whether it's on our side or on the database
-// const PwdbAuthenticationErrorString = "SplitCert authentication error"
-
-// type PwdbAuthenticationError struct{}
-
-// func (e *PwdbAuthenticationError) Error() string { return PwdbAuthenticationErrorString }
-
-// Something has gone wrong with the authentication process whether it's on our side or on the database
 const PwdbMissingKeyErrorString = "missing SplitCert key"
 
 type PwdbMissingKeyError struct {
