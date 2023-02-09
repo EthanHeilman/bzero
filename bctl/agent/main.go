@@ -141,17 +141,14 @@ func parseFlags() bool {
 	/* key-shard configuration command */
 	keyShardsCmd := flag.NewFlagSet("keyshards", flag.ExitOnError)
 
-	// FIXME: figure out how we get targetName / namespace, or else this won't work with kube
 	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "Print the agent's keyshard config as a JSON string that can be saved to other agents.")
-	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "Remove all key shards from this agent. Any SplitCert targets using this agent as a proxy will be inaccessible.")
-	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "Save a JSON file with keyshard data to this agent. All targets specified in the data will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addKeys path/to/keys.json'")
-	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds from this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
+	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "Remove all keyshards from this agent. Any SplitCert targets using this agent as a proxy will be inaccessible.")
+	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "Save a JSON file containing keyshard data to this agent. All targets specified in the JSON file will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyshards -addKeys path/to/keys.json'")
+	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds to this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
 	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
 
-	// TODO: load the kube env vars before this even happens I think...
-
-	// check if we're in key-shard mode
-	if len(os.Args) > 1 && os.Args[1] == "keyShards" {
+	// check if we're in key-shard mode (only supported on the systemd agent)
+	if getAgentType() == Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
 		// parse the flags, call this function with args
 		// should probably put this in a separate file, with separate handlers
 		keyShardsCmd.Parse(os.Args[2:])
@@ -164,28 +161,32 @@ func parseFlags() bool {
 		} else if addKeyShards {
 			if len(keyShardsCmd.Args()) < 1 {
 				fmt.Println("error: no file path provided")
+				return false
 			}
 			addKeyShardData(keyShardsCmd.Args()[0])
 
 		} else if addTargets {
 			if len(keyShardsCmd.Args()) < 1 {
 				fmt.Println("error: no target IDs provided")
+				return false
 			}
 			addTargetIds(keyShardsCmd.Args())
 
 		} else if removeTargets {
 			if len(keyShardsCmd.Args()) < 1 {
 				fmt.Println("error: no target IDs provided")
+				return false
 			}
 			removeTargetIds(keyShardsCmd.Args())
 
 		} else {
-			fmt.Println("Invalid option. Run 'bzero keyShards --help' for more information")
+			fmt.Println("Invalid option. Run 'bzero keyshards --help' for more information")
 		}
 
 		// no need to continue normal execution
 		return false
 	} else {
+		// either we're a kube agent or we're in a normal systemd execution
 		flag.Parse()
 
 		attemptedRegistration = activationToken != "" || registrationKey != ""

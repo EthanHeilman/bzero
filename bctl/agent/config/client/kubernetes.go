@@ -19,9 +19,11 @@ import (
 
 const (
 	agentConfigKey     = "secret"
-	keyShardConfigKey  = "keyshards"
+	agentSecretFormula = "bctl-%s-secret" // used for formatting with the target name
 	defaultSecretValue = "coolbeans"
-	secretFormula      = "bctl-%s-secret" // used for formatting with the target name
+
+	keyShardConfigKey     = "keyshards"
+	keyShardSecretFormula = "bctl-%s-keyshards-secret" // used for formatting with the target name
 )
 
 type kubernetesClient struct {
@@ -46,12 +48,23 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 		return nil, fmt.Errorf("error creating new config: %w", err)
 	}
 
-	var configKey string
+	var configKey, secretFormula string
+	var emptyData []byte
 	switch configType {
 	case Agent:
 		configKey = agentConfigKey
+		secretFormula = agentSecretFormula
+		emptyData, err = json.Marshal(data.AgentDataV2{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal empty agent config data: %w", err)
+		}
 	case KeyShard:
 		configKey = keyShardConfigKey
+		secretFormula = keyShardSecretFormula
+		emptyData, err = json.Marshal(data.KeyShardData{})
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal empty keyshard config data: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported config type: %s", configType)
 	}
@@ -64,22 +77,11 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 		configKey:  configKey,
 	}
 
-	emptyAgentData, err := json.Marshal(data.AgentDataV2{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal empty agent config data: %w", err)
-	}
-
-	emptyKeyShardData, err := json.Marshal(data.KeyShardData{})
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal empty key shard config data: %w", err)
-	}
-
 	// Get our secrets object
 	if existingSecret, err := config.client.Get(ctx, config.secretName, metaV1.GetOptions{}); err != nil {
-		// If there is no secret there, create one with all possible keys
+		// If there is no secret there, create one
 		configData := map[string][]byte{
-			agentConfigKey:    emptyAgentData,
-			keyShardConfigKey: emptyKeyShardData,
+			configKey: emptyData,
 		}
 
 		object := metaV1.ObjectMeta{Name: config.secretName}
@@ -89,13 +91,9 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 			return nil, fmt.Errorf("error creating secrets client: %w", err)
 		}
 	} else {
-		// if the secret already exists, we need to make sure it has initialized all types of config
-		if _, ok := existingSecret.Data[agentConfigKey]; !ok {
-			existingSecret.Data[agentConfigKey] = emptyAgentData
-		}
-
-		if _, ok := existingSecret.Data[keyShardConfigKey]; !ok {
-			existingSecret.Data[keyShardConfigKey] = emptyKeyShardData
+		// if the secret already exists, we need to make sure it is initialized
+		if _, ok := existingSecret.Data[configKey]; !ok {
+			existingSecret.Data[configKey] = emptyData
 		}
 
 		if _, err := config.client.Update(ctx, existingSecret, metaV1.UpdateOptions{}); err != nil {
