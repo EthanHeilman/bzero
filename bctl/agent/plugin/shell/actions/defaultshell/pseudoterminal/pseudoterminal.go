@@ -126,7 +126,7 @@ func buildCommand(runAsUser *unixuser.UnixUser, customCommand string, shellComma
 			Uid:         runAsUser.Uid,
 			Gid:         runAsUser.Gid,
 			Groups:      gids,
-			NoSetGroups: true,
+			NoSetGroups: false, // if this is set to true, users may have to use sudo to run commands they should have access to
 		},
 	}
 

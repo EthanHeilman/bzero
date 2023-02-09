@@ -105,7 +105,6 @@ func main() {
 }
 
 func parseFlags() bool {
-
 	/* default command */
 	// Helpful flags
 	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent")
