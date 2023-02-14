@@ -10,7 +10,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/mocks"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/mocks"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"

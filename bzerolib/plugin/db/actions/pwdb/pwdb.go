@@ -21,6 +21,9 @@ type ConnectPayload struct {
 }
 
 type InputPayload struct {
-	SequenceNumber int    `json:"sequenceNumber"`
-	Data           string `json:"data"`
+	Data string `json:"data"`
+}
+
+type ClosePayload struct {
+	Reason string `json:"reason"`
 }

@@ -68,8 +68,6 @@ func (b *BastionClient) RequestCosign(targetUser string, clientCert *splitclient
 	agentIdentityToken, err := b.agentIdentityProvider.GetToken(context.TODO())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get agent identity token: %s", err)
-		// d.logger.Errorf("Retrying in %s because failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
-		// continue
 	}
 
 	client, err := httpclient.New(b.serviceUrl, httpclient.HTTPOptions{

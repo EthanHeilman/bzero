@@ -73,7 +73,7 @@ func (p *Pwdb) Start(lconn net.Conn) error {
 		if msg.Action == string(pwdb.Connect) {
 			p.logger.Infof("Successfully connected")
 		} else {
-			return fmt.Errorf("mrzap message did not correlate with the expected action taken")
+			return fmt.Errorf("MrTAP message did not correlate with the expected action taken")
 		}
 	case <-p.tmb.Dying():
 		return p.tmb.Err()
@@ -107,7 +107,6 @@ func (p *Pwdb) readFromConnection(lconn net.Conn) error {
 
 	// listen to messages coming from the local tcp connection and sends them to the agent
 	buf := make([]byte, chunkSize)
-	sequenceNumber := 0
 
 	for {
 		if n, err := lconn.Read(buf); !p.tmb.Alive() {
@@ -122,16 +121,15 @@ func (p *Pwdb) readFromConnection(lconn net.Conn) error {
 			}
 
 			// close the connection at the agent
-			p.sendOutputMessage(pwdb.Close, pwdb.ConnectPayload{})
+			p.sendOutputMessage(pwdb.Close, pwdb.ClosePayload{
+				Reason: err.Error(),
+			})
 			return err
 		} else {
 			payload := pwdb.InputPayload{
-				SequenceNumber: sequenceNumber,
-				Data:           base64.StdEncoding.EncodeToString(buf[:n]),
+				Data: base64.StdEncoding.EncodeToString(buf[:n]),
 			}
 			p.sendOutputMessage(pwdb.Input, payload)
-
-			sequenceNumber += 1
 		}
 	}
 }
@@ -215,7 +213,7 @@ func (p *Pwdb) sendOutputMessage(action pwdb.PwdbSubAction, payload interface{})
 }
 
 func (p *Pwdb) ReceiveStream(smessage smsg.StreamMessage) {
-	p.logger.Infof("Dial action received %s stream, message count: %d", smessage.Type, len(p.streamInputChan)+1)
+	p.logger.Infof("Received %s stream, message count: %d", smessage.Type, len(p.streamInputChan)+1)
 
 	select {
 	case p.streamInputChan <- smessage:

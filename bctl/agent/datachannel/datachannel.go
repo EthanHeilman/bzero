@@ -12,8 +12,8 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh"

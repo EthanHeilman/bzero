@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/bastionzero/go-toolkit/certificate"
@@ -48,10 +48,7 @@ func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, ke
 	}
 
 	logger.Infof("It took %s to generate the client certificate with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
-
-	if err := clientCert.VerifySignature(agentCA.SplitPrivateKey().PublicKey); err != nil {
-		logger.Infof("Generated SplitCert client certificate")
-	}
+	logger.Infof("Generated SplitCert client certificate")
 
 	signedCert, err := bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {

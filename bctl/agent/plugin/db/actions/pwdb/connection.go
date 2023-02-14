@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/crunchydata/crunchy-proxy/protocol"
@@ -79,11 +79,11 @@ func upgradeConnection(logger *logger.Logger, bastion *client.BastionClient, key
 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
 
 	logger.Info("Loading client SSL certificate and key")
-	if cert, err := generateClientCert(logger, bastion, keyData, role); err != nil {
+	cert, err := generateClientCert(logger, bastion, keyData, role)
+	if err != nil {
 		return nil, err
-	} else {
-		tlsConfig.Certificates = []tls.Certificate{cert}
 	}
+	tlsConfig.Certificates = []tls.Certificate{cert}
 
 	logger.Info("Upgrading to SSL connection")
 	client := tls.Client(connection, &tlsConfig)
@@ -91,7 +91,7 @@ func upgradeConnection(logger *logger.Logger, bastion *client.BastionClient, key
 	logger.Info("Initiating SSL Handshake")
 	// Handshake now instead of on first write so we can bubble up error at the right time
 	var unknownRootCert x509.UnknownAuthorityError
-	err := client.Handshake()
+	err = client.Handshake()
 	if err == nil {
 		return client, nil
 	}

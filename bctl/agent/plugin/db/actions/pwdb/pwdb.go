@@ -11,7 +11,7 @@ import (
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/pwdb/client"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/pwdb"
@@ -99,7 +99,13 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 			return nil, p.writeToConnection(data)
 		}
 	case pwdb.Close:
-		p.logger.Infof("Closing because the daemon asked for it")
+		var closeReq pwdb.ClosePayload
+		if err := json.Unmarshal(actionPayload, &closeReq); err != nil {
+			return nil, fmt.Errorf("malformed close payload: %s", err)
+		}
+
+		p.logger.Infof("Closing because: %s", closeReq.Reason)
+
 		p.Kill()
 		return actionPayload, nil
 	default:
