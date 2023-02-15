@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"time"
 
@@ -14,12 +16,32 @@ import (
 	"github.com/bastionzero/go-toolkit/certificate"
 	"github.com/bastionzero/go-toolkit/certificate/ca"
 	"github.com/bastionzero/go-toolkit/certificate/splitclient"
-	"github.com/bastionzero/go-toolkit/certificate/template"
 )
 
 const (
 	rsaKeyLength = 2048
 )
+
+// This certificate is defined by the requirements as used by postgres. Postgres will log you in as whatever user
+// you specify as the CommonName, although other databases have different requirements. MongoDB Atlas has you manually
+// specify the entire Subject which might include more than just the CommonName (CN).
+func generateClientCertificate(username string, lifetime time.Duration) (*x509.Certificate, error) {
+	serialNumber, err := certificate.GenerateSerialNumber()
+	if err != nil {
+		return nil, err
+	}
+
+	return &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			CommonName: username,
+		},
+		NotBefore:   time.Now(),
+		NotAfter:    time.Now().Add(lifetime),
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		KeyUsage:    x509.KeyUsageDigitalSignature,
+	}, nil
+}
 
 func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
 	ret := tls.Certificate{}
@@ -38,17 +60,19 @@ func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, ke
 		return ret, fmt.Errorf("error generating rsa key: %w", err)
 	}
 
-	// Create a split certificate
-	clientCertificateTemplate, _ := template.ClientCertificate(targetUser, time.Hour)
-	clientCertificateTemplate.DNSNames = []string{"localhost"}
-	clientCertificateTemplate.Issuer.CommonName = ""
-	clientCert, err := splitclient.Generate(rand.Reader, clientCertificateTemplate, agentCA.X509(), &certKey.PublicKey, agentCA.SplitPrivateKey())
+	// Generate a template
+	ccTemplate, err := generateClientCertificate(targetUser, time.Hour)
+	if err != nil {
+		return ret, fmt.Errorf("failed to generate client certificate template: %w", err)
+	}
+
+	// Use our template to generate a partially-signed split certificate
+	clientCert, err := splitclient.Generate(rand.Reader, ccTemplate, agentCA.X509(), &certKey.PublicKey, agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, fmt.Errorf("failed to create new client certificate: %w", err)
 	}
 
-	logger.Infof("It took %s to generate the client certificate with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
-	logger.Infof("Generated SplitCert client certificate")
+	logger.Infof("Generated SplitCert in %s with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
 
 	signedCert, err := bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
