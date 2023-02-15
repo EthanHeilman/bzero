@@ -101,18 +101,18 @@ func New(logger *logger.Logger,
 }
 
 func (d *DbServer) Start() error {
-	// Test connection so that we can make some errors synchronous, we don't have control over how tunnelling
-	// protocols decide to display error, if they even do. This means we can do our best to catch and display
-	// to the user while we still have their attention
-	d.logger.Infof("Testing connection")
-
-	server, _ := net.Pipe()
-	defer server.Close()
-	if err := d.newAction(server); err != nil {
-		return err
+	if d.action == bzdb.Pwdb {
+		// Test connection so that we can make some errors synchronous, we don't have control over how tunnelling
+		// protocols decide to display error, if they even do. This means we can do our best to catch and display
+		// to the user while we still have their attention
+		d.logger.Infof("Testing connection")
+		server, _ := net.Pipe()
+		defer server.Close()
+		if err := d.newAction(server); err != nil {
+			return err
+		}
+		d.logger.Infof("Connection passed all tests")
 	}
-
-	d.logger.Infof("Connection passed all tests")
 
 	// Now create our local listener for TCP connections
 	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
@@ -127,6 +127,11 @@ func (d *DbServer) Start() error {
 	if err != nil {
 		d.conn.Close(err, connectionCloseTimeout)
 		return fmt.Errorf("failed to open local port to listen: %s", err)
+	}
+
+	if d.action == bzdb.Dial {
+		// Do nothing with the first syn no-op call
+		d.tcpListener.AcceptTCP()
 	}
 
 	go d.handleConnections()
