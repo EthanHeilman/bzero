@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/bastionzero/go-toolkit/certificate"
 	"github.com/bastionzero/go-toolkit/certificate/ca"
@@ -43,7 +41,7 @@ func generateClientCertificate(username string, lifetime time.Duration) (*x509.C
 	}, nil
 }
 
-func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
+func (p *Pwdb) generateClientCert(keyData data.KeyEntry, targetUser string) (tls.Certificate, error) {
 	ret := tls.Certificate{}
 
 	start := time.Now()
@@ -72,9 +70,9 @@ func generateClientCert(logger *logger.Logger, bastion *client.BastionClient, ke
 		return ret, fmt.Errorf("failed to create new client certificate: %w", err)
 	}
 
-	logger.Infof("Generated SplitCert in %s with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
+	p.logger.Infof("Generated SplitCert in %s with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
 
-	signedCert, err := bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
+	signedCert, err := p.bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, db.NewClientCertCosignError(err)
 	}

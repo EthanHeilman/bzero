@@ -10,15 +10,13 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/config/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/crunchydata/crunchy-proxy/protocol"
 )
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func Connect(logger *logger.Logger, keyData data.KeyEntry, bastion *client.BastionClient, role, host string, port int) (net.Conn, error) {
-	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), 5*time.Second)
+func (p *Pwdb) connect(keyData data.KeyEntry, targetUser string) (net.Conn, error) {
+	connection, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", p.remoteHost, p.remotePort), 5*time.Second)
 	if err != nil {
 		return nil, db.NewConnectionRefusedError(err)
 	}
@@ -38,13 +36,13 @@ func Connect(logger *logger.Logger, keyData data.KeyEntry, bastion *client.Basti
 
 	/* Send the SSL request message. */
 	if _, err := connection.Write(message.Bytes()); err != nil {
-		return nil, fmt.Errorf("error sending initial SSL request to database: %s", err)
+		return nil, fmt.Errorf("error sending initial TLS request to database: %s", err)
 	}
 
 	/* Receive SSL response message. */
 	response := make([]byte, 4096)
 	if _, err := connection.Read(response); err != nil {
-		return nil, fmt.Errorf("error receiving initial SSL response from database: %s", err)
+		return nil, fmt.Errorf("error receiving initial TLS response from database: %s", err)
 	}
 
 	/*
@@ -55,40 +53,40 @@ func Connect(logger *logger.Logger, keyData data.KeyEntry, bastion *client.Basti
 		connection.Close()
 		return nil, &db.TLSDisabledError{}
 	}
-	logger.Info("SSL connections are allowed by the database")
+	p.logger.Info("SSL connections are allowed by the database")
 
-	logger.Info("Attempting to upgrade connection...")
-	connection, err = upgradeConnection(logger, bastion, keyData, connection, host, role)
+	p.logger.Info("Attempting to upgrade connection...")
+	connection, err = p.upgradeConnection(keyData, connection, targetUser)
 	if err != nil {
 		return nil, err
 	}
 
-	logger.Debug("Connection successfully upgraded")
+	p.logger.Debug("Connection successfully upgraded")
 	return connection, nil
 }
 
 // ref: https://github.com/CrunchyData/crunchy-proxy/blob/64e9426fd4ad77ec1652850d607a23a1201468a5/connect/connect.go
-func upgradeConnection(logger *logger.Logger, bastion *client.BastionClient, keyData data.KeyEntry, connection net.Conn, hostName, role string) (net.Conn, error) {
+func (p *Pwdb) upgradeConnection(keyData data.KeyEntry, connection net.Conn, role string) (net.Conn, error) {
 	// hostname, _, _ := net.SplitHostPort(hostPort)
 	tlsConfig := tls.Config{
-		ServerName: hostName,
+		ServerName: p.remoteHost,
 		RootCAs:    x509.NewCertPool(),
 	}
 
-	logger.Info("Loading CA Certificate")
+	p.logger.Info("Loading CA Certificate")
 	tlsConfig.RootCAs.AppendCertsFromPEM([]byte(keyData.CaCertPem))
 
-	logger.Info("Loading client SSL certificate and key")
-	cert, err := generateClientCert(logger, bastion, keyData, role)
+	p.logger.Info("Loading client SSL certificate and key")
+	cert, err := p.generateClientCert(keyData, role)
 	if err != nil {
 		return nil, err
 	}
 	tlsConfig.Certificates = []tls.Certificate{cert}
 
-	logger.Info("Upgrading to SSL connection")
+	p.logger.Info("Upgrading to SSL connection")
 	client := tls.Client(connection, &tlsConfig)
 
-	logger.Info("Initiating SSL Handshake")
+	p.logger.Info("Initiating SSL Handshake")
 	// Handshake now instead of on first write so we can bubble up error at the right time
 	var unknownRootCert x509.UnknownAuthorityError
 	err = client.Handshake()

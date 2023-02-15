@@ -138,51 +138,38 @@ func (p *Pwdb) writeToConnection(lconn net.Conn) error {
 	// this will make sure we stop reading when we're done writing
 	defer lconn.Close()
 
-	// variables for ensuring we receive stream messages in order
-	expectedSequenceNumber := 0
-	streamMessages := make(map[int]smsg.StreamMessage)
-
 	for {
 		select {
 		case <-p.tmb.Dying():
 			return nil
 		case msg := <-p.streamInputChan:
-			// add stream message to our dict so we can then loop them and process them in order
-			streamMessages[msg.SequenceNumber] = msg
+			// You may think this is irrelevant and can't we just remove it? NO. Perhaps because of the encoding
+			// perhaps because of mystical forces beyond our control, the encoding this goes through causes some
+			// kind of data loss or manipulation and breaks dbeaver.
+			content, err := base64.StdEncoding.DecodeString(msg.Content)
+			if err != nil {
+				p.logger.Errorf("failed to decode stream message content: %s", err)
+				return err
+			}
 
-			for streamMessage, ok := streamMessages[expectedSequenceNumber]; ok; streamMessage, ok = streamMessages[expectedSequenceNumber] {
-				p.logger.Infof("Writing sequence number %d", expectedSequenceNumber)
-
-				cntnt, err := base64.StdEncoding.DecodeString(streamMessage.Content)
-				if err != nil {
-					p.logger.Errorf("failed to decode stream message content: %s", err)
+			switch msg.Type {
+			case smsg.Stream:
+				// Set a deadline for the write so we don't block forever
+				lconn.SetWriteDeadline(time.Now().Add(writeDeadline))
+				if _, err := lconn.Write(content); err != nil {
+					p.logger.Errorf("error writing to local TCP connection: %s", err)
 					return err
 				}
 
-				switch streamMessage.Type {
-				case smsg.Stream:
-					// Set a deadline for the write so we don't block forever
-					lconn.SetWriteDeadline(time.Now().Add(writeDeadline))
-					if _, err := lconn.Write(cntnt); err != nil {
-						p.logger.Errorf("error writing to local TCP connection: %s", err)
-						return err
-					}
-
-					// if the stream is done, we close
-					if !streamMessage.More {
-						p.logger.Errorf("remote tcp connection has been closed, closing local tcp connection")
-						return fmt.Errorf("stream end")
-					}
-				case smsg.Error:
-					p.logger.Infof("agent hit an error trying to read from remote connection: %s", string(cntnt))
-				default:
-					p.logger.Errorf("unhandled stream type: %s", streamMessage.Type)
+				// if the stream is done, we close
+				if !msg.More {
+					p.logger.Errorf("remote tcp connection has been closed, closing local tcp connection")
+					return fmt.Errorf("stream end")
 				}
-
-				// remove the message we've already processed
-				delete(streamMessages, expectedSequenceNumber)
-
-				expectedSequenceNumber += 1
+			case smsg.Error:
+				p.logger.Infof("agent hit an error trying to read from remote connection: %s", string(content))
+			default:
+				p.logger.Errorf("unhandled stream type: %s", msg.Type)
 			}
 		}
 	}

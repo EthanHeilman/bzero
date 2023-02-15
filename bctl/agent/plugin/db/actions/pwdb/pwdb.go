@@ -124,7 +124,7 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 	p.logger.Info("Loaded SplitCert key")
 
 	// Make a tls connection using pwdb to database
-	if conn, err := Connect(p.logger, keydata, p.bastion, targetUser, p.remoteHost, p.remotePort); err != nil {
+	if conn, err := p.connect(keydata, targetUser); err != nil {
 		return db.NewConnectionFailedError(err)
 	} else {
 		p.remoteConn = conn
