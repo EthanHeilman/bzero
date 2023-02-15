@@ -105,6 +105,8 @@ func (d *DbServer) Start() error {
 		// Test connection so that we can make some errors synchronous, we don't have control over how tunnelling
 		// protocols decide to display error, if they even do. This means we can do our best to catch and display
 		// to the user while we still have their attention
+		// However, it doesn't yet make sense to do this for all connections, since applications that expect a data
+		// stream will behave weirdly when the test connection comes in
 		d.logger.Infof("Testing connection")
 		server, _ := net.Pipe()
 		defer server.Close()
