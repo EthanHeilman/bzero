@@ -9,7 +9,8 @@ import (
 	"os"
 	"path"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 	"github.com/fsnotify/fsnotify"
 )
@@ -66,8 +67,8 @@ func NewSystemdClient(configDir string, configType ConfigType) (*SystemdClient, 
 	return config, nil
 }
 
-func (s *SystemdClient) FetchAgentData() (data.AgentDataV2, error) {
-	var config data.AgentDataV2
+func (s *SystemdClient) FetchAgentData() (agentdata.AgentDataV2, error) {
+	var config agentdata.AgentDataV2
 
 	if s.configType != Agent {
 		return config, fmt.Errorf("cannot fetch agent data with %s client", s.configType)
@@ -101,8 +102,8 @@ func (s *SystemdClient) FetchAgentData() (data.AgentDataV2, error) {
 	return config, nil
 }
 
-func (s *SystemdClient) FetchKeyShardData() (data.KeyShardData, error) {
-	var config data.KeyShardData
+func (s *SystemdClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
+	var config ksdata.KeyShardData
 
 	if s.configType != KeyShard {
 		return config, fmt.Errorf("cannot fetch key shard data with %s client", s.configType)

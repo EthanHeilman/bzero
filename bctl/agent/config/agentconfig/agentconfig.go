@@ -1,11 +1,12 @@
-package config
+package agentconfig
 
 import (
 	"fmt"
 	"net/url"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config"
+	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 )
 
@@ -22,7 +23,7 @@ type AgentConfig struct {
 
 func LoadAgentConfig(client agentConfigClient) (*AgentConfig, error) {
 	if data, err := client.FetchAgentData(); err != nil {
-		return nil, configFetchError(err.Error())
+		return nil, config.ConfigFetchError(err.Error())
 	} else {
 		return &AgentConfig{
 			client: client,
@@ -33,7 +34,7 @@ func LoadAgentConfig(client agentConfigClient) (*AgentConfig, error) {
 
 func (c *AgentConfig) Reload() error {
 	if newData, err := c.client.FetchAgentData(); err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	} else {
 		c.data = newData
 	}
@@ -109,14 +110,14 @@ func (c *AgentConfig) SetVersion(version string) error {
 
 	current, err := c.client.FetchAgentData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	current.Version = version
 
 	c.data = current
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -127,7 +128,7 @@ func (c *AgentConfig) SetShutdownInfo(reason string, state map[string]string) er
 
 	current, err := c.client.FetchAgentData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	current.ShutdownReason = reason
@@ -135,7 +136,7 @@ func (c *AgentConfig) SetShutdownInfo(reason string, state map[string]string) er
 
 	c.data = current
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -146,14 +147,14 @@ func (c *AgentConfig) SetAgentIdentityToken(token string) error {
 
 	current, err := c.client.FetchAgentData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	current.AgentIdentityToken = token
 
 	c.data = current
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -164,7 +165,7 @@ func (c *AgentConfig) SetServiceAccountJwksUrl(jwksUrlPattern string) error {
 
 	current, err := c.client.FetchAgentData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	if parsedJwksUrlPattern, err := url.ParseRequestURI(jwksUrlPattern); err != nil {
@@ -182,7 +183,7 @@ func (c *AgentConfig) SetServiceAccountJwksUrl(jwksUrlPattern string) error {
 
 	c.data = current
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -202,7 +203,7 @@ func (c *AgentConfig) SetRegistrationData(
 
 	current, err := c.client.FetchAgentData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	current.ServiceUrl = serviceUrl
@@ -227,7 +228,7 @@ func (c *AgentConfig) SetRegistrationData(
 
 	c.data = current
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-package config
+package keyshardconfig
 
 import (
 	"encoding/json"
@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/config"
 	"bastionzero.com/bctl/v1/bctl/agent/config/client"
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -21,7 +22,7 @@ func initializeConfigFile(path string, contents string) {
 
 func expectFileKeySetTo(path string, key data.KeyEntry, expectedEntry data.MappedKeyEntry) {
 	rawData, err := os.ReadFile(path)
-	Expect(err).To(BeNil(), fmt.Sprintf("failed to read config file %s: %s", path, err))
+	Expect(err).To(BeNil(), fmt.Sprintf("failed to read ksConfig file %s: %s", path, err))
 
 	var actual data.KeyShardData
 	err = json.Unmarshal(rawData, &actual)
@@ -39,10 +40,10 @@ func expectEntryToEqual(actual data.MappedKeyEntry, expected data.MappedKeyEntry
 	Expect(actual.TargetIds).To(ContainElements(expected.TargetIds), "TargetIds do not match:\nActual: %+v\nExpected: %+v", actual.TargetIds, expected.TargetIds)
 }
 
-// note that this suite employs two methods of testing the config object's behavior. The first is by mocking the underlying client and
+// note that this suite employs two methods of testing the ksConfig object's behavior. The first is by mocking the underlying client and
 // checking that load and save operations occur with the correct data. This is simpler and sufficient for many tests.
 // However, for concurrency tests we cannot make guarantees about what data might be loaded and saved in what order, so for these we actually
-// create a temporary config file with a real systemd client. We populate and check its contents directly.
+// create a temporary ksConfig file with a real systemd client. We populate and check its contents directly.
 var _ = Describe("Key Shard Config", Ordered, func() {
 	tmpConfigFile := "keyshards.json"
 	specialTarget := "targetId-special"
@@ -52,8 +53,8 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 	Context("Adding entries from an object", func() {
 		When("Entry does not exist", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
 				By("starting with an empty config")
@@ -61,9 +62,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", data.DefaultMockKeyShardDataSmall()).Return(nil)
 
 				By("adding an entry")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddKey(data.DefaultMockKeyShardDataSmall().Keys[0])
+				err = ksConfig.AddKey(data.DefaultMockKeyShardDataSmall().Keys[0])
 			})
 
 			It("returns a nil error", func() {
@@ -78,8 +79,8 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("Entry does not exist / huge key", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			hugeKey := data.MappedKeyEntry{
 				KeyData: data.KeyEntry{KeyShardPem: data.HugeKeyPem()},
@@ -91,9 +92,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", data.KeyShardData{Keys: []data.MappedKeyEntry{hugeKey}}).Return(nil)
 
 				By("adding a production-size entry")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddKey(hugeKey)
+				err = ksConfig.AddKey(hugeKey)
 			})
 
 			It("returns a nil error", func() {
@@ -108,11 +109,11 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("entry exists / new target", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with one entry")
+				By("starting with a ksConfig with one entry")
 				currentData := data.DefaultMockKeyShardDataSmall()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 
@@ -121,9 +122,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", newData).Return(nil)
 
 				By("adding an entry with a matching key but a new target")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddKey(data.DefaultMockKeyEntry3Target())
+				err = ksConfig.AddKey(data.DefaultMockKeyEntry3Target())
 			})
 
 			It("returns a nil error", func() {
@@ -138,22 +139,22 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("entry exists / no new targets", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with one entry")
+				By("starting with a ksConfig with one entry")
 				currentData := data.DefaultMockKeyShardDataSmall()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 
 				By("adding an entry that matches exactly")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddKey(currentData.Keys[0])
+				err = ksConfig.AddKey(currentData.Keys[0])
 			})
 
 			It("Returns a NoOpError without saving", func() {
-				Expect(errors.Is(err, &NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
+				Expect(errors.Is(err, &config.NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
@@ -164,14 +165,14 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
 				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
-				config, err := LoadKeyShardConfig(client)
+				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
 				By("adding 12 distinct entries")
 				for i := 1; i <= 12; i++ {
 					newKey := data.DefaultMockSplitPrivateKey()
 					newKey.KeyShardPem = fmt.Sprintf("%d", i)
-					go config.AddKey(data.MappedKeyEntry{
+					go ksConfig.AddKey(data.MappedKeyEntry{
 						KeyData:   newKey,
 						TargetIds: data.DefaultMockTargetIds(),
 					})
@@ -201,12 +202,12 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
 				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
-				config, err := LoadKeyShardConfig(client)
+				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
 				By("adding 12 targets to the same entry")
 				for i := 1; i <= 12; i++ {
-					go config.AddKey(data.MappedKeyEntry{
+					go ksConfig.AddKey(data.MappedKeyEntry{
 						KeyData:   data.DefaultMockSplitPrivateKey(),
 						TargetIds: []string{fmt.Sprintf("targetId%d", i)},
 					})
@@ -234,11 +235,11 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 	Context("Adding targets", func() {
 		When("Target is not present in any entry", func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockData := data.MockKeyShardDataMedium()
 				mockClient.On("FetchKeyShardData").Return(mockData, nil)
 
@@ -250,9 +251,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", newData).Return(nil)
 
 				By("adding a targetid not present in any entry")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddTarget(specialTarget)
+				err = ksConfig.AddTarget(specialTarget)
 			})
 
 			It("returns a nil error", func() {
@@ -266,32 +267,32 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("Target is already present in all entries", func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockData := data.MockKeyShardDataMedium()
 				mockClient.On("FetchKeyShardData").Return(mockData, nil)
 
 				By("adding a targetid not present in any entry")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddTarget("targetId1")
+				err = ksConfig.AddTarget("targetId1")
 			})
 
 			It("returns a NoOpError without saving", func() {
-				Expect(errors.Is(err, &NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
+				Expect(errors.Is(err, &config.NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
 		When("Target is present in some entires", func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockData := data.MockKeyShardDataMedium()
 				mockData.Keys[0].TargetIds = append(mockData.Keys[0].TargetIds, specialTarget)
 				mockClient.On("FetchKeyShardData").Return(mockData, nil)
@@ -302,9 +303,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", newData).Return(nil)
 
 				By("adding a targetid only present in one entry")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.AddTarget(specialTarget)
+				err = ksConfig.AddTarget(specialTarget)
 			})
 
 			It("returns a nil error", func() {
@@ -320,37 +321,37 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 	Context("LastKey", func() {
 		When("Target does not exist", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with one entry")
+				By("starting with a ksConfig with one entry")
 				mockClient.On("FetchKeyShardData").Return(data.DefaultMockKeyShardDataSmall(), nil)
 
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				_, err = config.LastKey("targetId1000")
+				_, err = ksConfig.LastKey("targetId1000")
 			})
 
 			It("Returns a TargetError without saving", func() {
-				Expect(errors.Is(err, &TargetError{}), fmt.Sprintf("got wrong error type: %s", err))
+				Expect(errors.Is(err, &config.TargetError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
 		When("Target exists in multiple entries", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
+			var ksConfig *KeyShardConfig
 			var key data.KeyEntry
-			mockClient := &MockClient{}
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockClient.On("FetchKeyShardData").Return(data.MockKeyShardDataMedium(), nil)
 
 				By("requesting a target present in both")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				key, err = config.LastKey("targetId1")
+				key, err = ksConfig.LastKey("targetId1")
 			})
 
 			It("returns a nil error", func() {
@@ -364,20 +365,20 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("Target only exists in earliest entry", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
+			var ksConfig *KeyShardConfig
 			var key data.KeyEntry
-			mockClient := &MockClient{}
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockData := data.MockKeyShardDataMedium()
 				mockData.Keys[0].TargetIds = append(mockData.Keys[0].TargetIds, specialTarget)
 				mockClient.On("FetchKeyShardData").Return(mockData, nil)
 
 				By("requesting a target only present in the earlier one")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				key, err = config.LastKey(specialTarget)
+				key, err = ksConfig.LastKey(specialTarget)
 			})
 
 			It("returns a nil error", func() {
@@ -393,30 +394,30 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 	Context("Deleting targets", func() {
 		When("Target does not exist", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with one entry")
+				By("starting with a ksConfig with one entry")
 				mockClient.On("FetchKeyShardData").Return(data.DefaultMockKeyShardDataSmall(), nil)
 
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.DeleteTarget("target", false)
+				err = ksConfig.DeleteTarget("target", false)
 			})
 
 			It("Returns a TargetError", func() {
-				Expect(errors.Is(err, &TargetError{}), fmt.Sprintf("got wrong error type: %s", err))
+				Expect(errors.Is(err, &config.TargetError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
 		When("Target exists / soft delete", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				currentData := data.MockKeyShardDataMedium()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 
@@ -425,9 +426,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", newData).Return(nil)
 
 				By("deleting the most recent instance of one target")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.DeleteTarget("targetId2", false)
+				err = ksConfig.DeleteTarget("targetId2", false)
 			})
 
 			It("returns a nil error", func() {
@@ -442,11 +443,11 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 
 		When("Target exists / hard delete", Ordered, func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				currentData := data.MockKeyShardDataMedium()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 
@@ -456,9 +457,9 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				mockClient.On("Save", newData).Return(nil)
 
 				By("deleting a target present in both entries")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.DeleteTarget("targetId2", true)
+				err = ksConfig.DeleteTarget("targetId2", true)
 			})
 
 			It("returns a nil error", func() {
@@ -476,16 +477,16 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				tempDir = GinkgoT().TempDir()
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
-				By("starting with a config with many entries")
+				By("starting with a ksConfig with many entries")
 				initializeConfigFile(checkPath, data.MockKeyShardLargeWithTargetsRaw())
 
 				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
-				config, err := LoadKeyShardConfig(client)
+				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
 				By("deleting all but one of the targets")
 				for i := 1; i <= 8; i++ {
-					go config.DeleteTarget(fmt.Sprintf("targetId%d", i), false)
+					go ksConfig.DeleteTarget(fmt.Sprintf("targetId%d", i), false)
 				}
 
 				// let the deletes happeen
@@ -529,39 +530,39 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 	Context("Clearing the config", func() {
 		When("There is no data", func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				mockClient.On("FetchKeyShardData").Return(data.KeyShardData{}, nil)
 
 				By("clearing the config")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.Clear()
+				err = ksConfig.Clear()
 			})
 
 			It("Returns a NoOpError without saving", func() {
-				Expect(errors.Is(err, &NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
+				Expect(errors.Is(err, &config.NoOpError{}), fmt.Sprintf("got wrong error type: %s", err))
 			})
 		})
 
 		When("There is data", func() {
 			var err error
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with two entries")
+				By("starting with a ksConfig with two entries")
 				currentData := data.MockKeyShardDataMedium()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 				mockClient.On("Save", data.KeyShardData{}).Return(nil)
 
 				By("clearing the config")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				err = config.Clear()
+				err = ksConfig.Clear()
 			})
 
 			It("returns a nil error", func() {
@@ -579,18 +580,18 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 		When("Config is populated", func() {
 			var err error
 			var bytes []byte
-			var config *KeyShardConfig
-			mockClient := &MockClient{}
+			var ksConfig *KeyShardConfig
+			mockClient := &client.MockClient{}
 
 			BeforeAll(func() {
-				By("starting with a config with one entry")
+				By("starting with a ksConfig with one entry")
 				currentData := data.DefaultMockKeyShardDataSmall()
 				mockClient.On("FetchKeyShardData").Return(currentData, nil)
 
 				By("printing the config")
-				config, err = LoadKeyShardConfig(mockClient)
+				ksConfig, err = LoadKeyShardConfig(mockClient)
 				Expect(err).To(BeNil())
-				bytes, err = json.Marshal(config)
+				bytes, err = json.Marshal(ksConfig)
 			})
 
 			It("Marshals a JSON string", func() {

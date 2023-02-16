@@ -1,4 +1,4 @@
-package config
+package keyshardconfig
 
 import (
 	"encoding/json"
@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 )
 
 type keyShardConfigClient interface {
@@ -27,7 +28,7 @@ type KeyShardConfig struct {
 
 func LoadKeyShardConfig(client keyShardConfigClient) (*KeyShardConfig, error) {
 	if data, err := client.FetchKeyShardData(); err != nil {
-		return nil, configFetchError(err.Error())
+		return nil, config.ConfigFetchError(err.Error())
 	} else {
 		return &KeyShardConfig{
 			client: client,
@@ -43,7 +44,7 @@ func (c *KeyShardConfig) MarshalJSON() ([]byte, error) {
 
 	data, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return nil, configFetchError(err.Error())
+		return nil, config.ConfigFetchError(err.Error())
 	}
 
 	return json.Marshal(data)
@@ -60,7 +61,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	if idx, err := findEntry(current, newEntry.KeyData); err == nil {
@@ -74,7 +75,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 		}
 		// let the caller know if we didn't do anything
 		if !addedSomeTargets {
-			return &NoOpError{}
+			return &config.NoOpError{}
 		}
 	} else {
 		// if the new entry doesn't already exist, just append it
@@ -84,7 +85,7 @@ func (c *KeyShardConfig) AddKey(newEntry data.MappedKeyEntry) error {
 	c.data = current
 
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -98,7 +99,7 @@ func (c *KeyShardConfig) AddTarget(targetId string) error {
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	added := false
@@ -110,13 +111,13 @@ func (c *KeyShardConfig) AddTarget(targetId string) error {
 	}
 
 	if !added {
-		return &NoOpError{}
+		return &config.NoOpError{}
 	}
 
 	c.data = current
 
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -128,7 +129,7 @@ func (c *KeyShardConfig) LastKey(targetId string) (data.KeyEntry, error) {
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return data.KeyEntry{}, configFetchError(err.Error())
+		return data.KeyEntry{}, config.ConfigFetchError(err.Error())
 	}
 
 	idx, err := lastIndex(current, targetId)
@@ -148,15 +149,15 @@ func (c *KeyShardConfig) Clear() error {
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	if len(current.Keys) == 0 {
-		return &NoOpError{}
+		return &config.NoOpError{}
 	}
 
 	if err := c.client.Save(data.KeyShardData{}); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -170,7 +171,7 @@ func (c *KeyShardConfig) DeleteTarget(targetId string, hard bool) error {
 
 	current, err := c.client.FetchKeyShardData()
 	if err != nil {
-		return configFetchError(err.Error())
+		return config.ConfigFetchError(err.Error())
 	}
 
 	afterDeletion, err := removeTarget(current, targetId, hard)
@@ -181,7 +182,7 @@ func (c *KeyShardConfig) DeleteTarget(targetId string, hard bool) error {
 	c.data = afterDeletion
 
 	if err := c.client.Save(c.data); err != nil {
-		return configSaveError(err.Error())
+		return config.ConfigSaveError(err.Error())
 	}
 	return nil
 }
@@ -194,7 +195,7 @@ func findEntry(keyShards data.KeyShardData, key data.KeyEntry) (int, error) {
 		}
 	}
 	// not found
-	return -1, &KeyError{}
+	return -1, &config.KeyError{}
 }
 
 // check if an entry contains a given targetId
@@ -215,7 +216,7 @@ func lastIndex(keyShards data.KeyShardData, targetId string) (int, error) {
 		}
 	}
 	// not found
-	return -1, &TargetError{Target: targetId}
+	return -1, &config.TargetError{Target: targetId}
 }
 
 // remove the specified target while preserving order
@@ -246,7 +247,7 @@ func removeTarget(keyShards data.KeyShardData, targetId string, hard bool) (data
 	// recursive case: delete until we hit a target error
 	if hard {
 		keyShards, err = removeTarget(keyShards, targetId, hard)
-		var targetError *TargetError
+		var targetError *config.TargetError
 		if err != nil && !errors.As(err, &targetError) {
 			return data.KeyShardData{}, err
 		}

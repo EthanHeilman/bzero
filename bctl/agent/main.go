@@ -9,8 +9,9 @@ import (
 	"os"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config"
+	agentconfig "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig"
 	"bastionzero.com/bctl/v1/bctl/agent/config/client"
+	ksconfig "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
@@ -257,13 +258,13 @@ func NewSystemdAgent(
 	agentClient, err := client.NewSystemdClient(configDir, client.Agent)
 	if err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
-	} else if a.agentConfig, err = config.LoadAgentConfig(agentClient); err != nil {
+	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
 	if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
-	} else if a.keyShardConfig, err = config.LoadKeyShardConfig(keyShardClient); err != nil {
+	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 
@@ -355,13 +356,13 @@ func NewKubeAgent(
 	// Initialize our config
 	if agentClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.Agent); err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
-	} else if a.agentConfig, err = config.LoadAgentConfig(agentClient); err != nil {
+	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
 	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
-	} else if a.keyShardConfig, err = config.LoadKeyShardConfig(keyShardClient); err != nil {
+	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 

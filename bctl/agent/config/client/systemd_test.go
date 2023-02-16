@@ -7,7 +7,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"bastionzero.com/bctl/v1/bzerolib/filelock"
 )
 
@@ -23,7 +24,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 		tmpDir = GinkgoT().TempDir()
 	})
 
-	populateAgentConfigFiile := func(client *SystemdClient, mockV2 data.AgentDataV2) error {
+	populateAgentConfigFiile := func(client *SystemdClient, mockV2 agentdata.AgentDataV2) error {
 		By("Fetching our file to set our last mod correctly")
 		_, err := client.FetchAgentData()
 		Expect(err).ToNot(HaveOccurred())
@@ -32,7 +33,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 		return client.Save(mockV2)
 	}
 
-	populateKeyShardConfigFiile := func(client *SystemdClient, mockData data.KeyShardData) error {
+	populateKeyShardConfigFiile := func(client *SystemdClient, mockData ksdata.KeyShardData) error {
 		By("Fetching our file to set our last mod correctly")
 		_, err := client.FetchKeyShardData()
 		Expect(err).ToNot(HaveOccurred())
@@ -85,7 +86,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Making sure our data object is an empty agent config")
-				Expect(dataV2).To(Equal(data.AgentDataV2{}))
+				Expect(dataV2).To(Equal(agentdata.AgentDataV2{}))
 			})
 		})
 
@@ -115,7 +116,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Making sure our data object is an empty keyshard config")
-				var emptyData data.KeyShardData
+				var emptyData ksdata.KeyShardData
 				Expect(ksData).To(Equal(emptyData))
 			})
 		})
@@ -131,7 +132,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 					configType: Agent,
 				}
 
-				err = populateAgentConfigFiile(sysdClient, data.NewMockDataV2())
+				err = populateAgentConfigFiile(sysdClient, agentdata.NewMockDataV2())
 				Expect(err).ToNot(HaveOccurred())
 				client, err = NewSystemdClient(path.Dir(sysdClient.configPath), Agent)
 			})
@@ -146,7 +147,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Making sure our data object is populated")
-				Expect(dataV2).To(Equal(data.NewMockDataV2()))
+				Expect(dataV2).To(Equal(agentdata.NewMockDataV2()))
 			})
 		})
 
@@ -161,7 +162,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 					configType: KeyShard,
 				}
 
-				err = populateKeyShardConfigFiile(sysdClient, data.DefaultMockKeyShardDataSmall())
+				err = populateKeyShardConfigFiile(sysdClient, ksdata.DefaultMockKeyShardDataSmall())
 				Expect(err).ToNot(HaveOccurred())
 
 				client, err = NewSystemdClient(path.Dir(sysdClient.configPath), KeyShard)
@@ -177,7 +178,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				By("Making sure our data object is populated")
-				Expect(dataKs).To(Equal(data.DefaultMockKeyShardDataSmall()))
+				Expect(dataKs).To(Equal(ksdata.DefaultMockKeyShardDataSmall()))
 			})
 		})
 	})
@@ -185,9 +186,9 @@ var _ = Describe("Systemd Client", Ordered, func() {
 	Context("Save", func() {
 		When("Saving a new agent config", func() {
 			var saveErr error
-			var v2Data data.AgentDataV2
+			var v2Data agentdata.AgentDataV2
 
-			mockV2 := data.NewMockDataV2()
+			mockV2 := agentdata.NewMockDataV2()
 
 			BeforeEach(func() {
 				sysdClient := &SystemdClient{
@@ -215,7 +216,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 
 	Context("Fetch", func() {
 		When("Config file is empty", func() {
-			var v2Data data.AgentDataV2
+			var v2Data agentdata.AgentDataV2
 			var err error
 
 			BeforeEach(func() {
@@ -233,15 +234,15 @@ var _ = Describe("Systemd Client", Ordered, func() {
 			})
 
 			It("returns an empty data object", func() {
-				Expect(v2Data).To(Equal(data.AgentDataV2{}))
+				Expect(v2Data).To(Equal(agentdata.AgentDataV2{}))
 			})
 		})
 
 		When("Config file contains V2 data", func() {
-			var v2Data data.AgentDataV2
+			var v2Data agentdata.AgentDataV2
 			var err error
 
-			mockV2 := data.NewMockDataV2()
+			mockV2 := agentdata.NewMockDataV2()
 
 			BeforeEach(func() {
 				sysdClient := &SystemdClient{
@@ -278,7 +279,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				}
 
 				By("Saving data to our config file")
-				err = sysdClient.Save(data.AgentDataV2{})
+				err = sysdClient.Save(agentdata.AgentDataV2{})
 			})
 
 			It("returns an error", func() {

@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	"github.com/bastionzero/go-toolkit/certificate"
 	"github.com/bastionzero/go-toolkit/certificate/ca"

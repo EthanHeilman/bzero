@@ -1,7 +1,7 @@
 package controlchannel
 
 import (
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 )
 

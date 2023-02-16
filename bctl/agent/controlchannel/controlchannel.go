@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/dataconnection"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"

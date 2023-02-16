@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

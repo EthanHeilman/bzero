@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"

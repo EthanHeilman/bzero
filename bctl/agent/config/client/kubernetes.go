@@ -8,7 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
@@ -54,14 +55,14 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	case Agent:
 		configKey = agentConfigKey
 		secretFormula = agentSecretFormula
-		emptyData, err = json.Marshal(data.AgentDataV2{})
+		emptyData, err = json.Marshal(agentdata.AgentDataV2{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal empty agent config data: %w", err)
 		}
 	case KeyShard:
 		configKey = keyShardConfigKey
 		secretFormula = keyShardSecretFormula
-		emptyData, err = json.Marshal(data.KeyShardData{})
+		emptyData, err = json.Marshal(ksdata.KeyShardData{})
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal empty keyshard config data: %w", err)
 		}
@@ -104,9 +105,9 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	return &config, nil
 }
 
-func (k *kubernetesClient) FetchAgentData() (data.AgentDataV2, error) {
+func (k *kubernetesClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	if k.configType != Agent {
-		return data.AgentDataV2{}, fmt.Errorf("cannot fetch agent data with %s client", k.configType)
+		return agentdata.AgentDataV2{}, fmt.Errorf("cannot fetch agent data with %s client", k.configType)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -114,31 +115,31 @@ func (k *kubernetesClient) FetchAgentData() (data.AgentDataV2, error) {
 
 	secret, err := k.client.Get(ctx, k.secretName, metaV1.GetOptions{})
 	if err != nil {
-		return data.AgentDataV2{}, fmt.Errorf("config secret %s does not exist", k.secretName)
+		return agentdata.AgentDataV2{}, fmt.Errorf("config secret %s does not exist", k.secretName)
 	}
 
 	k.lastVersion = secret.ResourceVersion
 
 	rawData, ok := secret.Data[k.configKey]
 	if !ok {
-		return data.AgentDataV2{}, fmt.Errorf("agent config does not exist")
+		return agentdata.AgentDataV2{}, fmt.Errorf("agent config does not exist")
 	}
 
 	if bytes.Equal(rawData, []byte(defaultSecretValue)) {
-		return data.AgentDataV2{}, nil
+		return agentdata.AgentDataV2{}, nil
 	}
 
 	// Grab and decode the data from the secrets store
 	if config, err := decodeAgentData(rawData); err != nil {
-		return data.AgentDataV2{}, err
+		return agentdata.AgentDataV2{}, err
 	} else {
 		return config, nil
 	}
 }
 
-func (k *kubernetesClient) FetchKeyShardData() (data.KeyShardData, error) {
+func (k *kubernetesClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	if k.configType != KeyShard {
-		return data.KeyShardData{}, fmt.Errorf("cannot fetch key shard data with %s client", k.configType)
+		return ksdata.KeyShardData{}, fmt.Errorf("cannot fetch key shard data with %s client", k.configType)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -146,21 +147,21 @@ func (k *kubernetesClient) FetchKeyShardData() (data.KeyShardData, error) {
 
 	secret, err := k.client.Get(ctx, k.secretName, metaV1.GetOptions{})
 	if err != nil {
-		return data.KeyShardData{}, fmt.Errorf("config secret %s does not exist", k.secretName)
+		return ksdata.KeyShardData{}, fmt.Errorf("config secret %s does not exist", k.secretName)
 	}
 
 	k.lastVersion = secret.ResourceVersion
 
 	rawData, ok := secret.Data[k.configKey]
 	if !ok {
-		return data.KeyShardData{}, fmt.Errorf("key shard config does not exist")
+		return ksdata.KeyShardData{}, fmt.Errorf("key shard config does not exist")
 	}
 
 	if bytes.Equal(rawData, []byte(defaultSecretValue)) {
-		return data.KeyShardData{}, nil
+		return ksdata.KeyShardData{}, nil
 	}
 
-	var config data.KeyShardData
+	var config ksdata.KeyShardData
 	err = json.Unmarshal(rawData, &config)
 	return config, err
 }
@@ -195,9 +196,9 @@ func (k *kubernetesClient) Save(d interface{}) error {
 	return nil
 }
 
-func decodeAgentData(s []byte) (data.AgentDataV2, error) {
-	var old data.AgentDataV1
-	var new data.AgentDataV2
+func decodeAgentData(s []byte) (agentdata.AgentDataV2, error) {
+	var old agentdata.AgentDataV1
+	var new agentdata.AgentDataV2
 
 	// first we try to gob decode, it only speaks old
 	dec := gob.NewDecoder(bytes.NewReader(s))

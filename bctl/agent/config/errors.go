@@ -4,15 +4,15 @@ import (
 	"fmt"
 )
 
-type configFetchError string
+type ConfigFetchError string
 
-func (e configFetchError) Error() string {
+func (e ConfigFetchError) Error() string {
 	return "failed to fetch config: " + string(e)
 }
 
-type configSaveError string
+type ConfigSaveError string
 
-func (e configSaveError) Error() string {
+func (e ConfigSaveError) Error() string {
 	return "failed to save config: " + string(e)
 }
 

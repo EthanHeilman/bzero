@@ -1,9 +1,10 @@
-package config
+package agentconfig
 
 import (
 	"testing"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/client"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -24,7 +25,7 @@ var _ = Describe("Agent Config", func() {
 			mockV2 := data.NewMockDataV2()
 
 			BeforeEach(func() {
-				mockClient := &MockClient{}
+				mockClient := &client.MockClient{}
 				mockClient.On("FetchAgentData").Return(mockV2, nil)
 				mockClient.On("Save", mock.Anything).Return(nil)
 
@@ -51,7 +52,7 @@ var _ = Describe("Agent Config", func() {
 			alteredMockV2.Version = newVersion
 
 			BeforeEach(func() {
-				mockClient := &MockClient{}
+				mockClient := &client.MockClient{}
 				mockClient.On("FetchAgentData").Return(mockV2, nil).Once()
 				mockClient.On("FetchAgentData").Return(alteredMockV2, nil).Once()
 				mockClient.On("Save", mock.Anything).Return(nil)
