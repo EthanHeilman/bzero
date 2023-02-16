@@ -168,7 +168,7 @@ func NewSystemdAgent(
 		case <-a.tmb.Dying():
 			cancel()
 			return
-		case <-a.osSignalChan:
+		case <-bzos.OsShutdownChan():
 			cancel()
 			return
 		case <-ctx.Done():
@@ -263,7 +263,7 @@ func NewKubeAgent(
 		case <-a.tmb.Dying():
 			cancel()
 			return
-		case <-a.osSignalChan:
+		case <-bzos.OsShutdownChan():
 			cancel()
 			return
 		case <-ctx.Done():
