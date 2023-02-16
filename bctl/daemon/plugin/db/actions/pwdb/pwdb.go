@@ -201,13 +201,7 @@ func (p *Pwdb) sendOutputMessage(action pwdb.PwdbSubAction, payload interface{})
 
 func (p *Pwdb) ReceiveStream(smessage smsg.StreamMessage) {
 	p.logger.Infof("Received %s stream, message count: %d", smessage.Type, len(p.streamInputChan)+1)
-
-	select {
-	case p.streamInputChan <- smessage:
-	case <-time.After(3 * time.Second):
-		// TODO: drop or fail?
-		p.logger.Errorf("action message queue full and blocked, dropping message")
-	}
+	p.streamInputChan <- smessage
 }
 
 func (p *Pwdb) ReceiveMrtap(action string, actionPayload []byte) error {
