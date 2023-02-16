@@ -46,7 +46,7 @@ const (
 	HOSTNAMES        = "HOSTNAMES"        // Comma-separated list of hostNames to use for this target
 
 	// db plugin variables
-	DB_ACTION = "DB_ACTION" // One of ['dial', 'passwordless']
+	DB_ACTION = "DB_ACTION" // One of ['dial', 'pwdb']
 )
 
 var (
