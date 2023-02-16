@@ -10,6 +10,7 @@ import (
 	"os"
 	"time"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
 	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
@@ -41,6 +42,7 @@ type Registration struct {
 	ctx    context.Context
 	logger *logger.Logger
 
+	agentType       agenttype.AgentType
 	serviceUrl      string
 	activationToken string
 	registrationKey string
@@ -55,6 +57,7 @@ type Registration struct {
 }
 
 func New(
+	agentType agenttype.AgentType,
 	serviceUrl string,
 	activationToken string,
 	apiKey string,
@@ -68,6 +71,7 @@ func New(
 ) *Registration {
 	var jwksUrlPatterns []string
 	return &Registration{
+		agentType:       agentType,
 		serviceUrl:      serviceUrl,
 		activationToken: activationToken,
 		registrationKey: apiKey,
@@ -154,6 +158,7 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	r.logger.Infof("Requesting activation token from Bastion")
 	req := ActivationTokenRequest{
 		TargetName: r.targetName,
+		AgentType:  r.agentType,
 	}
 
 	reqBytes, err := json.Marshal(req)
@@ -199,6 +204,11 @@ func (r *Registration) getActivationToken(apiKey string) (string, error) {
 	if tokenResponse.ActivationToken == "" {
 		return "", fmt.Errorf("activation request returned empty response")
 	} else {
+		// re-use an existing targetId if a cluster with this name already exists
+		if tokenResponse.ExistingClusterId != "" {
+			r.targetId = tokenResponse.ExistingClusterId
+		}
+
 		return tokenResponse.ActivationToken, nil
 	}
 }
