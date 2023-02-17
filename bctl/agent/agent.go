@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
+	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
@@ -30,16 +31,6 @@ const (
 	// as of this writing, this means an expected pong every minute, with a "disconnect" reported after 3 minutes
 	bastionDisconnectTimeout  = 3 * controlchannel.HeartRate
 	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
-)
-
-// Our agent type specifically refers to the agent manager aka what environment are we
-// setup in? and is there anything we need to do differently in it? Minimally, it requires
-// a different setup which is implemented in separate "NewXAgent()" functions
-type AgentType string
-
-const (
-	Kubernetes AgentType = "cluster"
-	Systemd    AgentType = "bzero"
 )
 
 type IRegistration interface {
@@ -67,7 +58,7 @@ type Agent struct {
 
 	agentConfig    AgentConfig
 	keyShardConfig controlchannel.KeyShardConfig
-	agentType      AgentType
+	agentType      agenttype.AgentType
 	version        string
 	osSignalChan   <-chan os.Signal
 
@@ -155,7 +146,7 @@ func (a *Agent) startControlChannel() error {
 		"public_key": {a.agentConfig.GetPublicKey().String()},
 		"version":    {a.version},
 		"target_id":  {targetId},
-		"agent_type": {string(Systemd)},
+		"agent_type": {string(agenttype.Systemd)},
 	}
 
 	// Create our control channel's connection to BastionZero

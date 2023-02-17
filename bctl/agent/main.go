@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
 	agentconfig "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig"
 	"bastionzero.com/bctl/v1/bctl/agent/config/client"
 	ksconfig "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig"
@@ -62,9 +63,9 @@ func main() {
 
 	if listLogFile {
 		switch agentType {
-		case Systemd:
+		case agenttype.Systemd:
 			fmt.Println(defaultLogFilePath)
-		case Kubernetes:
+		case agenttype.Kubernetes:
 			fmt.Println("BastionZero Agent logs can be accessed via the Kube API server by tailing the pods logs")
 		}
 		return
@@ -82,14 +83,14 @@ func main() {
 	}
 
 	// This sets up our registration object with all relevant information in case we need to register
-	reg := registration.New(serviceUrl, activationToken, registrationKey, targetId, version, environmentId, environmentName, targetName, idpProvider, idpOrgId)
+	reg := registration.New(agentType, serviceUrl, activationToken, registrationKey, targetId, version, environmentId, environmentName, targetName, idpProvider, idpOrgId)
 
 	var agent *Agent
 	var err error
 	switch agentType {
-	case Systemd:
+	case agenttype.Systemd:
 		agent, err = NewSystemdAgent(version, reg)
-	case Kubernetes:
+	case agenttype.Kubernetes:
 		agent, err = NewKubeAgent(version, reg)
 	}
 
@@ -148,7 +149,7 @@ func parseFlags() bool {
 	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
 
 	// check if we're in key-shard mode (only supported on the systemd agent)
-	if getAgentType() == Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
+	if getAgentType() == agenttype.Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
 		// parse the flags, call this function with args
 		// should probably put this in a separate file, with separate handlers
 		keyShardsCmd.Parse(os.Args[2:])
@@ -192,7 +193,7 @@ func parseFlags() bool {
 		attemptedRegistration = activationToken != "" || registrationKey != ""
 
 		// The environment will overwrite any flags passed
-		if getAgentType() == Kubernetes {
+		if getAgentType() == agenttype.Kubernetes {
 			serviceUrl = os.Getenv("SERVICE_URL")
 			activationToken = os.Getenv("ACTIVATION_TOKEN")
 			targetName = os.Getenv("TARGET_NAME")
@@ -204,7 +205,6 @@ func parseFlags() bool {
 			registrationKey = os.Getenv("API_KEY")
 			logLevel = os.Getenv("LOG_LEVEL")
 		}
-
 		return true
 	}
 }
@@ -219,7 +219,7 @@ func NewSystemdAgent(
 		cancel:       cancel,
 		osSignalChan: bzos.OsShutdownChan(),
 		version:      version,
-		agentType:    Systemd,
+		agentType:    agenttype.Systemd,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -228,7 +228,7 @@ func NewSystemdAgent(
 		case <-a.tmb.Dying():
 			cancel()
 			return
-		case <-a.osSignalChan:
+		case <-bzos.OsShutdownChan():
 			cancel()
 			return
 		case <-ctx.Done():
@@ -245,7 +245,7 @@ func NewSystemdAgent(
 		return
 	}
 	a.logger.AddAgentVersion(version)
-	a.logger.AddAgentType(string(Systemd))
+	a.logger.AddAgentType(string(agenttype.Systemd))
 
 	// Now that we have our logger, make sure that any error from statements below
 	// gets logged
@@ -276,7 +276,9 @@ func NewSystemdAgent(
 	isRegistered := !a.agentConfig.GetPublicKey().IsEmpty()
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-		agentClient.WaitForRegistration(a.ctx)
+		if err := agentClient.WaitForRegistration(a.ctx); err != nil {
+			return a, err
+		}
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
 		if err := a.agentConfig.Reload(); err != nil {
@@ -318,7 +320,7 @@ func NewKubeAgent(
 		cancel:       cancel,
 		version:      version,
 		osSignalChan: bzos.OsShutdownChan(),
-		agentType:    Kubernetes,
+		agentType:    agenttype.Kubernetes,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -327,7 +329,7 @@ func NewKubeAgent(
 		case <-a.tmb.Dying():
 			cancel()
 			return
-		case <-a.osSignalChan:
+		case <-bzos.OsShutdownChan():
 			cancel()
 			return
 		case <-ctx.Done():
@@ -343,7 +345,7 @@ func NewKubeAgent(
 		return nil, err
 	}
 	a.logger.AddAgentVersion(version)
-	a.logger.AddAgentType(string(Kubernetes))
+	a.logger.AddAgentType(string(agenttype.Kubernetes))
 
 	// Now that we have our logger, make sure that any error from statements below
 	// gets logged
@@ -406,11 +408,11 @@ func getAgentVersion() string {
 	return "$AGENT_VERSION"
 }
 
-func getAgentType() AgentType {
+func getAgentType() agenttype.AgentType {
 	// determine agent type
 	if val := os.Getenv(inClusterEnvVar); val != "" {
-		return Kubernetes
+		return agenttype.Kubernetes
 	} else {
-		return Systemd
+		return agenttype.Systemd
 	}
 }
