@@ -34,7 +34,8 @@ type kubernetesClient struct {
 	configKey  string
 
 	// Used to keep track of changes between fetches and saves
-	lastVersion string
+	lastAgentVersion    string
+	lastKeyShardVersion string
 }
 
 func NewKubernetesClient(ctx context.Context, namespace string, targetName string, configType ConfigType) (*kubernetesClient, error) {
@@ -118,7 +119,7 @@ func (k *kubernetesClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 		return agentdata.AgentDataV2{}, fmt.Errorf("config secret %s does not exist", k.secretName)
 	}
 
-	k.lastVersion = secret.ResourceVersion
+	k.lastAgentVersion = secret.ResourceVersion
 
 	rawData, ok := secret.Data[k.configKey]
 	if !ok {
@@ -150,7 +151,7 @@ func (k *kubernetesClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 		return ksdata.KeyShardData{}, fmt.Errorf("config secret %s does not exist", k.secretName)
 	}
 
-	k.lastVersion = secret.ResourceVersion
+	k.lastKeyShardVersion = secret.ResourceVersion
 
 	rawData, ok := secret.Data[k.configKey]
 	if !ok {
@@ -176,7 +177,8 @@ func (k *kubernetesClient) Save(d interface{}) error {
 	}
 
 	// Make sure we're not overwriting any data
-	if secret.ResourceVersion != k.lastVersion {
+	if (k.configType == Agent && secret.ResourceVersion != k.lastAgentVersion) ||
+		(k.configType == KeyShard && secret.ResourceVersion != k.lastKeyShardVersion) {
 		return fmt.Errorf("the config has changed since it was last fetched")
 	}
 

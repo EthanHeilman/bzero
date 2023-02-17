@@ -28,7 +28,8 @@ type SystemdClient struct {
 	configType ConfigType
 
 	// Used to check for changes between fetches and saves
-	lastMod int64
+	lastAgentMod    int64
+	lastKeyShardMod int64
 }
 
 func NewSystemdClient(configDir string, configType ConfigType) (*SystemdClient, error) {
@@ -88,7 +89,7 @@ func (s *SystemdClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	if info, err := os.Stat(s.configPath); err != nil {
 		return config, fmt.Errorf("failed to get agent config file info %s: %w", s.configPath, err)
 	} else {
-		s.lastMod = info.ModTime().UnixMilli()
+		s.lastAgentMod = info.ModTime().UnixMilli()
 	}
 
 	if len(file) == 0 {
@@ -123,7 +124,7 @@ func (s *SystemdClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	if info, err := os.Stat(s.configPath); err != nil {
 		return config, fmt.Errorf("failed to get key shard config file info %s: %w", s.configPath, err)
 	} else {
-		s.lastMod = info.ModTime().UnixMilli()
+		s.lastKeyShardMod = info.ModTime().UnixMilli()
 	}
 
 	if len(file) == 0 {
@@ -150,7 +151,8 @@ func (s *SystemdClient) Save(d interface{}) error {
 	// 1000% sure we will not be overwriting anything
 	if info, err := os.Stat(s.configPath); err != nil {
 		return fmt.Errorf("failed to get config file info %s: %w", s.configPath, err)
-	} else if s.lastMod != info.ModTime().UnixMilli() {
+	} else if (s.configType == Agent && s.lastAgentMod != info.ModTime().UnixMilli()) ||
+		(s.configType == KeyShard && s.lastKeyShardMod != info.ModTime().UnixMilli()) {
 		return fmt.Errorf("config has changed since it was last fetched: our last mod")
 	}
 
