@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/dial"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
@@ -30,6 +32,8 @@ type DbPlugin struct {
 
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
+	keyshardConfig pwdb.PWDBConfig,
+	bastion *client.BastionClient,
 	action string,
 	payload []byte,
 ) (*DbPlugin, error) {
@@ -37,7 +41,7 @@ func New(logger *logger.Logger,
 	// Unmarshal the Syn payload
 	var syn db.DbActionParams
 	if err := json.Unmarshal(payload, &syn); err != nil {
-		return nil, fmt.Errorf("malformed Db plugin SYN payload %v", string(payload))
+		return nil, fmt.Errorf("malformed SYN payload: %s", err)
 	}
 
 	// Create our plugin
@@ -59,6 +63,8 @@ func New(logger *logger.Logger,
 		switch parsedAction {
 		case db.Dial:
 			plugin.action, rerr = dial.New(subLogger, plugin.streamOutputChan, plugin.doneChan, syn.RemoteHost, syn.RemotePort)
+		case db.Pwdb:
+			plugin.action, rerr = pwdb.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, bastion, syn.RemoteHost, syn.RemotePort)
 		default:
 			rerr = fmt.Errorf("unhandled DB action")
 		}
@@ -66,7 +72,7 @@ func New(logger *logger.Logger,
 		if rerr != nil {
 			return nil, fmt.Errorf("failed to start DB plugin with action %s: %s", action, rerr)
 		} else {
-			plugin.logger.Infof("DB plugin started with %v action", action)
+			plugin.logger.Infof("DB plugin started with %s action", action)
 			return plugin, nil
 		}
 	}
@@ -83,7 +89,7 @@ func (d *DbPlugin) Kill() {
 }
 
 func (d *DbPlugin) Receive(action string, actionPayload []byte) ([]byte, error) {
-	d.logger.Debugf("DB plugin received message with %s action", action)
+	d.logger.Tracef("DB plugin received message with %s action", action)
 
 	if payload, err := d.action.Receive(action, actionPayload); err != nil {
 		return []byte{}, err

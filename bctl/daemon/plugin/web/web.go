@@ -20,7 +20,7 @@ type IWebDaemonAction interface {
 	Start(writer http.ResponseWriter, request *http.Request) error
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type WebDaemonPlugin struct {
@@ -96,10 +96,10 @@ func (w *WebDaemonPlugin) Err() error {
 	return w.action.Err()
 }
 
-func (w *WebDaemonPlugin) Kill() {
+func (w *WebDaemonPlugin) Kill(err error) {
 	w.killed = true
 	if w.action != nil {
-		w.action.Kill()
+		w.action.Kill(err)
 	}
 }
 

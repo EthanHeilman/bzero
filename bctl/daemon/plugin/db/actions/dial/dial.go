@@ -3,7 +3,6 @@ package dial
 import (
 	"encoding/base64"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -55,7 +54,7 @@ func New(
 	return dial
 }
 
-func (d *DialAction) Start(lconn *net.TCPConn) error {
+func (d *DialAction) Start(lconn net.Conn) error {
 	// Build and send the action payload to start the tcp connection on the agent
 	payload := dial.DialActionPayload{
 		RequestId:            d.requestId,
@@ -92,7 +91,7 @@ func (d *DialAction) Start(lconn *net.TCPConn) error {
 					d.sendOutputMessage(dial.DialStop, payload)
 
 					return nil
-				} else {
+				} else if n > 0 {
 					// Build and send whatever we get from the local tcp connection to the agent
 					dataToSend := base64.StdEncoding.EncodeToString(buf[:n])
 					payload := dial.DialInputActionPayload{
@@ -176,9 +175,11 @@ func (d *DialAction) Err() error {
 	return d.err
 }
 
-func (d *DialAction) Kill() {
-	d.tmb.Kill(fmt.Errorf("received stop request from higher ups")) // kills all datachannel, plugin, and action goroutines
-	d.tmb.Wait()
+func (d *DialAction) Kill(err error) {
+	if d.tmb.Alive() {
+		d.tmb.Kill(err) // kills all datachannel, plugin, and action goroutines
+		d.tmb.Wait()
+	}
 }
 
 func (d *DialAction) sendOutputMessage(action dial.DialSubAction, payload interface{}) {
@@ -193,4 +194,11 @@ func (d *DialAction) sendOutputMessage(action dial.DialSubAction, payload interf
 func (d *DialAction) ReceiveStream(smessage smsg.StreamMessage) {
 	d.logger.Debugf("Dial action received %v stream, message count: %d", smessage.Type, len(d.streamInputChan)+1)
 	d.streamInputChan <- smessage
+}
+
+func (d *DialAction) ReceiveMrtap(action string, actionPayload []byte) error {
+	// the only MrTAP message that we would receive is the ack from the agent after stopping the dial action
+	// we don't do anything with it on the daemon side, so we receive it here and it will get logged
+	// but no particular action will be taken
+	return nil
 }

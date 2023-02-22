@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/data"
+	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -19,7 +19,7 @@ func TestConfigClient(t *testing.T) {
 var _ = Describe("Kubernetes Client", func() {
 	Context("Decoding", func() {
 		When("Reading from a V1 gob-encoded config", func() {
-			var v2Data data.DataV2
+			var v2Data data.AgentDataV2
 			var decodeErr error
 
 			mockV1 := data.NewMockDataV1()
@@ -28,7 +28,7 @@ var _ = Describe("Kubernetes Client", func() {
 				v1Bytes, err := gobEncode(mockV1)
 				Expect(err).ToNot(HaveOccurred())
 
-				v2Data, decodeErr = decode(v1Bytes)
+				v2Data, decodeErr = decodeAgentData(v1Bytes)
 			})
 
 			It("decodes without error", func() {
@@ -41,7 +41,7 @@ var _ = Describe("Kubernetes Client", func() {
 		})
 
 		When("Reading from a V2 json-encoded config", func() {
-			var v2Data data.DataV2
+			var v2Data data.AgentDataV2
 			var decodeErr error
 
 			mockV2 := data.NewMockDataV2()
@@ -50,7 +50,7 @@ var _ = Describe("Kubernetes Client", func() {
 				v2Bytes, err := json.Marshal(mockV2)
 				Expect(err).ToNot(HaveOccurred())
 
-				v2Data, decodeErr = decode(v2Bytes)
+				v2Data, decodeErr = decodeAgentData(v2Bytes)
 			})
 
 			It("decodes without error", func() {

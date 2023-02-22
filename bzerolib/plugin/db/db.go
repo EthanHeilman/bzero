@@ -4,6 +4,7 @@ type DbAction string
 
 const (
 	Dial DbAction = "dial"
+	Pwdb DbAction = "pwdb"
 )
 
 type DbActionParams struct {

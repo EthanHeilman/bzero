@@ -44,7 +44,7 @@ func New(logger *logger.Logger,
 	}
 }
 
-func (r *RestApiAction) Kill() {
+func (r *RestApiAction) Kill(err error) {
 	close(r.doneChan)
 }
 

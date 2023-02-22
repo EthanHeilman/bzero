@@ -10,8 +10,9 @@ import (
 	"strings"
 
 	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	"bastionzero.com/bctl/v1/bctl/agent/config"
+	agentconfig "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig"
 	"bastionzero.com/bctl/v1/bctl/agent/config/client"
+	ksconfig "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig"
 	"bastionzero.com/bctl/v1/bctl/agent/rbac"
 	"bastionzero.com/bctl/v1/bctl/agent/registration"
 	"bastionzero.com/bctl/v1/bzerolib/bzos"
@@ -30,6 +31,9 @@ var (
 	printVersion                     bool
 	listLogFile                      bool
 	attemptedRegistration            bool
+
+	// key-shard vars
+	getKeyShards, clearKeyShards, addKeyShards, addTargets, removeTargets bool
 )
 
 const (
@@ -42,7 +46,11 @@ const (
 )
 
 func main() {
-	parseFlags()
+	// if running a special subcommand, we handle it separately and don't need to continue execution
+	proceed := parseFlags()
+	if !proceed {
+		return
+	}
 
 	agentType := getAgentType()
 	version := getAgentVersion()
@@ -98,7 +106,8 @@ func main() {
 	os.Exit(1)
 }
 
-func parseFlags() {
+func parseFlags() bool {
+	/* default command */
 	// Helpful flags
 	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent")
 	flag.BoolVar(&listLogFile, "logs", false, "Print the agent log file path")
@@ -130,23 +139,73 @@ func parseFlags() {
 
 	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
-	// Parse any flag
-	flag.Parse()
+	/* key-shard configuration command */
+	keyShardsCmd := flag.NewFlagSet("keyshards", flag.ExitOnError)
 
-	attemptedRegistration = activationToken != "" || registrationKey != ""
+	keyShardsCmd.BoolVar(&getKeyShards, "get", false, "Print the agent's keyshard config as a JSON string that can be saved to other agents.")
+	keyShardsCmd.BoolVar(&clearKeyShards, "clear", false, "Remove all keyshards from this agent. Any SplitCert targets using this agent as a proxy will be inaccessible.")
+	keyShardsCmd.BoolVar(&addKeyShards, "addKeys", false, "Save a JSON file containing keyshard data to this agent. All targets specified in the JSON file will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyshards -addKeys path/to/keys.json'")
+	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds to this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
+	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
 
-	// The environment will overwrite any flags passed
-	if getAgentType() == agenttype.Kubernetes {
-		serviceUrl = os.Getenv("SERVICE_URL")
-		activationToken = os.Getenv("ACTIVATION_TOKEN")
-		targetName = os.Getenv("TARGET_NAME")
-		targetId = os.Getenv("TARGET_ID")
-		environmentId = os.Getenv("ENVIRONMENT")
-		idpProvider = os.Getenv("IDP_PROVIDER")
-		idpOrgId = os.Getenv("IDP_ORG_ID")
-		namespace = os.Getenv("NAMESPACE")
-		registrationKey = os.Getenv("API_KEY")
-		logLevel = os.Getenv("LOG_LEVEL")
+	// check if we're in key-shard mode (only supported on the systemd agent)
+	if getAgentType() == agenttype.Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
+		// parse the flags, call this function with args
+		// should probably put this in a separate file, with separate handlers
+		keyShardsCmd.Parse(os.Args[2:])
+		if getKeyShards {
+			printKeyShardConfig()
+
+		} else if clearKeyShards {
+			clearKeyShardConfig()
+
+		} else if addKeyShards {
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no file path provided")
+				return false
+			}
+			addKeyShardData(keyShardsCmd.Args()[0])
+
+		} else if addTargets {
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no target IDs provided")
+				return false
+			}
+			addTargetIds(keyShardsCmd.Args())
+
+		} else if removeTargets {
+			if len(keyShardsCmd.Args()) < 1 {
+				fmt.Println("error: no target IDs provided")
+				return false
+			}
+			removeTargetIds(keyShardsCmd.Args())
+
+		} else {
+			fmt.Println("Invalid option. Run 'bzero keyshards --help' for more information")
+		}
+
+		// no need to continue normal execution
+		return false
+	} else {
+		// either we're a kube agent or we're in a normal systemd execution
+		flag.Parse()
+
+		attemptedRegistration = activationToken != "" || registrationKey != ""
+
+		// The environment will overwrite any flags passed
+		if getAgentType() == agenttype.Kubernetes {
+			serviceUrl = os.Getenv("SERVICE_URL")
+			activationToken = os.Getenv("ACTIVATION_TOKEN")
+			targetName = os.Getenv("TARGET_NAME")
+			targetId = os.Getenv("TARGET_ID")
+			environmentId = os.Getenv("ENVIRONMENT")
+			idpProvider = os.Getenv("IDP_PROVIDER")
+			idpOrgId = os.Getenv("IDP_ORG_ID")
+			namespace = os.Getenv("NAMESPACE")
+			registrationKey = os.Getenv("API_KEY")
+			logLevel = os.Getenv("LOG_LEVEL")
+		}
+		return true
 	}
 }
 
@@ -196,13 +255,17 @@ func NewSystemdAgent(
 		}
 	}()
 
-	sysdClient, err := client.NewSystemdClient(configDir)
+	agentClient, err := client.NewSystemdClient(configDir, client.Agent)
 	if err != nil {
-		return a, fmt.Errorf("failed to initialize systemd client: %s", err)
+		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
+	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
+		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
-	if a.config, err = config.Load(sysdClient); err != nil {
-		return a, fmt.Errorf("failed to load systemd config: %s", err)
+	if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
+		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
+	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
+		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 
 	a.logger.Info("Starting up the BastionZero Agent")
@@ -210,15 +273,15 @@ func NewSystemdAgent(
 	// If this is an agent run by systemd, we add the -w (wait) flag
 	// which means that this process will wait until it detects a new
 	// registration and then it we load it before proceeding
-	isRegistered := !a.config.GetPublicKey().IsEmpty()
+	isRegistered := !a.agentConfig.GetPublicKey().IsEmpty()
 	if !isRegistered && wait {
 		a.logger.Info("This Agent is waiting for a new registration to start up. Please see documentation for more information: https://docs.bastionzero.com/docs/deployment/installing-the-agent#step-2-2-agent-registration")
-		if err := sysdClient.WaitForRegistration(a.ctx); err != nil {
+		if err := agentClient.WaitForRegistration(a.ctx); err != nil {
 			return a, err
 		}
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if err := a.config.Reload(); err != nil {
+		if err := a.agentConfig.Reload(); err != nil {
 			return a, fmt.Errorf("failed to reload config after new registration detected: %w", err)
 		}
 	}
@@ -229,7 +292,7 @@ func NewSystemdAgent(
 
 		// Regardless of the response, we're done here. Registration for the Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
-		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return
 		}
 		os.Exit(0)
@@ -240,7 +303,7 @@ func NewSystemdAgent(
 			return
 		}
 
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return
@@ -293,10 +356,16 @@ func NewKubeAgent(
 	}()
 
 	// Initialize our config
-	if kubeClient, err := client.NewKubernetesClient(ctx, namespace, targetName); err != nil {
-		return a, fmt.Errorf("failed to initialize our kube config client: %w", err)
-	} else if a.config, err = config.Load(kubeClient); err != nil {
-		return a, fmt.Errorf("failed to load kubernetes config: %w", err)
+	if agentClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.Agent); err != nil {
+		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
+	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
+		return a, fmt.Errorf("failed to load agent config: %w", err)
+	}
+
+	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.KeyShard); err != nil {
+		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
+	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
+		return a, fmt.Errorf("failed to load key shard config: %w", err)
 	}
 
 	a.logger.Infof("Starting up the BastionZero Agent")
@@ -310,16 +379,16 @@ func NewKubeAgent(
 
 	// The kube agent registers itself (if requested) and then reloads the config
 	// to continue running. There is no restart after registration.
-	isRegistered := !a.config.GetPublicKey().IsEmpty()
+	isRegistered := !a.agentConfig.GetPublicKey().IsEmpty()
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		if err = registration.Register(a.ctx, a.logger, a.config); err != nil {
+		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return a, fmt.Errorf("failed to register kube agent: %w", err)
 		}
 
 		// Now that we're registered, we need to reload our config to make sure it's up-to-date
-		if err = a.config.Reload(); err != nil {
+		if err = a.agentConfig.Reload(); err != nil {
 			return
 		}
 	} else {
@@ -329,7 +398,7 @@ func NewKubeAgent(
 			return
 		}
 
-		a.logger.Infof("BastionZero Agent is registered with %s", a.config.GetServiceUrl())
+		a.logger.Infof("BastionZero Agent is registered with %s", a.agentConfig.GetServiceUrl())
 	}
 
 	return

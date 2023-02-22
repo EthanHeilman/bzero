@@ -94,8 +94,11 @@ func New(
 	}
 }
 
-func (p *PortForwardAction) Kill() {
+func (p *PortForwardAction) Kill(err error) {
 	close(p.cancelChan)
+	if p.tmb.Alive() {
+		p.tmb.Kill(err)
+	}
 }
 
 func (p *PortForwardAction) Done() <-chan struct{} {
@@ -250,7 +253,7 @@ func (p *PortForwardAction) portForward(portforwardSession *httpStreamPair) {
 	}
 
 	p.sendCloseRequestMessage(portforwardSession.requestID)
-	p.logger.Infof("Completed forwarding port %s. Request: %s", portString, portforwardSession.requestID)
+	p.logger.Infof("Completed forwarding port %s with request id: %s", portString, portforwardSession.requestID)
 }
 
 func (p *PortForwardAction) sendCloseRequestMessage(portforwardingRequestId string) {

@@ -16,6 +16,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
 	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
+	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
 	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
 )
@@ -52,7 +53,7 @@ type IPlugin interface {
 	Outbox() <-chan bzplugin.ActionWrapper
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type DataChannel struct {
@@ -122,7 +123,7 @@ func New(
 			select {
 			case <-dc.tmb.Dying():
 				dc.logger.Infof("Datachannel dying: %s", dc.tmb.Err())
-				dc.plugin.Kill()
+				dc.plugin.Kill(dc.tmb.Err())
 				return nil
 			case <-dc.plugin.Done():
 				dc.logger.Infof("%s is done", action)
@@ -222,7 +223,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 				d.logger.Error(err)
 			}
 		case <-time.After(checkOutboxInterval):
-			d.logger.Infof("checking outbox interval: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.mrtap.IsPipelineEmpty())
+			d.logger.Infof("Checking for any remaining messages: outbox: %d, pipeline empty: %t", len(d.plugin.Outbox()), d.mrtap.IsPipelineEmpty())
 			// if the plugin has nothing pending and the pipeline is empty, we can safely stop
 			if len(d.plugin.Outbox()) == 0 && d.mrtap.IsPipelineEmpty() {
 				return
@@ -443,7 +444,29 @@ func checkForKnownErrors(errString string) error {
 	if strings.Contains(errString, bzcert.ServiceAccountNotConfiguredMsg) {
 		serviceAccountConfigErrTokenized := strings.Split(errString, bzcert.ServiceAccountNotConfiguredMsg)
 		serviceAccountConfigErr := serviceAccountConfigErrTokenized[len(serviceAccountConfigErrTokenized)-1]
-		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf("%s", serviceAccountConfigErr)}
+		return &bzcert.ServiceAccountError{InnerError: fmt.Errorf(serviceAccountConfigErr)}
+	}
+
+	// The below errors are bundled together in a specific order to be able to prioritize specific, wrapped errors from
+	// higher-level generic ones
+	if strings.Contains(errString, db.ClientCertCosignErrorString) {
+		return &db.ClientCertCosignError{}
+	} else if strings.Contains(errString, db.TLSDisabledErrorString) {
+		return &db.TLSDisabledError{}
+	} else if strings.Contains(errString, db.ConnectionRefusedString) {
+		return &db.ConnectionRefusedError{}
+	} else if strings.Contains(errString, db.UnrecognizedRootCertErrorString) {
+		return &db.PwdbUnknownAuthorityError{}
+	} else if strings.Contains(errString, db.ServerCertificateExpiredString) {
+		return db.NewServerCertificateExpired(fmt.Errorf(errString))
+	} else if strings.Contains(errString, db.IncorrectServerNameString) {
+		return db.NewIncorrectServerName(fmt.Errorf(errString))
+	} else if strings.Contains(errString, db.ConnectionFailedErrorString) {
+		return &db.ConnectionFailedError{}
+	}
+
+	if strings.Contains(errString, db.PwdbMissingKeyErrorString) {
+		return &db.PwdbMissingKeyError{}
 	}
 
 	// base case, we didn't find anything special

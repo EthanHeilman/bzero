@@ -81,7 +81,7 @@ func (t *TransparentSsh) signalSuccess() {
 	}
 }
 
-func (t *TransparentSsh) Kill() {
+func (t *TransparentSsh) Kill(err error) {
 	if t.sshChannel != nil {
 		t.sshChannel.Close()
 	}
@@ -271,7 +271,7 @@ func (t *TransparentSsh) ReceiveStream(smessage smsg.StreamMessage) {
 				// if we've reached this point we assume success
 				t.logger.Errorf("received ssh close stream message")
 				t.signalSuccess()
-				t.Kill()
+				t.Kill(nil)
 			}
 		}
 	case smsg.Error:
@@ -282,11 +282,11 @@ func (t *TransparentSsh) ReceiveStream(smessage smsg.StreamMessage) {
 		} else {
 			t.zliIo.WriteErr([]byte(contentBytes))
 		}
-		t.Kill()
+		t.Kill(nil)
 		return
 	case smsg.Stop:
 		t.logger.Infof("received stop message from agent. Shutting down...")
-		t.Kill()
+		t.Kill(nil)
 	default:
 		t.logger.Errorf("unhandled stream type: %s", smessage.Type)
 	}
@@ -304,5 +304,5 @@ func (t *TransparentSsh) sendOutputMessage(action bzssh.SshSubAction, payload in
 func (t *TransparentSsh) rejectSshWithError(errMsg string) {
 	t.logger.Errorf(errMsg)
 	t.zliIo.WriteErr([]byte(errMsg))
-	t.Kill()
+	t.Kill(nil)
 }

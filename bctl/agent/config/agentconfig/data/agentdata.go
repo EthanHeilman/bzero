@@ -9,7 +9,7 @@ import (
 )
 
 // This version was introduced in https://github.com/bastionzero/bzero/pull/166
-type DataV2 struct {
+type AgentDataV2 struct {
 	// Agent Version
 	Version string
 
@@ -53,7 +53,7 @@ type DataV2 struct {
 
 // In order to make the new config backwards compatible, we have to have some custom
 // unmarshalling logic
-func (v *DataV2) UnmarshalJSON(data []byte) error {
+func (v *AgentDataV2) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" || string(data) == `""` {
 		return nil
 	}
@@ -172,7 +172,7 @@ func (v *DataV2) UnmarshalJSON(data []byte) error {
 // This version covers the structure prior to https://github.com/bastionzero/bzero/pull/169
 // There were changes to this structure since the agent's inception, but in the above PR, we
 // changed type definitions
-type DataV1 struct {
+type AgentDataV1 struct {
 	PublicKey          string
 	PrivateKey         string
 	ServiceUrl         string

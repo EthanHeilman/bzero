@@ -63,7 +63,7 @@ func (a *AgentIdentityProvider) GetToken(ctx context.Context) (string, error) {
 		// Check that the identity token is still valid and refresh it otherwise
 		_, err := a.verifyToken(idToken, ctx)
 		if err != nil {
-			a.logger.Infof("Agent Identity token invalid: %s. Attempting to refresh.", err)
+			a.logger.Infof("Refreshing Agent ID token: %s", err)
 			return a.refreshToken(ctx)
 		} else {
 			return idToken, nil
@@ -149,7 +149,7 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	// Send the request
 	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for agent identity token: %s. Request: %+v", err, getAgentIdentityToken)
+		return nil, fmt.Errorf("error making get request for agent identity token: %s", err)
 	}
 
 	// Decode and return response

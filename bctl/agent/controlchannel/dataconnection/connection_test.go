@@ -10,6 +10,7 @@ import (
 
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/mocks"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -30,6 +31,7 @@ func TestDatachannelConnection(t *testing.T) {
 
 var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	validUrl := "localhost:0"
+	fakeServiceUrl := "doesn'tmatter"
 
 	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	fakeConnectionId := uuid.New().String()
@@ -51,6 +53,8 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
 	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
 
+	mockKeyShardConfig := &mocks.PWDBConfig{}
+
 	setupHappyClient := func() {
 		doneChan = make(chan struct{})
 		inboundChan = make(chan *signalr.SignalRMessage, 1)
@@ -69,7 +73,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, err = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -87,7 +91,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, malformedUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				_, err = New(logger, fakeServiceUrl, malformedUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -105,7 +109,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -137,7 +141,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -159,7 +163,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -174,7 +178,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, validUrl, fakeConnectionId, mockMrtapConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

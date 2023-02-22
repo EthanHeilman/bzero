@@ -53,8 +53,8 @@ func (d *DefaultShell) Err() error {
 	return d.tmb.Err()
 }
 
-func (d *DefaultShell) Kill() {
-	d.tmb.Kill(nil)
+func (d *DefaultShell) Kill(err error) {
+	d.tmb.Kill(err)
 }
 
 func (d *DefaultShell) Start(attach bool) error {

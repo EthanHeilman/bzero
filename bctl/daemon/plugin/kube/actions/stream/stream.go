@@ -56,7 +56,7 @@ func New(
 	}
 }
 
-func (s *StreamAction) Kill() {
+func (s *StreamAction) Kill(err error) {
 	close(s.doneChan)
 }
 

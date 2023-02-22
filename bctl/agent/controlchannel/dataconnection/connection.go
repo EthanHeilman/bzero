@@ -26,6 +26,8 @@ import (
 	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
 	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
 	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
 	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
@@ -70,6 +72,9 @@ type DataConnection struct {
 	// config values needed for MrTAP when creating datachannels
 	mrtapConfig mrtap.MrtapConfig
 
+	// Config interface for interacting with key shards
+	keyshardConfig pwdb.PWDBConfig
+
 	// provider of agent identity token and message signer for authenticating messages to the backend
 	agentIdentityProvider agentidentity.IAgentIdentityProvider
 	privateKey            *keypair.PrivateKey
@@ -77,15 +82,18 @@ type DataConnection struct {
 	// Channel indicating when the DaemonConnected control message is sent in the websocket
 	daemonReadyChan chan bool
 
+	serviceUrl string
 	// Channel indicating when daemon connection events occurs which should delay closing the connection due to an idle timeout
 	daemonIdleTimeoutChan chan string
 }
 
 func New(
 	logger *logger.Logger,
+	serviceUrl string,
 	connUrl string,
 	connectionId string,
 	mrtapConfig mrtap.MrtapConfig,
+	keyshardConfig pwdb.PWDBConfig,
 	agentIdentityProvider agentidentity.IAgentIdentityProvider,
 	privateKey *keypair.PrivateKey,
 	params url.Values,
@@ -102,11 +110,13 @@ func New(
 
 	conn := DataConnection{
 		logger:                logger,
+		serviceUrl:            serviceUrl,
 		connectionId:          connectionId,
 		client:                client,
 		broker:                broker.New(),
 		sendQueue:             make(chan *am.AgentMessage, 50),
 		mrtapConfig:           mrtapConfig,
+		keyshardConfig:        keyshardConfig,
 		agentIdentityProvider: agentIdentityProvider,
 		privateKey:            privateKey,
 		daemonReadyChan:       make(chan bool),
@@ -168,7 +178,7 @@ func New(
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
-					conn.logger.Debugf("sent %s message", message.MessageType)
+					conn.logger.Tracef("Sending %s message", message.MessageType)
 				}
 			}
 		}
@@ -205,7 +215,7 @@ func (d *DataConnection) receive() {
 				if err := json.Unmarshal(message.Arguments[0], &dcMessage); err != nil {
 					d.logger.Errorf("error unmarshalling daemon connected websocket message. Error: %s", err)
 				} else {
-					d.logger.Infof("daemon connected. Using idle timeout %s", dcMessage.IdleTimeout)
+					d.logger.Infof("daemon connected. This daemon will exit if left idle for %s", dcMessage.IdleTimeout)
 					if d.daemonIdleTimeoutChan != nil {
 						d.logger.Errorf("received a daemon connect message after daemon was already connected")
 					} else {
@@ -263,22 +273,24 @@ func (d *DataConnection) receive() {
 
 func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error {
 	dcId := odMessage.DataChannelId
-	d.logger.Infof("got new open data channel control message for id: %s", dcId)
+	d.logger.Infof("Opening new datachannel with id: %s", dcId)
 
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
+	bastion := client.New(d.serviceUrl, d.agentIdentityProvider)
+
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, mt, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, bastion, dcId, odMessage.Syn)
 		return err
 	}
 }
 
 func (d *DataConnection) closeDataChannel(cdMessage CloseDataChannelMessage) error {
 	dcId := cdMessage.DataChannelId
-	d.logger.Infof("got new close data channel control message for %s", dcId)
+	d.logger.Infof("Closing datachannel with id: %s", dcId)
 
 	if ok := d.broker.CloseChannel(dcId, fmt.Errorf("received close data channel control message from daemon")); !ok {
 		return fmt.Errorf("agent connection does not have a datachannel with id: %s", dcId)
@@ -332,7 +344,7 @@ func (d *DataConnection) sendRemainingMessages() {
 		if err := d.client.Send(*message); err != nil {
 			d.logger.Errorf("failed to send message: %s", err)
 		} else {
-			d.logger.Debugf("sent %s message", message.MessageType)
+			d.logger.Tracef("Sending %s message", message.MessageType)
 		}
 	}
 
@@ -418,9 +430,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 func (d *DataConnection) waitForDaemonToConnect(timeout time.Duration) {
 	select {
 	case <-d.tmb.Dying():
-		break
 	case <-d.daemonReadyChan:
-		break
 	case <-time.After(timeout):
 		d.Close(fmt.Errorf("timed out waiting for daemon to connect after %s", timeout), 10*time.Second)
 	}
@@ -441,7 +451,6 @@ func (d *DataConnection) waitForIdleTimeout(idleTimeout time.Duration) {
 				return
 			}
 			// Otherwise continue but reset the timer for idleTimeout
-			break
 		case <-time.After(idleTimeout):
 			d.Close(connection.NewIdleTimeoutConnectionClosedError(idleTimeout, lastDaemonEvent), 10*time.Second)
 		}

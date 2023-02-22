@@ -104,20 +104,10 @@ func ReadPublicKeyRsa(privatePem []byte) (*rsa.PublicKey, error) {
 // tries to return an SSH keypair based on the given identityfile
 // if that fails, create a new keypair and update the identityfile
 func SetUpKeys(identityFile IIdentityFile, fileLock *filelock.FileLock, logger *logger.Logger) (privateKey []byte, publicKey []byte, err error) {
-
-	lock, err := fileLock.NewLock()
+	lock, err := fileLock.AcquireLock()
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create lock: %s", err)
+		return nil, nil, err
 	}
-
-	for {
-		if acquiredLock, err := lock.TryLock(); err != nil {
-			return nil, nil, fmt.Errorf("failed to acquire lock: %s", err)
-		} else if acquiredLock {
-			break
-		}
-	}
-
 	defer lock.Unlock()
 
 	useExistingKeys := false

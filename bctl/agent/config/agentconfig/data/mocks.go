@@ -1,10 +1,10 @@
 package data
 
 import (
+	// we can't import ginkgo here since it adds Ginkgo's help options to bzero's
 	"fmt"
 
 	"bastionzero.com/bctl/v1/bzerolib/keypair"
-
 	. "github.com/onsi/gomega"
 )
 
@@ -36,8 +36,8 @@ var (
 	mockShutdownStateV1 = fmt.Sprintf("%+v", mockShutdownState)
 )
 
-func NewMockDataV1() DataV1 {
-	return DataV1{
+func NewMockDataV1() AgentDataV1 {
+	return AgentDataV1{
 		Version:            mockVersion,
 		PublicKey:          mockPublickey.String(),
 		PrivateKey:         mockPrivatekey.String(),
@@ -56,7 +56,7 @@ func NewMockDataV1() DataV1 {
 	}
 }
 
-func (mockV1 *DataV1) AssertMatchesV2(v2Data DataV2) {
+func (mockV1 *AgentDataV1) AssertMatchesV2(v2Data AgentDataV2) {
 	// Since shutdown state has changed, we make sure that it's empty here
 	// making sure the shutdown state is empty
 	Expect(v2Data.ShutdownState).To(Equal(map[string]string{}))
@@ -74,8 +74,8 @@ func (mockV1 *DataV1) AssertMatchesV2(v2Data DataV2) {
 	Expect(v2Data.ShutdownReason).To(Equal(mockV1.ShutdownReason), fmt.Sprintf(`"%s" != "%s"`, v2Data.ShutdownReason, mockV1.ShutdownReason))
 }
 
-func NewMockDataV2() DataV2 {
-	return DataV2{
+func NewMockDataV2() AgentDataV2 {
+	return AgentDataV2{
 		Version:            mockVersion,
 		PublicKey:          mockPublickey,
 		PrivateKey:         mockPrivatekey,
@@ -90,8 +90,8 @@ func NewMockDataV2() DataV2 {
 	}
 }
 
-func (mockV2 *DataV2) AssertMatchesV2(v2Data DataV2) {
-	// making sure all fields are parsed verbatim
+func (mockV2 *AgentDataV2) AssertMatchesV2(v2Data AgentDataV2) {
+	//making sure all fields are parsed verbatim
 	Expect(v2Data.Version).To(Equal(mockV2.Version), fmt.Sprintf(`"%s" != "%s"`, v2Data.Version, mockV2.Version))
 	Expect(v2Data.PublicKey.String()).To(Equal(mockV2.PublicKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PublicKey.String(), mockV2.PublicKey.String()))
 	Expect(v2Data.PrivateKey.String()).To(Equal(mockV2.PrivateKey.String()), fmt.Sprintf(`"%s" != "%s"`, v2Data.PrivateKey.String(), mockV2.PrivateKey.String()))
