@@ -44,6 +44,9 @@ const (
 	KNOWN_HOSTS_FILE = "KNOWN_HOSTS_FILE" // Path to bastionzero-known_hosts
 	SSH_ACTION       = "SSH_ACTION"       // One of ['opaque', 'transparent']
 	HOSTNAMES        = "HOSTNAMES"        // Comma-separated list of hostNames to use for this target
+
+	// db plugin variables
+	DB_ACTION = "DB_ACTION" // One of ['dial', 'pwdb']
 )
 
 var (
@@ -51,7 +54,7 @@ var (
 
 	requriedPluginVars = map[bzplugin.PluginName][]string{
 		bzplugin.Kube:  {LOCAL_PORT, TARGET_USER, TARGET_ID, LOCALHOST_TOKEN, CERT_PATH, KEY_PATH},
-		bzplugin.Db:    {LOCAL_PORT, REMOTE_HOST, REMOTE_PORT},
+		bzplugin.Db:    {LOCAL_PORT, REMOTE_HOST, REMOTE_PORT, DB_ACTION},
 		bzplugin.Web:   {LOCAL_PORT, REMOTE_HOST, REMOTE_PORT},
 		bzplugin.Shell: {TARGET_USER, CONNECTION_ID},
 		bzplugin.Ssh:   {TARGET_USER, TARGET_ID, REMOTE_HOST, REMOTE_PORT, IDENTITY_FILE, KNOWN_HOSTS_FILE, HOSTNAMES, SSH_ACTION},
@@ -105,4 +108,7 @@ var config = map[string]EnvVar{
 	KNOWN_HOSTS_FILE: {},
 	SSH_ACTION:       {},
 	HOSTNAMES:        {},
+
+	// db plugin variables
+	DB_ACTION: {},
 }

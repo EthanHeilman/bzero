@@ -36,8 +36,11 @@ type DbServer struct {
 	tcpListener *net.TCPListener
 
 	// Db specific vars
+	action     bzdb.DbAction
 	remotePort int
 	remoteHost string
+	targetUser string
+	targetId   string
 
 	// fields for new datachannels
 	localPort   string
@@ -53,11 +56,18 @@ func New(logger *logger.Logger,
 	remotePort int,
 	remoteHost string,
 	cert *bzcert.DaemonBZCert,
+	action string,
+	targetUser string,
+	targetId string,
 	connUrl string,
 	params url.Values,
 	headers http.Header,
 	agentPubKey *keypair.PublicKey,
 ) (*DbServer, error) {
+	act := bzdb.DbAction(action)
+	if act == "" {
+		return nil, fmt.Errorf("unrecognized db action")
+	}
 
 	server := &DbServer{
 		logger:      logger,
@@ -65,8 +75,11 @@ func New(logger *logger.Logger,
 		cert:        cert,
 		localPort:   localPort,
 		localHost:   localHost,
+		targetUser:  targetUser,
+		targetId:    targetId,
 		remoteHost:  remoteHost,
 		remotePort:  remotePort,
+		action:      act,
 		agentPubKey: agentPubKey,
 	}
 
@@ -88,12 +101,27 @@ func New(logger *logger.Logger,
 }
 
 func (d *DbServer) Start() error {
+	if d.action == bzdb.Pwdb {
+		// Test connection so that we can make some errors synchronous, we don't have control over how tunnelling
+		// protocols decide to display error, if they even do. This means we can do our best to catch and display
+		// to the user while we still have their attention
+		// However, it doesn't yet make sense to do this for all connections, since applications that expect a data
+		// stream will behave weirdly when the test connection comes in
+		d.logger.Infof("Testing connection")
+		server, _ := net.Pipe()
+		defer server.Close()
+		if err := d.newAction(server); err != nil {
+			return err
+		}
+		d.logger.Infof("Connection passed all tests")
+	}
+
 	// Now create our local listener for TCP connections
-	d.logger.Infof("Resolving TCP address for host:port %s:%s", d.localHost, d.localPort)
-	localTcpAddress, err := net.ResolveTCPAddr("tcp", d.localHost+":"+d.localPort)
+	addr := fmt.Sprintf("%s:%s", d.localHost, d.localPort)
+	localTcpAddress, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		d.conn.Close(err, connectionCloseTimeout)
-		return fmt.Errorf("failed to resolve TCP address %s", err)
+		return fmt.Errorf("failed to resolve address %s: %s", addr, err)
 	}
 
 	d.logger.Infof("Setting up TCP listener")
@@ -103,10 +131,14 @@ func (d *DbServer) Start() error {
 		return fmt.Errorf("failed to open local port to listen: %s", err)
 	}
 
-	// Do nothing with the first syn no-op call
-	d.tcpListener.AcceptTCP()
+	if d.action == bzdb.Dial {
+		// Do nothing with the first syn no-op call
+		d.tcpListener.AcceptTCP()
+	}
 
 	go d.handleConnections()
+
+	d.logger.Infof("Listening on %s", addr)
 
 	return nil
 }
@@ -133,25 +165,38 @@ func (d *DbServer) handleConnections() {
 		conn, err := d.tcpListener.AcceptTCP()
 		if err != nil {
 			d.logger.Errorf("failed to accept connection: %s", err)
-			continue
+			return
 		}
 
 		d.logger.Infof("Accepting new tcp connection")
 
 		// create our new datachannel in its own go routine so that we can accept other tcp connections
 		go func() {
-			// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
-			dcId := uuid.New().String()
-			subLogger := d.logger.GetDatachannelLogger(dcId)
-			pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
-			plugin := db.New(pluginLogger)
-			if err := plugin.StartAction(bzdb.Dial, conn); err != nil {
-				d.logger.Errorf("error starting action: %s", err)
-			} else if err := d.newDataChannel(dcId, string(bzdb.Dial), plugin); err != nil {
-				d.logger.Errorf("error starting datachannel: %s", err)
+			if err := d.newAction(conn); err != nil {
+				d.Close(err)
 			}
 		}()
 	}
+}
+
+func (d *DbServer) newAction(conn net.Conn) error {
+	// every datachannel gets a uuid to distinguish it so a single connection can map to multiple datachannels
+	dcId := uuid.New().String()
+	subLogger := d.logger.GetDatachannelLogger(dcId)
+	pluginLogger := subLogger.GetPluginLogger(bzplugin.Db)
+
+	plugin := db.New(pluginLogger, d.targetUser, d.targetId)
+
+	if err := d.newDataChannel(dcId, string(d.action), plugin); err != nil {
+		return fmt.Errorf("error starting datachannel: %w", err)
+	}
+
+	d.logger.Infof("Starting plugin action")
+	if err := plugin.StartAction(d.action, conn); err != nil {
+		return fmt.Errorf("error starting action: %w", err)
+	}
+
+	return nil
 }
 
 // for creating new datachannels
@@ -166,7 +211,7 @@ func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemo
 		RemoteHost: d.remoteHost,
 	}
 
-	mtLogger := d.logger.GetComponentLogger("mrtap")
+	mtLogger := subLogger.GetComponentLogger("mrtap")
 	mt, err := mrtap.New(mtLogger, d.agentPubKey, d.cert)
 	if err != nil {
 		return err

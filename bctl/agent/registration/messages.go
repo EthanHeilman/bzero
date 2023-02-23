@@ -1,12 +1,16 @@
 package registration
 
+import "bastionzero.com/bctl/v1/bctl/agent/agenttype"
+
 // Register logic
 type ActivationTokenRequest struct {
-	TargetName string `json:"targetName"`
+	TargetName string              `json:"targetName"`
+	AgentType  agenttype.AgentType `json:"agentType"`
 }
 
 type ActivationTokenResponse struct {
-	ActivationToken string `json:"activationToken"`
+	ActivationToken   string `json:"activationToken"`
+	ExistingClusterId string `json:"existingClusterId"`
 }
 
 type RegistrationRequest struct {

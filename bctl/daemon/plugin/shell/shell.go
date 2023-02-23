@@ -16,7 +16,7 @@ type IShellAction interface {
 	Replay(replayData []byte) error
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type ShellDaemonPlugin struct {
@@ -53,10 +53,10 @@ func (s *ShellDaemonPlugin) StartAction(attach bool) error {
 	}
 }
 
-func (s *ShellDaemonPlugin) Kill() {
+func (s *ShellDaemonPlugin) Kill(err error) {
 	s.killed = true
 	if s.action != nil {
-		s.action.Kill()
+		s.action.Kill(err)
 	}
 }
 

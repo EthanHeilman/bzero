@@ -25,7 +25,7 @@ type ErrorReport struct {
 func ReportError(ctx context.Context, serviceUrl string, errReport ErrorReport) error {
 	errReport.State = fmt.Sprintf("%+v", errReport.State)
 
-	// Marshall the request
+	// Marshal the request
 	errBytes, err := json.Marshal(errReport)
 	if err != nil {
 		return fmt.Errorf("error marshalling error report: %+v", errReport)

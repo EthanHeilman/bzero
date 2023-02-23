@@ -21,7 +21,7 @@ type IKubeDaemonAction interface {
 	Start(writer http.ResponseWriter, request *http.Request) error
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 type KubeDaemonPlugin struct {
 	logger *logger.Logger
@@ -49,10 +49,10 @@ func New(logger *logger.Logger, targetUser string, targetGroups []string) *KubeD
 	}
 }
 
-func (k *KubeDaemonPlugin) Kill() {
+func (k *KubeDaemonPlugin) Kill(err error) {
 	k.killed = true
 	if k.action != nil {
-		k.action.Kill()
+		k.action.Kill(err)
 	}
 }
 

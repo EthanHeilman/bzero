@@ -8,6 +8,7 @@ import (
 	"bastionzero.com/bctl/v1/bzerolib/connection"
 	"bastionzero.com/bctl/v1/bzerolib/logger"
 	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
 	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
 	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
 	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
@@ -16,8 +17,7 @@ import (
 // Daemon Exit Codes
 const (
 	Success                       = 0
-	UnspecifiedError              = 1
-	BZCertIdTokenError            = 2
+	UnspecifiedError              = 1 // code 2 is reserved for when the daemon panics
 	CancelledByUser               = 3
 	UserNotFound                  = 4
 	ZliConfigError                = 5
@@ -25,6 +25,15 @@ const (
 	PolicyEditedConnectionClosed  = 7
 	PolicyDeletedConnectionClosed = 8
 	IdleTimeout                   = 9
+	ConnectionRefused             = 10
+	ConnectionFailed              = 11
+	TLSDisabledError              = 12
+	ClientCertCosignError         = 13
+	PwdbMissingKey                = 14
+	PwdbUnkownAuthority           = 15
+	ServerCertificateExpired      = 16
+	IncorrectServerName           = 17
+	BZCertIdTokenError            = 18
 )
 
 // This should be the one and only path by which the daemon exits;
@@ -36,6 +45,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	if err == nil {
 		os.Exit(Success)
 	}
+
 	// https://go.dev/blog/go1.13-errors targets
 	var initialIdTokenError *bzcert.InitialIdTokenError
 	var currentIdTokenError *bzcert.CurrentIdTokenError
@@ -49,6 +59,14 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var policyEditedError *connection.PolicyEditedConnectionClosedError
 	var policyDeletedError *connection.PolicyDeletedConnectionClosedError
 	var idleTimeoutError *connection.IdleTimeoutConnectionClosedError
+	var connectionRefused *db.ConnectionRefusedError
+	var connectionFailed *db.ConnectionFailedError
+	var tlsDisabledError *db.TLSDisabledError
+	var clientCosignError *db.ClientCertCosignError
+	var pwdbMissingKeyError *db.PwdbMissingKeyError
+	var pwdbUnknownAuthorityError *db.PwdbUnknownAuthorityError
+	var serverCertExpired *db.ServerCertificateExpired
+	var incorrectServerName *db.IncorrectServerName
 
 	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
 	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
@@ -62,26 +80,42 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 		logger.Errorf("Please try to re-login with the zli")
 		os.Exit(ZliConfigError)
 	} else if errors.As(err, &serviceAccountError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(ServiceAccountNotConfigured)
 	} else if errors.As(err, &userNotFoundError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(UserNotFound)
 	} else if errors.As(err, &policyEditedError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(PolicyEditedConnectionClosed)
 	} else if errors.As(err, &policyDeletedError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(PolicyDeletedConnectionClosed)
 	} else if errors.As(err, &idleTimeoutError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(IdleTimeout)
 	} else if errors.As(err, &shellQuitError) || errors.As(err, &osInterruptError) || errors.As(err, &sshStdinClosedError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(Success)
 	} else if errors.As(err, &shellCancelledError) {
-		logger.Errorf(err.Error())
+		logger.Error(err)
 		os.Exit(CancelledByUser)
+	} else if errors.As(err, &connectionRefused) {
+		os.Exit(ConnectionRefused)
+	} else if errors.As(err, &connectionFailed) {
+		os.Exit(ConnectionFailed)
+	} else if errors.As(err, &tlsDisabledError) {
+		os.Exit(TLSDisabledError)
+	} else if errors.As(err, &clientCosignError) {
+		os.Exit(ClientCertCosignError)
+	} else if errors.As(err, &pwdbMissingKeyError) {
+		os.Exit(PwdbMissingKey)
+	} else if errors.As(err, &pwdbUnknownAuthorityError) {
+		os.Exit(PwdbUnkownAuthority)
+	} else if errors.As(err, &serverCertExpired) {
+		os.Exit(ServerCertificateExpired)
+	} else if errors.As(err, &incorrectServerName) {
+		os.Exit(IncorrectServerName)
 	}
 
 	logger.Errorf("exiting with error: %s", err)

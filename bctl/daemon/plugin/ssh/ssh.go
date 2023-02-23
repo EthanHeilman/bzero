@@ -23,7 +23,7 @@ type ISshAction interface {
 	Start() error
 	Done() <-chan struct{}
 	Err() error
-	Kill()
+	Kill(err error)
 }
 
 type SshDaemonPlugin struct {
@@ -81,10 +81,10 @@ func (s *SshDaemonPlugin) StartAction(actionName string) error {
 	}
 }
 
-func (s *SshDaemonPlugin) Kill() {
+func (s *SshDaemonPlugin) Kill(err error) {
 	s.killed = true
 	if s.action != nil {
-		s.action.Kill()
+		s.action.Kill(err)
 	}
 }
 

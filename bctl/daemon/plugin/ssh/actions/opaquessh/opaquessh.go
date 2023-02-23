@@ -69,8 +69,8 @@ func (s *OpaqueSsh) Err() error {
 	return s.err
 }
 
-func (s *OpaqueSsh) Kill() {
-	s.tmb.Kill(nil)
+func (s *OpaqueSsh) Kill(err error) {
+	s.tmb.Kill(err)
 }
 
 func (s *OpaqueSsh) Start() error {

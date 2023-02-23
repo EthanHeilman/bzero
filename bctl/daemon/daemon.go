@@ -173,14 +173,14 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	}
 
 	if err != nil {
-		errChan <- fmt.Errorf("failed to initialize %s server: %s", plugin, err)
+		errChan <- fmt.Errorf("failed to initialize %s server: %w", plugin, err)
 	} else {
 		// await external shutdown
 		go listenForShutdown(daemonShutdownChan, server)
 
 		// start accepting requests
 		if err := server.Start(); err != nil {
-			errChan <- fmt.Errorf("failed to start running %s server: %s", plugin, err)
+			errChan <- fmt.Errorf("failed to start %s server: %w", plugin, err)
 		}
 	}
 }
@@ -197,7 +197,7 @@ func newSshServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan
 	// Check if remote port is valid
 	remotePort, err := strconv.Atoi(config[REMOTE_PORT].Value)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote port: %s", err)
+		return nil, fmt.Errorf("failed to parse remote port: %w", err)
 	}
 
 	params["connectionType"] = []string{string(dataconnection.Ssh)}
@@ -280,6 +280,7 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 
 	params["connectionType"] = []string{string(dataconnection.Db)}
 	params["target_id"] = []string{config[TARGET_ID].Value}
+	params["target_user"] = []string{config[TARGET_USER].Value}
 
 	return dbserver.New(
 		subLogger,
@@ -289,6 +290,9 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 		remotePort,
 		config[REMOTE_HOST].Value,
 		cert,
+		config[DB_ACTION].Value,
+		config[TARGET_USER].Value,
+		config[TARGET_ID].Value,
 		config[CONNECTION_SERVICE_URL].Value,
 		params,
 		headers,

@@ -45,7 +45,7 @@ const (
 	// message for force closing all connections an agent has
 	CloseAllConnections MessageType = "closeAllConnections"
 
-	// regular health checks with the agent to make sure it's doing well
+	// regular health checks between the agent and the conneciton node
 	HealthCheck MessageType = "healthcheck"
 
 	// control channel message to update valid cluster users for a kube cluster
@@ -59,6 +59,9 @@ const (
 
 	// message to trigger agent to send logs to bastion
 	RetrieveLogs MessageType = "retrievelogs"
+
+	// control channel message to distribute key shards for passwordless connections
+	KeyShard MessageType = "keyshard"
 )
 
 // TODO: CWC-2183; remove this logic in the far future

@@ -301,7 +301,7 @@ func (c *ControlConnection) getConnectionServiceUrl(serviceUrl string, ctx conte
 	// make our request
 	resp, err := client.Get(ctx)
 	if err != nil {
-		return "", fmt.Errorf("error making get request to get connection service url: %w", err)
+		return "", err
 	}
 
 	// Decode and return response
@@ -349,7 +349,7 @@ func (c *ControlConnection) getControlChannel(ctx context.Context, connUrl strin
 	// Make request
 	response, err := client.Get(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error making get request for control channel: %s. Request: %+v", err, getControlChannel)
+		return nil, fmt.Errorf("error making get request for control channel: %s", err)
 	}
 
 	// Decode and return response
