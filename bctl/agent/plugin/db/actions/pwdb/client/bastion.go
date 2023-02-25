@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	certificateServiceEndpoint = "certificate/cosign"
+	certificateServiceEndpoint = "api/v2/certificate/cosign"
 )
 
 type ClientCertificateRequest struct {
