@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -50,13 +51,14 @@ func New(logger *logger.Logger, runAsUser *unixuser.UnixUser, commandstr string)
 	logger.Info("Starting up pseudo terminal")
 
 	// Attempt to get default shell to use for the runAsUser
-	logger.Debugf("Getting user's default shell: %s", runAsUser.Username)
-	shellCommand := defaultShellCommand
+	var shellCommand string
 	if runAsUser.Shell != "" {
 		shellCommand = runAsUser.Shell
+		logger.Infof("Found preferred shell for %s: %s", runAsUser.Username, shellCommand)
+	} else {
+		logger.Infof("%s does not have a preferred shell, falling back on default: %s", runAsUser.Username, defaultShellCommand)
+		shellCommand = defaultShellCommand
 	}
-
-	logger.Debugf("Using default shell %s", shellCommand)
 
 	if cmd, err := buildCommand(runAsUser, commandstr, shellCommand); err != nil {
 		return nil, err
@@ -72,7 +74,7 @@ func New(logger *logger.Logger, runAsUser *unixuser.UnixUser, commandstr string)
 			if err := cmd.Wait(); err != nil {
 				if exitError, ok := err.(*exec.ExitError); ok {
 					exitCode := exitError.ExitCode()
-					logger.Errorf("pty cmd exited with non-zero exit code %d err: %s", exitCode, err)
+					logger.Errorf("pty command exited with non-zero exit code %d err: %s", exitCode, err)
 				} else {
 					logger.Errorf("pty command exited with unknown exit code")
 				}
@@ -120,13 +122,24 @@ func buildCommand(runAsUser *unixuser.UnixUser, customCommand string, shellComma
 		return nil, fmt.Errorf("failed to retrieve users group ids: %s", err)
 	}
 
+	usr, err := unixuser.Current()
+	if err != nil {
+		return nil, err
+	}
+
+	// Only set groups if agent is running as root and this is a linux machine
+	isRootOnLinux := usr.Uid == 0 && runtime.GOOS == "linux"
+
 	// run command as user
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Credential: &syscall.Credential{
-			Uid:         runAsUser.Uid,
-			Gid:         runAsUser.Gid,
-			Groups:      gids,
-			NoSetGroups: false, // if this is set to true, users may have to use sudo to run commands they should have access to
+			Uid:    runAsUser.Uid,
+			Gid:    runAsUser.Gid,
+			Groups: gids,
+
+			// Setting supplementary group IDs is a privileged action only the root user can do.
+			// if this is set to true, users may have to use sudo to run commands they should have access to
+			NoSetGroups: !isRootOnLinux,
 		},
 	}
 
