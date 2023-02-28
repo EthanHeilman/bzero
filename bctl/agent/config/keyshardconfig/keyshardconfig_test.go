@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config"
-	"bastionzero.com/bctl/v1/bctl/agent/config/client"
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	"bastionzero.com/agent/config"
+	"bastionzero.com/agent/config/client"
+	"bastionzero.com/agent/config/keyshardconfig/data"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

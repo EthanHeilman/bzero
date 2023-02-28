@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/gorilla/websocket"
 )
 

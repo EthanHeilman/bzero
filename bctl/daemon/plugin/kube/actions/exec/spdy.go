@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
+	"bastionzero.com/bzerolib/logger"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/apimachinery/pkg/util/httpstream/spdy"

@@ -1,7 +1,7 @@
 package main
 
 import (
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
+	bzplugin "bastionzero.com/bzerolib/plugin"
 )
 
 const (

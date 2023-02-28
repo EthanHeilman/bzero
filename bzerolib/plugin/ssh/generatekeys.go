@@ -10,8 +10,8 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bzerolib/filelock"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/filelock"
+	"bastionzero.com/bzerolib/logger"
 	"golang.org/x/crypto/ssh"
 )
 

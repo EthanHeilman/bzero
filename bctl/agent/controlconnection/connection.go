@@ -26,14 +26,14 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/agent/controlchannel/agentidentity"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/httpclient"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
 )
 
 var (

@@ -10,19 +10,20 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
-	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
-	"bastionzero.com/bctl/v1/bctl/agent/registration"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/report"
 	"github.com/google/uuid"
 	"gopkg.in/tomb.v2"
+
+	"bastionzero.com/agent/agentreport"
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/agent/controlchannel"
+	"bastionzero.com/agent/controlchannel/agentidentity"
+	"bastionzero.com/agent/controlconnection"
+	"bastionzero.com/agent/registration"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/report"
 )
 
 const (

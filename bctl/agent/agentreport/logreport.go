@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/agent/controlchannel/agentidentity"
+	"bastionzero.com/bzerolib/connection/httpclient"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/mrtap/util"
 )
 
 // Type restrictions for MrTAP messages

@@ -5,14 +5,14 @@ import (
 	"net"
 	"path/filepath"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh/actions/opaquessh"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/ssh/actions/transparentssh"
-	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	"bastionzero.com/bctl/v1/bzerolib/filelock"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/bzio"
+	"bastionzero.com/bzerolib/filelock"
+	"bastionzero.com/bzerolib/logger"
+	bzplugin "bastionzero.com/bzerolib/plugin"
+	bzssh "bastionzero.com/bzerolib/plugin/ssh"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/daemon/plugin/ssh/actions/opaquessh"
+	"bastionzero.com/daemon/plugin/ssh/actions/transparentssh"
 )
 
 const lockFileName = ".bzero.lock"

@@ -9,12 +9,12 @@ import (
 	"github.com/Masterminds/semver"
 	orderedmap "github.com/wk8/go-ordered-map"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
-	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	bzerr "bastionzero.com/bzerolib/error"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/mrtap/message"
+	"bastionzero.com/bzerolib/mrtap/util"
+	"bastionzero.com/daemon/mrtap/bzcert"
 )
 
 // Max number of times we will try to resend after an error message

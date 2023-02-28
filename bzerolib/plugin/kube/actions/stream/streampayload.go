@@ -1,7 +1,7 @@
 package stream
 
 import (
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 // For "kube/stream/..." actions

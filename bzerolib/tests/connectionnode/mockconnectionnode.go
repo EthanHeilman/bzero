@@ -9,9 +9,9 @@ import (
 	"net/http/httptest"
 	"path"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests/server"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/tests/server"
 )
 
 type MockConnectionNode struct {

@@ -24,8 +24,8 @@ package connection
 import (
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
 )
 
 type Connection interface {

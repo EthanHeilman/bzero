@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
 )
 
 type IChannel interface {

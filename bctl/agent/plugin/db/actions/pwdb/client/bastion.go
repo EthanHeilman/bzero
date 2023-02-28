@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/agent/controlchannel/agentidentity"
+	"bastionzero.com/bzerolib/connection/httpclient"
 	"github.com/bastionzero/go-toolkit/certificate/splitclient"
 	"github.com/bastionzero/keysplitting"
 	"golang.org/x/crypto/sha3"

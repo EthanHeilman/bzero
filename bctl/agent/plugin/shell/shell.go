@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell/actions/defaultshell"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/plugin/shell/actions/defaultshell"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/shell"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type IShellAction interface {

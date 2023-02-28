@@ -1,6 +1,6 @@
 package agentidentity
 
-import am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
+import am "bastionzero.com/bzerolib/connection/agentmessage"
 
 type GetAgentIdentityTokenRequest struct {
 	am.BackendAgentMessage

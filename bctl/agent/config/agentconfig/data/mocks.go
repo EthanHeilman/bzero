@@ -4,7 +4,7 @@ import (
 	// we can't import ginkgo here since it adds Ginkgo's help options to bzero's
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/bzerolib/keypair"
 	. "github.com/onsi/gomega"
 )
 

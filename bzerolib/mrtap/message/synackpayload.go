@@ -3,7 +3,7 @@ package message
 import (
 	"encoding/base64"
 
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/mrtap/util"
 )
 
 // Repetition in MrTAP messages is requires to maintain flat

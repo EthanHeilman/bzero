@@ -1,6 +1,6 @@
 package registration
 
-import "bastionzero.com/bctl/v1/bctl/agent/agenttype"
+import "bastionzero.com/agent/agenttype"
 
 // Register logic
 type ActivationTokenRequest struct {

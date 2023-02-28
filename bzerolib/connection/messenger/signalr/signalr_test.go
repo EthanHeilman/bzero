@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/transporter"
+	"bastionzero.com/bzerolib/logger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

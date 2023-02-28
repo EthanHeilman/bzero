@@ -1,7 +1,7 @@
 package mrtap
 
 import (
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/bzerolib/keypair"
 	mock "github.com/stretchr/testify/mock"
 )
 

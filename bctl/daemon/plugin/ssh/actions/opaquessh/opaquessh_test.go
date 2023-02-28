@@ -11,13 +11,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	"bastionzero.com/bctl/v1/bzerolib/filelock"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bzerolib/bzio"
+	"bastionzero.com/bzerolib/filelock"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzssh "bastionzero.com/bzerolib/plugin/ssh"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/tests"
 )
 
 func TestOpaqueSsh(t *testing.T) {

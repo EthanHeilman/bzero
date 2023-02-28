@@ -12,11 +12,11 @@ import (
 	"fmt"
 	"os"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	"bastionzero.com/bctl/v1/bctl/agent/config"
-	"bastionzero.com/bctl/v1/bctl/agent/config/client"
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig"
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/agent/config"
+	"bastionzero.com/agent/config/client"
+	"bastionzero.com/agent/config/keyshardconfig"
+	"bastionzero.com/agent/config/keyshardconfig/data"
 )
 
 func getKeyShardConfig() (*keyshardconfig.KeyShardConfig, error) {

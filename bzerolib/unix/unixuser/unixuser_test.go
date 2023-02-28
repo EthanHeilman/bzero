@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/unix/sudoers"
+	"bastionzero.com/bzerolib/unix/sudoers"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )

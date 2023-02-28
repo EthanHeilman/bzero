@@ -9,9 +9,9 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	bzssh "bastionzero.com/bzerolib/plugin/ssh"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (

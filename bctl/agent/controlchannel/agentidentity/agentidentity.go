@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/httpclient"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/coreos/go-oidc/v3/oidc"
 )
 

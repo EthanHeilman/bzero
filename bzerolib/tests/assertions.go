@@ -5,7 +5,7 @@ import (
 
 	"github.com/onsi/gomega"
 
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 // assert that the content of the stream message coming from outputChan is equal to testSTring

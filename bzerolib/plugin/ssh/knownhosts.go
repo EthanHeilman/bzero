@@ -7,7 +7,7 @@ import (
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bzerolib/bzio"
 )
 
 type IKnownHosts interface {

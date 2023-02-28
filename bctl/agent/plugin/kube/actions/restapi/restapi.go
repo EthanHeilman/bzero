@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	kuberest "bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/restapi"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
+	"bastionzero.com/bzerolib/logger"
+	kuberest "bastionzero.com/bzerolib/plugin/kube/actions/restapi"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
 )
 
 // wrap the client-creation code so that during testing we can inject a mock client

@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/logger"
 
 	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

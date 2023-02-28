@@ -3,7 +3,7 @@ package message
 import (
 	"encoding/base64"
 
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/mrtap/util"
 )
 
 type DataAckPayload struct {

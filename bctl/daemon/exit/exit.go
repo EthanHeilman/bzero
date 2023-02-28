@@ -4,14 +4,14 @@ import (
 	"errors"
 	"os"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
-	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"bastionzero.com/bzerolib/bzos"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/plugin/db"
+	bzshell "bastionzero.com/bzerolib/plugin/shell"
+	bzssh "bastionzero.com/bzerolib/plugin/ssh"
+	"bastionzero.com/bzerolib/unix/unixuser"
 )
 
 // Daemon Exit Codes

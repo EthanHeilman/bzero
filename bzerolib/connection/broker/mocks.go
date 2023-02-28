@@ -1,7 +1,7 @@
 package broker
 
 import (
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/agentmessage"
 	"github.com/stretchr/testify/mock"
 )
 

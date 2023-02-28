@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/logger"
 	backoff "github.com/cenkalti/backoff/v4"
 )
 

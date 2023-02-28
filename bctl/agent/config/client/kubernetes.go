@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"time"
 
-	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
-	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	agentdata "bastionzero.com/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/agent/config/keyshardconfig/data"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 

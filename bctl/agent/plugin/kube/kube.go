@@ -8,13 +8,13 @@ import (
 
 	kuberest "k8s.io/client-go/rest"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube/actions/exec"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube/actions/portforward"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube/actions/restapi"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube/actions/stream"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzkube "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/plugin/kube/actions/exec"
+	"bastionzero.com/agent/plugin/kube/actions/portforward"
+	"bastionzero.com/agent/plugin/kube/actions/restapi"
+	"bastionzero.com/agent/plugin/kube/actions/stream"
+	"bastionzero.com/bzerolib/logger"
+	bzkube "bastionzero.com/bzerolib/plugin/kube"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type IKubeAction interface {

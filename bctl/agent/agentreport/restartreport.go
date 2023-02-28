@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
+	"bastionzero.com/bzerolib/connection/httpclient"
 )
 
 const (

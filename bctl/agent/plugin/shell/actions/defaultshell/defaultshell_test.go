@@ -11,10 +11,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell/actions/defaultshell/pseudoterminal"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/plugin/shell/actions/defaultshell/pseudoterminal"
+	"bastionzero.com/bzerolib/logger"
+	bzshell "bastionzero.com/bzerolib/plugin/shell"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 func TestDefaultShell(t *testing.T) {

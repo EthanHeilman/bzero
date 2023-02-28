@@ -7,12 +7,12 @@ import (
 	"io"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell/actions/defaultshell/pseudoterminal"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	"bastionzero.com/bctl/v1/bzerolib/ringbuffer"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
-	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"bastionzero.com/agent/plugin/shell/actions/defaultshell/pseudoterminal"
+	"bastionzero.com/bzerolib/logger"
+	bzshell "bastionzero.com/bzerolib/plugin/shell"
+	"bastionzero.com/bzerolib/ringbuffer"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/unix/unixuser"
 )
 
 // DefaultShell - Allows launching an interactive shell on the host which the agent is running on. Implements IShellAction.

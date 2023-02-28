@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"time"
 
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
 )
 
 type OpenAgentWebsocketMessage struct {

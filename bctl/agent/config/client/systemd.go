@@ -9,9 +9,9 @@ import (
 	"os"
 	"path"
 
-	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
-	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	"bastionzero.com/bctl/v1/bzerolib/filelock"
+	agentdata "bastionzero.com/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/agent/config/keyshardconfig/data"
+	"bastionzero.com/bzerolib/filelock"
 	"github.com/fsnotify/fsnotify"
 )
 

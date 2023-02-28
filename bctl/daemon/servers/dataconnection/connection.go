@@ -27,12 +27,12 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )

@@ -14,9 +14,9 @@ import (
 	"net/url"
 	"time"
 
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/transporter"
+	"bastionzero.com/bzerolib/logger"
 	"gopkg.in/tomb.v2"
 )
 

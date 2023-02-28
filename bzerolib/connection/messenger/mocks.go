@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
 	"github.com/stretchr/testify/mock"
 )
 

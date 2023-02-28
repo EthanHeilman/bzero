@@ -12,9 +12,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/stream"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/kube/actions/stream"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 // what stream action will receive from "bastion"

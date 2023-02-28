@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/bzerolib/keypair"
 )
 
 // This version was introduced in https://github.com/bastionzero/bzero/pull/166

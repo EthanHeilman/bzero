@@ -11,11 +11,11 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh/authorizedkeys"
-	"bastionzero.com/bctl/v1/bzerolib/bzio"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzssh "bastionzero.com/bctl/v1/bzerolib/plugin/ssh"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/plugin/ssh/authorizedkeys"
+	"bastionzero.com/bzerolib/bzio"
+	"bastionzero.com/bzerolib/logger"
+	bzssh "bastionzero.com/bzerolib/plugin/ssh"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (

@@ -10,12 +10,12 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/pwdb"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/config/keyshardconfig/data"
+	"bastionzero.com/agent/plugin/db/actions/pwdb/client"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/db"
+	"bastionzero.com/bzerolib/plugin/db/actions/pwdb"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (

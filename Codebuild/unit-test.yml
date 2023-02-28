@@ -73,7 +73,11 @@ reports:
     files:
       - 'bzerolib/bzerolibcoverage.xml'
     file-format: 'COBERTURAXML'
-  bctl-unittest-report:
+  agent-unittest-report:
     files:
-      - 'bctl/bctlcoverage.xml'
+      - 'bctl/agent/agentcoverage.xml'
+    file-format: 'COBERTURAXML'
+  daemon-unittest-report:
+    files:
+      - 'bctl/daemon/daemoncoverage.xml'
     file-format: 'COBERTURAXML'

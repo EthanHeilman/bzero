@@ -26,8 +26,8 @@ import (
 	"strings"
 	"syscall"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/unix/unixuser"
 	"github.com/creack/pty"
 )
 

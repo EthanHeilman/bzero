@@ -8,17 +8,17 @@ import (
 
 	tomb "gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	bzerr "bastionzero.com/bctl/v1/bzerolib/error"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
-	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	bzerr "bastionzero.com/bzerolib/error"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/mrtap/message"
+	bzplugin "bastionzero.com/bzerolib/plugin"
+	"bastionzero.com/bzerolib/plugin/db"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/unix/unixuser"
+	"bastionzero.com/daemon/mrtap"
 )
 
 const (

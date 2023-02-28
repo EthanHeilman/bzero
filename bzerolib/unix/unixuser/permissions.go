@@ -45,7 +45,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"bastionzero.com/bctl/v1/bzerolib/unix/filemode"
+	"bastionzero.com/bzerolib/unix/filemode"
 )
 
 func (u *UnixUser) CanRead(path string) (bool, error) {

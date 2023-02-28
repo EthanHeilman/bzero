@@ -10,10 +10,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	kuberest "bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/restapi"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	kuberest "bastionzero.com/bzerolib/plugin/kube/actions/restapi"
+	"bastionzero.com/bzerolib/tests"
 )
 
 func TestRestApi(t *testing.T) {

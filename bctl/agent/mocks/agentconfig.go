@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	keypair "bastionzero.com/bctl/v1/bzerolib/keypair"
+	keypair "bastionzero.com/bzerolib/keypair"
 	mock "github.com/stretchr/testify/mock"
 )
 
