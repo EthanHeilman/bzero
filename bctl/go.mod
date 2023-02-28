@@ -28,9 +28,9 @@ require (
 	golang.org/x/sys v0.5.0
 	golang.org/x/term v0.5.0
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
-	k8s.io/api v0.26.1
+	k8s.io/api v0.26.0
 	k8s.io/apimachinery v0.26.1
-	k8s.io/client-go v0.26.1
+	k8s.io/client-go v0.26.0
 )
 
 require (
