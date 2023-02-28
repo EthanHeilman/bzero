@@ -1,6 +1,6 @@
 module bastionzero.com/bctl/v1/bzerolib
 
-go 1.18
+go 1.19
 
 replace bastionzero.com/bctl/v1/bzerolib => ./
 
