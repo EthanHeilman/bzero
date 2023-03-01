@@ -10,8 +10,8 @@ import (
 
 	"gopkg.in/tomb.v2"
 
+	"bastionzero.com/agent/bastion"
 	"bastionzero.com/agent/config/keyshardconfig/data"
-	"bastionzero.com/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bzerolib/logger"
 	"bastionzero.com/bzerolib/plugin/db"
 	"bastionzero.com/bzerolib/plugin/db/actions/pwdb"
@@ -42,17 +42,17 @@ type Pwdb struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig PWDBConfig
 
-	bastion    *client.BastionClient
-	remoteHost string
-	remotePort int
-	remoteConn net.Conn
+	bastionClient bastion.ApiClient
+	remoteHost    string
+	remotePort    int
+	remoteConn    net.Conn
 }
 
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
 	keyshardConfig PWDBConfig,
-	bastion *client.BastionClient,
+	bastion bastion.ApiClient,
 	remoteHost string,
 	remotePort int) (*Pwdb, error) {
 
@@ -60,7 +60,7 @@ func New(logger *logger.Logger,
 		logger:           logger,
 		doneChan:         doneChan,
 		keyshardConfig:   keyshardConfig,
-		bastion:          bastion,
+		bastionClient:    bastion,
 		streamOutputChan: ch,
 		remoteHost:       remoteHost,
 		remotePort:       remotePort,

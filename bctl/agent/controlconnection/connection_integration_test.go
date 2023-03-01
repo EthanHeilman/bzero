@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
+	agentidentity "bastionzero.com/agent/bastion/agentidentity/mocks"
 	"bastionzero.com/bzerolib/connection"
 	"bastionzero.com/bzerolib/connection/messenger/signalr"
 	"bastionzero.com/bzerolib/connection/transporter/websocket"
@@ -76,8 +76,8 @@ var _ = Describe("Agent Control Connection Integration", func() {
 
 	_, privateKey, _ := keypair.GenerateKeyPair()
 
-	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
-	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+	mockAgentIdentityToken := &agentidentity.MockAgentIdentityToken{}
+	mockAgentIdentityToken.On("Get", mock.Anything).Return("fake-agent-identity-token", nil)
 
 	createConnectionWithBastion := func(cnUrl string) connection.Connection {
 		websocket.WebsocketUrlScheme = websocket.HttpWebsocketScheme
@@ -85,7 +85,7 @@ var _ = Describe("Agent Control Connection Integration", func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, cnUrl, privateKey, params, headers, client, mockAgentIdentityProvider)
+		conn, _ := New(logger, cnUrl, privateKey, params, headers, client, mockAgentIdentityToken)
 
 		return conn
 	}

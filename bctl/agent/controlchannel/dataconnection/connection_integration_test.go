@@ -5,7 +5,8 @@ import (
 	"net/url"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
+	agentidentity "bastionzero.com/agent/bastion/agentidentity/mocks"
+	bastion "bastionzero.com/agent/bastion/mocks"
 	"bastionzero.com/agent/mrtap"
 	"bastionzero.com/agent/plugin/db/actions/pwdb/mocks"
 	"bastionzero.com/bzerolib/connection"
@@ -24,7 +25,6 @@ import (
 )
 
 var _ = Describe("Agent Data Connection Integration", Ordered, func() {
-	serviceUrl := "doesn't matter"
 	logger := logger.MockLogger(GinkgoWriter)
 
 	params := url.Values{}
@@ -37,8 +37,10 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
 	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
-	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
-	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+	mockAgentIdentityToken := &agentidentity.MockAgentIdentityToken{}
+	mockAgentIdentityToken.On("Get", mock.Anything).Return("fake-agent-identity-token", nil)
+
+	mockBastionApiClient := &bastion.MockApiClient{}
 
 	mockKeyShardConfig := &mocks.PWDBConfig{}
 
@@ -48,7 +50,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, serviceUrl, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
+		conn, _ := New(logger, mockBastionApiClient, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, client)
 
 		return conn
 	}

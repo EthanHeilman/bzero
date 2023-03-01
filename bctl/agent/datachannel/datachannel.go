@@ -13,12 +13,12 @@ import (
 
 	"bastionzero.com/agent/plugin/db"
 	"bastionzero.com/agent/plugin/db/actions/pwdb"
-	"bastionzero.com/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/agent/plugin/kube"
 	"bastionzero.com/agent/plugin/shell"
 	"bastionzero.com/agent/plugin/ssh"
 	"bastionzero.com/agent/plugin/web"
 
+	"bastionzero.com/agent/bastion"
 	"bastionzero.com/bzerolib/connection"
 	am "bastionzero.com/bzerolib/connection/agentmessage"
 	bzerror "bastionzero.com/bzerolib/error"
@@ -64,7 +64,7 @@ type DataChannel struct {
 	payloadClean bool
 
 	// Client for sending requests to and from bastion
-	bastion *client.BastionClient
+	bastion bastion.ApiClient
 }
 
 func New(
@@ -73,7 +73,7 @@ func New(
 	conn connection.Connection,
 	keyshardConfig pwdb.PWDBConfig,
 	mrtap IMrtap,
-	bastion *client.BastionClient,
+	bastion bastion.ApiClient,
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {

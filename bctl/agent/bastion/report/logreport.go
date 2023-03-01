@@ -1,4 +1,4 @@
-package agentreport
+package report
 
 import (
 	"archive/zip"
@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
-	"bastionzero.com/bzerolib/connection/httpclient"
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/agent/bastion"
 	coreV1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -27,21 +26,21 @@ const (
 	dateFormatFull     = "2006-01-02"
 )
 
-func ReportLogs(targetType string,
-	agentIdentityProvider agentidentity.IAgentIdentityProvider,
-	ctx context.Context,
-	serviceUrl string,
+func ReportLogs(ctx context.Context,
+	bastion bastion.ApiClient,
+	agentType agenttype.AgentType,
 	userEmail string,
 	uploadLogsRequestId string) error {
 
 	var archiveToPost *bytes.Buffer
-	if targetType == "cluster" {
+	switch agentType {
+	case agenttype.Kubernetes:
 		if kubeLogArchive, err := createKubeLogArchive(ctx); err != nil {
 			return err
 		} else {
 			archiveToPost = kubeLogArchive
 		}
-	} else {
+	case agenttype.Systemd:
 		// create a temporary zip file with current log file and at most, last 2 rotated log files
 		if bzeroLogArchive, err := createBzeroLogArchive(); err != nil {
 			return err
@@ -56,28 +55,9 @@ func ReportLogs(targetType string,
 		return err
 	}
 
-	agentIdentityToken, tokenErr := agentIdentityProvider.GetToken(ctx)
-	if tokenErr != nil {
-		return fmt.Errorf("error getting agent identity token: %s", tokenErr)
-	}
+	// return fmt.Errorf("LOGS LENGTH: %d", buffer.Len())
 
-	headers := http.Header{
-		"Content-Type":  {contentType},
-		"Authorization": {fmt.Sprintf("Bearer %s", agentIdentityToken)},
-	}
-	options := httpclient.HTTPOptions{
-		Endpoint: uploadLogsEndpoint,
-		Body:     buffer,
-		Headers:  headers,
-	}
-
-	if client, err := httpclient.New(serviceUrl, options); err != nil {
-		return fmt.Errorf("error creating new httpclient: %s", err)
-	} else {
-		client.Post(ctx)
-	}
-
-	return nil
+	return bastion.ReportLogs(ctx, buffer, contentType)
 }
 
 func createKubeLogArchive(ctx context.Context) (*bytes.Buffer, error) {
@@ -108,7 +88,7 @@ func createKubeLogArchive(ctx context.Context) (*bytes.Buffer, error) {
 	// create the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return nil, fmt.Errorf("error in getting access to K8S: %s", err)
+		return nil, fmt.Errorf("error in getting access to Kubernetes: %s", err)
 	}
 
 	// create request to get logs from the pod
@@ -219,19 +199,19 @@ func createFormData(userEmail string, uploadLogsRequestId string, zipArchive *by
 	defer formDataWriter.Close()
 
 	if userEmailWriter, err := formDataWriter.CreateFormField("UserEmail"); err != nil {
-		return nil, "", fmt.Errorf("failed creating form field UserEmail: %s", err)
+		return nil, "", fmt.Errorf("failed creating form field UserEmail: %w", err)
 	} else {
 		userEmailWriter.Write([]byte(userEmail))
 	}
 
 	if requestIdWriter, err := formDataWriter.CreateFormField("UploadLogsRequestId"); err != nil {
-		return nil, "", fmt.Errorf("failed creating form field UploadLogsRequestId: %s", err)
+		return nil, "", fmt.Errorf("failed creating form field UploadLogsRequestId: %w", err)
 	} else {
 		requestIdWriter.Write([]byte(uploadLogsRequestId))
 	}
 
 	if formFileWriter, err := formDataWriter.CreateFormFile("LogArchiveZip", "archive.zip"); err != nil {
-		return nil, "", fmt.Errorf("failed creating form file LogArchiveZip: %s", err)
+		return nil, "", fmt.Errorf("failed creating form file LogArchiveZip: %w", err)
 	} else {
 		io.Copy(formFileWriter, zipArchive)
 	}

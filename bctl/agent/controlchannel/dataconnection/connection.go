@@ -23,11 +23,11 @@ import (
 	"path"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/bastion/agentidentity"
 	"bastionzero.com/agent/datachannel"
 	"bastionzero.com/agent/mrtap"
 	"bastionzero.com/agent/plugin/db/actions/pwdb"
-	"bastionzero.com/agent/plugin/db/actions/pwdb/client"
 	"bastionzero.com/bzerolib/connection"
 	am "bastionzero.com/bzerolib/connection/agentmessage"
 	"bastionzero.com/bzerolib/connection/broker"
@@ -69,32 +69,34 @@ type DataConnection struct {
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
 
-	// config values needed for MrTAP when creating datachannels
+	// Config values needed for MrTAP when creating datachannels
 	mrtapConfig mrtap.MrtapConfig
 
 	// Config interface for interacting with key shards
 	keyshardConfig pwdb.PWDBConfig
 
-	// provider of agent identity token and message signer for authenticating messages to the backend
-	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	privateKey            *keypair.PrivateKey
+	// Agent identity attributes
+	agentIdToken agentidentity.AgentIdentityToken
+	privateKey   *keypair.PrivateKey // for signing
 
 	// Channel indicating when the DaemonConnected control message is sent in the websocket
 	daemonReadyChan chan bool
 
-	serviceUrl string
 	// Channel indicating when daemon connection events occurs which should delay closing the connection due to an idle timeout
 	daemonIdleTimeoutChan chan string
+
+	// Client for communicated with the bastion
+	bastionClient bastion.ApiClient
 }
 
 func New(
 	logger *logger.Logger,
-	serviceUrl string,
+	bastion bastion.ApiClient,
 	connUrl string,
 	connectionId string,
 	mrtapConfig mrtap.MrtapConfig,
 	keyshardConfig pwdb.PWDBConfig,
-	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	agentIdToken agentidentity.AgentIdentityToken,
 	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
@@ -109,17 +111,17 @@ func New(
 	connectionUrl.Path = path.Join(connectionUrl.Path, agentHubEndpoint)
 
 	conn := DataConnection{
-		logger:                logger,
-		serviceUrl:            serviceUrl,
-		connectionId:          connectionId,
-		client:                client,
-		broker:                broker.New(),
-		sendQueue:             make(chan *am.AgentMessage, 50),
-		mrtapConfig:           mrtapConfig,
-		keyshardConfig:        keyshardConfig,
-		agentIdentityProvider: agentIdentityProvider,
-		privateKey:            privateKey,
-		daemonReadyChan:       make(chan bool),
+		logger:          logger,
+		bastionClient:   bastion,
+		connectionId:    connectionId,
+		client:          client,
+		broker:          broker.New(),
+		sendQueue:       make(chan *am.AgentMessage, 50),
+		mrtapConfig:     mrtapConfig,
+		keyshardConfig:  keyshardConfig,
+		agentIdToken:    agentIdToken,
+		privateKey:      privateKey,
+		daemonReadyChan: make(chan bool),
 	}
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
@@ -278,12 +280,10 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
-	bastion := client.New(d.serviceUrl, d.agentIdentityProvider)
-
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, bastion, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, d.bastionClient, dcId, odMessage.Syn)
 		return err
 	}
 }
@@ -383,7 +383,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 				return fmt.Errorf("failed to connect after %s", backoffParams.MaxElapsedTime)
 			}
 
-			agentIdentityToken, err := d.agentIdentityProvider.GetToken(ctx)
+			agentIdentityToken, err := d.agentIdToken.Get(ctx)
 			if err != nil {
 				d.logger.Errorf("Retrying in %s because failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue

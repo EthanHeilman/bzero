@@ -13,9 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"bastionzero.com/agent/agentreport"
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/bastion/agentidentity"
+	"bastionzero.com/agent/bastion/report"
 	"bastionzero.com/agent/config/keyshardconfig/data"
-	"bastionzero.com/agent/controlchannel/agentidentity"
 	"bastionzero.com/agent/controlchannel/dataconnection"
 	"bastionzero.com/agent/mrtap"
 	"bastionzero.com/agent/plugin/db/actions/pwdb"
@@ -25,6 +27,7 @@ import (
 	"bastionzero.com/bzerolib/connection/transporter/websocket"
 	"bastionzero.com/bzerolib/keypair"
 	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/mrtap/bzcert"
 	"bastionzero.com/bzerolib/mrtap/util"
 
 	"gopkg.in/tomb.v2"
@@ -56,18 +59,18 @@ type KeyShardConfig interface {
 }
 
 type ControlChannel struct {
-	conn   connection.Connection
-	logger *logger.Logger
-	tmb    tomb.Tomb
-	id     string
+	conn      connection.Connection
+	logger    *logger.Logger
+	tmb       tomb.Tomb
+	channelId string
 
-	cConfig               ControlChannelConfig
-	keyShardConfig        KeyShardConfig
-	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	privateKey            *keypair.PrivateKey
+	ccConfig       ControlChannelConfig
+	keyShardConfig KeyShardConfig
 
-	// variables for opening connections
-	serviceUrl string
+	// agent attributes
+	agentType    agenttype.AgentType
+	agentIdToken agentidentity.AgentIdentityToken
+	privateKey   *keypair.PrivateKey
 
 	// accepts input from a connection
 	inputChan chan am.AgentMessage
@@ -78,49 +81,47 @@ type ControlChannel struct {
 	// notifies the agent of significant-but-non-fatal runtime errors
 	runtimeErrChan chan error
 
-	targetType string
-	targetId   string
-
 	// struct for keeping track of all connections key'ed with connectionId (connections with associated datachannels)
 	connections     map[string]AgentDatachannelConnection
 	connectionsLock sync.Mutex
 
-	SocketLock sync.Mutex // Ref: https://github.com/gorilla/websocket/issues/119#issuecomment-198710015
-
+	// helps with race, see ShouldBeSendingPongs() for more information
 	isSendingPongs bool
 
-	ClusterUserCache []string
+	// keeps track of the last fetch of cluster users we did, we update if changes on new fetch are detected
+	clusterUserCache []string
+
+	// for communicating with the bastion
+	bastionClient bastion.ApiClient
 }
 
 func Start(logger *logger.Logger,
+	bastion bastion.ApiClient,
 	id string,
 	conn connection.Connection, // control channel connection
-	serviceUrl string,
-	targetType string,
-	targetId string,
-	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	agentType agenttype.AgentType,
+	agentIdToken agentidentity.AgentIdentityToken,
 	privateKey *keypair.PrivateKey,
 	cConfig ControlChannelConfig,
 	keyShardConfig KeyShardConfig,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
-		conn:                  conn,
-		logger:                logger,
-		id:                    id,
-		serviceUrl:            serviceUrl,
-		targetType:            targetType,
-		targetId:              targetId,
-		agentIdentityProvider: agentIdentityProvider,
-		privateKey:            privateKey,
-		cConfig:               cConfig,
-		keyShardConfig:        keyShardConfig,
-		inputChan:             make(chan am.AgentMessage, 25),
-		connections:           make(map[string]AgentDatachannelConnection),
-		agentPongChan:         make(chan bool),
-		runtimeErrChan:        make(chan error),
-		isSendingPongs:        conn.Ready(),
-		ClusterUserCache:      []string{},
+		conn:             conn,
+		logger:           logger,
+		channelId:        id,
+		bastionClient:    bastion,
+		agentType:        agentType,
+		agentIdToken:     agentIdToken,
+		privateKey:       privateKey,
+		ccConfig:         cConfig,
+		keyShardConfig:   keyShardConfig,
+		inputChan:        make(chan am.AgentMessage, 25),
+		connections:      make(map[string]AgentDatachannelConnection),
+		agentPongChan:    make(chan bool),
+		runtimeErrChan:   make(chan error),
+		isSendingPongs:   conn.Ready(),
+		clusterUserCache: []string{},
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
@@ -269,7 +270,7 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 		return fmt.Errorf("failed to marshal %s message payload: %s", messageType, err)
 	} else {
 		agentMessage := am.AgentMessage{
-			ChannelId:      c.id,
+			ChannelId:      c.channelId,
 			MessageType:    messageType,
 			SchemaVersion:  am.CurrentVersion,
 			MessagePayload: messageBytes,
@@ -279,42 +280,6 @@ func (c *ControlChannel) send(messageType am.MessageType, messagePayload interfa
 		c.conn.Send(agentMessage)
 		return nil
 	}
-}
-
-func (c *ControlChannel) openWebsocket(message OpenWebsocketMessage) error {
-	subLogger := c.logger.GetConnectionLogger(message.ConnectionId)
-
-	wsLogger := subLogger.GetComponentLogger("Websocket")
-	srLogger := subLogger.GetComponentLogger("SignalR")
-
-	client := signalr.New(srLogger, websocket.New(wsLogger))
-	headers := http.Header{}
-	params := url.Values{}
-	if conn, err := dataconnection.New(
-		subLogger,
-		c.serviceUrl,
-		message.ConnectionServiceUrl,
-		message.ConnectionId,
-		c.cConfig,
-		c.keyShardConfig,
-		c.agentIdentityProvider,
-		c.privateKey,
-		params,
-		headers,
-		client,
-	); err != nil {
-		return fmt.Errorf("could not create new connection: %s", err)
-	} else {
-		// add the connection to our connections dictionary
-		c.logger.Infof("Created connection with id: %s", message.ConnectionId)
-		c.updateConnectionsMap(message.ConnectionId, conn)
-
-		// wait for this connection to close and then delete it from the map
-		<-conn.Done()
-		c.logger.Infof("Connection %s closed: %s.", message.ConnectionId, conn.Err())
-		c.deleteConnectionsMap(message.ConnectionId)
-	}
-	return nil
 }
 
 // This is our main process function where incoming messages from the connection will be processed
@@ -336,29 +301,28 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 		var retrieveLogsRequest RetrieveAgentLogsMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &retrieveLogsRequest); err != nil {
 			return fmt.Errorf("malformed retrieve agent logs request: %s", err)
+		}
+
+		c.logger.Infof("Retrieving logs")
+		if err := report.ReportLogs(ctx, c.bastionClient, c.agentType, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
+			return fmt.Errorf("failed to send agent logs to Bastion: %s", err)
 		} else {
-			c.logger.Infof("Sending %s logs from agent %s", c.targetType, c.targetId)
-			if err := agentreport.ReportLogs(c.targetType, c.agentIdentityProvider, ctx, c.serviceUrl, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
-				return fmt.Errorf("error sending agent logs to Bastion: %s", err)
-			} else {
-				c.logger.Infof("Successfully sent agent logs to Bastion")
-			}
+			c.logger.Infof("Successfully sent agent logs to Bastion")
 		}
 	case am.Configure:
-		var configureRequest ConfigureServiceAccountMessage
-		if err := json.Unmarshal(agentMessage.MessagePayload, &configureRequest); err != nil {
+		var configureReq ConfigureServiceAccountMessage
+		if err := json.Unmarshal(agentMessage.MessagePayload, &configureReq); err != nil {
 			return fmt.Errorf("malformed configure agent request: %s", err)
 		}
-		if err := c.configureServiceAccount(configureRequest); err != nil {
-			return fmt.Errorf("error while configuring agent with jwksUrlPattern %s : %s", configureRequest.ServiceAccountConfiguration.JwksUrlPattern, err)
+		if err := c.configureServiceAccount(configureReq.BZCert, configureReq.Signature, configureReq.ServiceAccountConfiguration); err != nil {
+			return fmt.Errorf("error while configuring agent with jwksUrlPattern %s : %s", configureReq.ServiceAccountConfiguration.JwksUrlPattern, err)
 		}
 	case am.OpenWebsocket:
 		var owRequest OpenWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &owRequest); err != nil {
 			return fmt.Errorf("malformed open websocket request: %s", err)
-		} else {
-			return c.openWebsocket(owRequest)
 		}
+		return c.openWebsocket(owRequest.ConnectionId, owRequest.ConnectionServiceUrl)
 	case am.CloseWebsocket:
 		var cwRequest CloseWebsocketMessage
 		if err := json.Unmarshal(agentMessage.MessagePayload, &cwRequest); err != nil {
@@ -392,11 +356,45 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 	return nil
 }
 
-func (c *ControlChannel) configureServiceAccount(configureRequest ConfigureServiceAccountMessage) (err error) {
-	bzcert := configureRequest.BZCert
+func (c *ControlChannel) openWebsocket(connectionId, connectionServiceUrl string) error {
+	subLogger := c.logger.GetConnectionLogger(connectionId)
 
+	wsLogger := subLogger.GetComponentLogger("Websocket")
+	srLogger := subLogger.GetComponentLogger("SignalR")
+
+	client := signalr.New(srLogger, websocket.New(wsLogger))
+	headers := http.Header{}
+	params := url.Values{}
+	if conn, err := dataconnection.New(
+		subLogger,
+		c.bastionClient,
+		connectionServiceUrl,
+		connectionId,
+		c.ccConfig,
+		c.keyShardConfig,
+		c.agentIdToken,
+		c.privateKey,
+		params,
+		headers,
+		client,
+	); err != nil {
+		return fmt.Errorf("could not create new connection: %s", err)
+	} else {
+		// add the connection to our connections dictionary
+		c.logger.Infof("Created connection with id: %s", connectionId)
+		c.updateConnectionsMap(connectionId, conn)
+
+		// wait for this connection to close and then delete it from the map
+		<-conn.Done()
+		c.logger.Infof("Connection %s closed: %s", connectionId, conn.Err())
+		c.deleteConnectionsMap(connectionId)
+	}
+	return nil
+}
+
+func (c *ControlChannel) configureServiceAccount(bzcert bzcert.BZCert, signature string, saConfiguration ServiceAccountConfiguration) (err error) {
 	// Verify the BZCert
-	if err := bzcert.Verify(c.cConfig.GetIdpProvider(), c.cConfig.GetIdpOrgId(), c.cConfig.GetServiceAccountJwksUrls()); err != nil {
+	if err := bzcert.Verify(c.ccConfig.GetIdpProvider(), c.ccConfig.GetIdpOrgId(), c.ccConfig.GetServiceAccountJwksUrls()); err != nil {
 		return fmt.Errorf("failed to verify configure's BZCert: %w", err)
 	}
 
@@ -409,16 +407,16 @@ func (c *ControlChannel) configureServiceAccount(configureRequest ConfigureServi
 	// Verify the signature
 	var hashBits []byte
 	var ok bool
-	if hashBits, ok = util.HashPayload(configureRequest.ServiceAccountConfiguration); !ok {
+	if hashBits, ok = util.HashPayload(saConfiguration); !ok {
 		return fmt.Errorf("failed to hash the mrtap payload")
 	}
-	if ok := pubkey.Verify(hashBits, configureRequest.Signature); !ok {
-		return fmt.Errorf("invalid signature for payload: %+v", configureRequest.ServiceAccountConfiguration)
+	if ok := pubkey.Verify(hashBits, signature); !ok {
+		return fmt.Errorf("invalid signature for payload: %+v", saConfiguration)
 	}
 
 	// Configure the agent
-	jwksUrlPattern := configureRequest.ServiceAccountConfiguration.JwksUrlPattern
-	if err := c.cConfig.SetServiceAccountJwksUrl(jwksUrlPattern); err != nil {
+	jwksUrlPattern := saConfiguration.JwksUrlPattern
+	if err := c.ccConfig.SetServiceAccountJwksUrl(jwksUrlPattern); err != nil {
 		return fmt.Errorf("error adding new jwksUrlPattern to the config: %s", err)
 	}
 	c.logger.Infof("Successfully configured this agent to allow access to service accounts originating from JWKS URLs following the %s pattern", jwksUrlPattern)
@@ -444,7 +442,7 @@ func (c *ControlChannel) reportHealth() error {
 
 	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
-	if c.targetType == "cluster" {
+	if c.agentType == "cluster" {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}
@@ -512,7 +510,7 @@ func (c *ControlChannel) reportClusterUsers() error {
 
 	// If the set of valid users are different from the last time we checked
 	// then send an update message
-	if !reflect.DeepEqual(users, c.ClusterUserCache) {
+	if !reflect.DeepEqual(users, c.clusterUserCache) {
 		c.logger.Info("sending updated valid cluster users in the control channel.")
 		msg := ClusterUsersMessage{
 			ClusterUsers: users,
@@ -520,7 +518,7 @@ func (c *ControlChannel) reportClusterUsers() error {
 		c.send(am.ClusterUsers, msg)
 
 		// update the cached valid cluster users
-		c.ClusterUserCache = users
+		c.clusterUserCache = users
 	}
 
 	return nil

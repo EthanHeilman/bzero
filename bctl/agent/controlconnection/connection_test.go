@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
+	agentidentity "bastionzero.com/agent/bastion/agentidentity/mocks"
 	"bastionzero.com/bzerolib/connection"
 	"bastionzero.com/bzerolib/connection/agentmessage"
 	"bastionzero.com/bzerolib/connection/broker"
@@ -84,8 +84,8 @@ var _ = Describe("Agent Control Channel Connection", func() {
 	}
 	headers := http.Header{}
 
-	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
-	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+	mockAgentIdentityToken := &agentidentity.MockAgentIdentityToken{}
+	mockAgentIdentityToken.On("Get", mock.Anything).Return("fake-agent-identity-token", nil)
 
 	setupHappyClient := func() {
 		doneChan = make(chan struct{})
@@ -112,7 +112,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, err = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, err = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 			})
 
 			It("instantiates without error", func() {
@@ -131,7 +131,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, err = New(logger, malformedUrl, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 			})
 
 			It("instantiates without error", func() {
@@ -159,7 +159,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 				conn.Send(testAgentMessage)
 			})
 
@@ -192,7 +192,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -215,7 +215,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 
 				doneChan <- struct{}{}
 			})
@@ -231,7 +231,7 @@ var _ = Describe("Agent Control Channel Connection", func() {
 			BeforeEach(func() {
 				setupHappyServers()
 				setupHappyClient()
-				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityProvider)
+				conn, _ = New(logger, mockBastion.Url, privateKey, params, headers, mockClient, mockAgentIdentityToken)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 

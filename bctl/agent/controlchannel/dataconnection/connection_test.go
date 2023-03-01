@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/agent/controlchannel/agentidentity"
+	agentidentity "bastionzero.com/agent/bastion/agentidentity/mocks"
+	bastion "bastionzero.com/agent/bastion/mocks"
 	"bastionzero.com/agent/mrtap"
 	"bastionzero.com/agent/plugin/db/actions/pwdb/mocks"
 	"bastionzero.com/bzerolib/connection"
@@ -31,7 +32,6 @@ func TestDatachannelConnection(t *testing.T) {
 
 var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	validUrl := "localhost:0"
-	fakeServiceUrl := "doesn'tmatter"
 
 	publicKey, privateKey, _ := keypair.GenerateKeyPair()
 	fakeConnectionId := uuid.New().String()
@@ -50,8 +50,10 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
 	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
-	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
-	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+	mockAgentIdentityToken := &agentidentity.MockAgentIdentityToken{}
+	mockAgentIdentityToken.On("Get", mock.Anything).Return("fake-agent-identity-token", nil)
+
+	mockBastionApiClient := &bastion.MockApiClient{}
 
 	mockKeyShardConfig := &mocks.PWDBConfig{}
 
@@ -73,7 +75,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, err = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, err = New(logger, mockBastionApiClient, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 			})
 
 			It("instantiates without error", func() {
@@ -91,7 +93,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				_, err = New(logger, fakeServiceUrl, malformedUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				_, err = New(logger, mockBastionApiClient, malformedUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 			})
 
 			It("fails to establish a connection", func() {
@@ -109,7 +111,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, mockBastionApiClient, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 				conn.Send(testAgentMessage)
 			})
 
@@ -141,7 +143,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, mockBastionApiClient, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 
 				mockChannel = new(broker.MockChannel)
 				mockChannel.On("Receive").Return()
@@ -163,7 +165,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, mockBastionApiClient, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 
 				doneChan <- struct{}{}
 			})
@@ -178,7 +180,7 @@ var _ = Describe("Agent Datachannel Connection", Ordered, func() {
 
 			BeforeEach(func() {
 				setupHappyClient()
-				conn, _ = New(logger, fakeServiceUrl, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, mockClient)
+				conn, _ = New(logger, mockBastionApiClient, validUrl, fakeConnectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, mockClient)
 				conn.Close(fmt.Errorf("felt like it"), 2*time.Second)
 			})
 
