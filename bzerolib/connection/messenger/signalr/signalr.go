@@ -114,7 +114,7 @@ func (s *SignalR) Connect(
 		return rerr
 	}
 
-	s.logger.Infof("Sucessfully established SignalR protocol")
+	s.logger.Infof("Successfully established SignalR protocol")
 
 	// If the handshake was successful, then we've made our connection and we can
 	// start listening and sending on it
@@ -188,14 +188,15 @@ func (s *SignalR) unwrap(raw []byte) error {
 		// This SignalR close message can be thrown on `OnConnectedAsync` as a result of
 		//  of failed param validation
 		case Close:
-			s.logger.Infof("received SignalR message to close the connection")
-			s.Close(fmt.Errorf("close connection"))
+			if err := s.processCloseMessage(rawMessage); err != nil {
+				return err
+			}
 
 		// These messages let us know if a previous message was received correctly
 		// and provides us with the resulting error if not
 		case Completion:
 			if err := s.processCompletionMessage(rawMessage); err != nil {
-				s.logger.Error(err)
+				return err
 			}
 
 		// These messages are regular SignalR messages that we'll process and
@@ -213,6 +214,19 @@ func (s *SignalR) unwrap(raw []byte) error {
 			s.logger.Infof("Ignoring %s message", SignalRMessageType(signalRMessageType.Type).String())
 		}
 	}
+
+	return nil
+}
+
+func (s *SignalR) processCloseMessage(msg []byte) error {
+	s.logger.Infof("received SignalR message to close the connection")
+
+	var closeMessage CloseMessage
+	if err := json.Unmarshal(msg, &closeMessage); err != nil {
+		return fmt.Errorf("error unmarshalling SignalR close message: %s", string(msg))
+	}
+
+	s.tmb.Kill(fmt.Errorf("server closed the connection with error: %s", closeMessage.Error))
 
 	return nil
 }

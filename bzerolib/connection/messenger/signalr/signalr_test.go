@@ -76,6 +76,8 @@ var _ = Describe("SignalR", Ordered, func() {
 		When("It connects to a legitimate connection", func() {
 			var err error
 
+			// assumes only a single invocation message is sent and invocator starts at 0
+			invocationId := "0"
 			testAgentMessage := agentmessage.AgentMessage{
 				MessageType:    "Test",
 				MessagePayload: testBytes,
@@ -88,6 +90,32 @@ var _ = Describe("SignalR", Ordered, func() {
 
 			It("is able to send without error", func() {
 				Expect(err).ToNot(HaveOccurred(), "Websocket failed to send to server")
+			})
+
+			It("Correctly matches an invocation message after a completion message", func() {
+				// Invocator should have a single unmatched invocation until we
+				// receive the completion message
+				Expect(signalR.invocator.IsEmpty()).To(Equal(false))
+
+				result := ResultMessage{
+					Error:        false,
+					ErrorMessage: nil,
+				}
+
+				testSignalRCompletionMessage := CompletionMessage{
+					Type:         int(Completion),
+					InvocationId: &invocationId,
+					Result:       &result,
+					Error:        nil,
+				}
+				testSignalRInvocationMessageBytes, _ := json.Marshal(testSignalRCompletionMessage)
+				testSignalRInvocationMessageBytes = append(testSignalRInvocationMessageBytes, TerminatorByte)
+
+				inboundChan <- &testSignalRInvocationMessageBytes
+
+				// The completion message should have matched the invocationId
+				// and the invocator should now have 0 unmatched invocations
+				Eventually(signalR.invocator.IsEmpty, 1*time.Second).Should(Equal(true))
 			})
 		})
 	})
@@ -167,6 +195,28 @@ var _ = Describe("SignalR", Ordered, func() {
 					Expect(nil).ToNot(BeNil(), "SignalR failed to close!")
 				}
 			})
+		})
+	})
+
+	Context("Processing SignalR Close Message", func() {
+
+		BeforeEach(func() {
+			setupHappyTransport()
+		})
+
+		It("Correctly closes the tmb after a signalR normal closure message", func() {
+			closeError := "TestError"
+			testCloseSignalRMessage := CloseMessage{
+				Type:           int(Close),
+				Error:          closeError,
+				AllowReconnect: false,
+			}
+			testCloseSignalRMessageBytes, _ := json.Marshal(testCloseSignalRMessage)
+			testCloseSignalRMessageBytes = append(testCloseSignalRMessageBytes, TerminatorByte)
+			inboundChan <- &testCloseSignalRMessageBytes
+
+			Eventually(signalR.Done()).WithTimeout(2 * time.Second).Should(BeClosed())
+			Expect(signalR.Err()).Should(MatchError(fmt.Errorf("server closed the connection with error: %s", closeError)))
 		})
 	})
 })
