@@ -22,6 +22,35 @@ cd bctl/daemon && go build -buildvcs=false .
 
 You can then run the agent and daemon by running the executable.
 
+### Troubleshooting
+When you run out of room while building a Golang package, Golang is of no help. You might get an error that looks like this:
+```
+go build random/package/name: /usr/local/go/pkg/tool/linux_amd64/6g: signal: killed
+```
+or
+```
+note: module requires Go 1.19
+go build random/package/name: /usr/local/go/pkg/tool/linux_amd64/compile: signal: killed
+```
+This message means that you most likely ran out of memory while trying to build the package. You can check how much memory the process uses by running this linux command on a clean go build:
+```
+go clean -modcache
+/usr/bin/time -v go build
+```
+
+This will give you the time and memory consumption of the build and you should be able to verify that against the available memory on the machine. For confirmation of this issue, take a look at [this](https://forum.golangbridge.org/t/go-build-exits-with-signal-killed/513) discussion of it.
+
+It takes agent version 7.6.3 ~575MB to build from scratch.
+
+Example Output:
+```sh
+$ /usr/bin/time -v go build
+Command being timed: "go build"
+...
+Maximum resident set size (kbytes): 575172
+...
+```
+
 ## Testing
 
 Unit tests are written using the [Ginkgo framework](https://github.com/onsi/ginkgo) for both the agent and daemon projects as well as for the common bzerolib library code. Tests should be written as close to the component they are testing (in the same directory as the files they test) and should have a `_test` filename suffix. For more information on our approach to testing, see the [wiki](https://github.com/bastionzero/bzero/wiki/Unit-testing-with-Ginkgo-and-Testify)
