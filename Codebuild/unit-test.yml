@@ -44,6 +44,7 @@ phases:
       - chmod -R 777 /go/pkg/mod/cache/download
       - chmod -R 777 /codebuild/output
       - chmod -R 777 /go/pkg/mod
+      - chown -R codebuild-user ~/.cache
   pre_build:
     run-as: codebuild-user
     commands:
