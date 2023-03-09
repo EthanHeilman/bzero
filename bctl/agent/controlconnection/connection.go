@@ -120,6 +120,8 @@ func New(
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
+
+				conn.broker.Reconnect()
 			case message := <-conn.sendQueue:
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)

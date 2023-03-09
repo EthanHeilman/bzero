@@ -10,6 +10,7 @@ import (
 type IChannel interface {
 	Receive(agentMessage am.AgentMessage)
 	Close(reason error)
+	Reconnect()
 }
 
 type Broker struct {
@@ -88,5 +89,15 @@ func (b *Broker) DirectMessage(id string, message am.AgentMessage) error {
 		return nil
 	} else {
 		return fmt.Errorf("no subscriber with id %s", id)
+	}
+}
+
+func (b *Broker) Reconnect() {
+	for _, channel := range b.subscribers {
+		if channel == nil {
+			continue
+		}
+
+		channel.Reconnect()
 	}
 }

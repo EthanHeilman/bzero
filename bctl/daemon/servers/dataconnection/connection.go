@@ -184,6 +184,7 @@ func New(
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
+				conn.broker.Reconnect()
 			case message := <-conn.sendQueue:
 				if !conn.ready {
 					// Wait for the agent to connect before sending any messages

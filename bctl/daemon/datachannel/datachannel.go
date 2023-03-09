@@ -284,6 +284,10 @@ func (d *DataChannel) Close(reason error) {
 	d.tmb.Wait()
 }
 
+func (d *DataChannel) Reconnect() {
+	d.mrtap.Release()
+}
+
 func (d *DataChannel) start(attach bool, action string, synPayload interface{}) error {
 	// if we're attaching to an existing datachannel vs if we are creating a new one
 	if !attach {

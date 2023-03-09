@@ -354,6 +354,10 @@ func (d *DataChannel) startPlugin(pluginName bzplugin.PluginName, action string,
 	}
 }
 
+func (d *DataChannel) Reconnect() {
+	d.logger.Infof("data channel %s: underlying transport reconnected", d.id)
+}
+
 func cleanPayload(payload []byte) ([]byte, error) {
 	// TODO: CWC-1819: remove once all daemon's are updated
 	if len(payload) > 0 {

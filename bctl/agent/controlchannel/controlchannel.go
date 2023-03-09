@@ -524,6 +524,10 @@ func (c *ControlChannel) reportClusterUsers() error {
 	return nil
 }
 
+func (c *ControlChannel) Reconnect() {
+	c.logger.Infof("control channel %s: underlying transport reconnected", c.channelId)
+}
+
 // Helper function so we avoid writing to this map at the same time
 func (c *ControlChannel) updateConnectionsMap(id string, newConn AgentDatachannelConnection) {
 	c.connectionsLock.Lock()
