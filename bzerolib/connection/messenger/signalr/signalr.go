@@ -20,8 +20,24 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-// Byte to indicate the end of a SignalR message
-const TerminatorByte = 0x1E
+// Rate at which the signalR client sends pings to the server. The server is
+// using the default client timeout of 30s so ensure we are sending pings at
+// least 2x more frequently than that for some additional buffer. These
+// messages only need to be sent if no other activity is occurring in the
+// signalR websocket. Not a constant so it can be updated in unit tests
+// Ref: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md#ping-aka-keep-alive
+// variable only so it can be modified in unit tests
+var PingRate = 15 * time.Second
+
+const (
+	// Byte to indicate the end of a SignalR message
+	TerminatorByte = 0x1E
+)
+
+type sendQueueMessage struct {
+	msg      []byte
+	doneChan chan error
+}
 
 type SignalR struct {
 	tmb      tomb.Tomb
@@ -37,6 +53,8 @@ type SignalR struct {
 	// Thread-safe implementation for tracking whether SignalR messages
 	// are received/processed successfully or not
 	invocator Invocator
+
+	sendQueue chan sendQueueMessage
 }
 
 func New(
@@ -49,6 +67,7 @@ func New(
 		doneChan:  make(chan struct{}),
 		inbound:   make(chan *SignalRMessage, 200),
 		invocator: NewInvocationTracker(),
+		sendQueue: make(chan sendQueueMessage),
 	}
 }
 
@@ -90,7 +109,7 @@ func (s *SignalR) Connect(
 
 	// Normally SignalR would require a negotiate call here to initiate the connection,
 	// however since we're only making websockets, we can omit that
-	// https://github.com/aspnet/SignalR/blob/master/specs/TransportProtocols.md#websockets-full-duplex
+	// https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md#websockets-full-duplex
 
 	// Build our Url
 	u, err := buildUrl(targetUrl, params)
@@ -122,6 +141,34 @@ func (s *SignalR) Connect(
 		defer s.logger.Info("SignalR processing done")
 		defer close(s.doneChan)
 
+		// Process send queue
+		s.tmb.Go(func() error {
+			ticker := time.NewTicker(PingRate)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-s.tmb.Dying():
+					s.logger.Info("Send queue processing done because tmb is dying.")
+					return nil
+				case <-ticker.C:
+					if err := s.ping(); err != nil {
+						s.logger.Errorf("Failed to send ping message. Error: %s", err)
+					}
+				case sendQueueMessage, ok := <-s.sendQueue:
+					if !ok {
+						s.logger.Errorf("Send queue was closed")
+						return nil
+					}
+
+					err := s.client.Send(sendQueueMessage.msg)
+					sendQueueMessage.doneChan <- err
+					close(sendQueueMessage.doneChan)
+					ticker.Reset(PingRate)
+				}
+			}
+		})
+
 		// Unwrap and forward inbound messages
 		for {
 			select {
@@ -143,6 +190,19 @@ func (s *SignalR) Connect(
 		}
 	})
 	return nil
+}
+
+func (s *SignalR) ping() error {
+	pingMessage := PingMessage{
+		Type: int(Ping),
+	}
+
+	pingMessageBytes, err := json.Marshal(pingMessage)
+	if err != nil {
+		return fmt.Errorf("error marshalling outgoing SignalR Ping Message: %+v", pingMessageBytes)
+	}
+
+	return s.client.Send(append(pingMessageBytes, TerminatorByte))
 }
 
 func (s *SignalR) avengersEndgame() error {
@@ -289,8 +349,13 @@ func (s *SignalR) Send(message am.AgentMessage) error {
 	// that it has received the entire message and can start processing it
 	terminatedMessageBytes := append(trackedMessageBytes, TerminatorByte)
 
-	// Write our message to our connection
-	err = s.client.Send(terminatedMessageBytes)
+	sendQueueMessage := sendQueueMessage{
+		msg:      terminatedMessageBytes,
+		doneChan: make(chan error, 1),
+	}
+
+	s.sendQueue <- sendQueueMessage
+	err = <-sendQueueMessage.doneChan
 
 	// Since above send could fail, we want to untrack our tracked message
 	if err != nil {
