@@ -52,7 +52,7 @@ const (
 )
 
 // This is a variable to control test duration
-var maxBackoffInterval = 5 * time.Second // at most 3 seconds in between requests
+var maxBackoffInterval = 5 * time.Minute // at most 5 minutes in between requests
 
 const (
 	daemonHubEndpoint = "hub/daemon"
@@ -64,7 +64,15 @@ const (
 	// How long the daemon waits for the agent to connect
 	agentConnectedTimeout = time.Minute
 
-	maximumReconnectWaitTime = 5 * time.Minute
+	// How long we will keep trying to connect to the connection node for the
+	// initial connection
+	maximumConnectWaitTime = 5 * time.Minute
+
+	// How long we will keep trying to reconnect to the connection node before
+	// giving up and killing the daemon process. This is much longer than the
+	// connect time so that we can recover from, for example, temporary internet
+	// connectivity issues
+	maximumReconnectWaitTime = 7 * 24 * time.Hour
 )
 
 type DataConnection struct {
@@ -113,7 +121,7 @@ func New(
 		agentReadyChan: make(chan bool, 1),
 	}
 
-	if err := conn.connect(connectionUrl, headers, params); err != nil {
+	if err := conn.connect(connectionUrl, headers, params, maximumConnectWaitTime); err != nil {
 		return nil, err
 	}
 
@@ -172,7 +180,7 @@ func New(
 				conn.ready = false
 
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(connectionUrl, headers, params); err != nil {
+				if err := conn.connect(connectionUrl, headers, params, maximumReconnectWaitTime); err != nil {
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
@@ -309,7 +317,7 @@ func (d *DataConnection) sendRemainingMessages() {
 	}
 }
 
-func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values, connectTimeout time.Duration) error {
 	d.logger.Infof("Establishing connection with %s", connUrl.String())
 
 	// Make a context and tie it in with our tomb and then send it everywhere
@@ -327,7 +335,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = maximumReconnectWaitTime
+	backoffParams.MaxElapsedTime = connectTimeout
 	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
