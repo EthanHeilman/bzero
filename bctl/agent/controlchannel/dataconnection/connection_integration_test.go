@@ -105,7 +105,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 			})
 
 			It("retries to connect until it is able to successfully connect", func() {
-				time.Sleep(3 * time.Second)
+				time.Sleep(5 * time.Second)
 				Expect(conn.Ready()).To(Equal(true), "Connection never connected")
 
 				Expect(len(badStatusCodes)).To(Equal(0), "Connect flow did not cycle through all bad status codes before connecting")

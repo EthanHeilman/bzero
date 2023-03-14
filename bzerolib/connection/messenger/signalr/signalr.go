@@ -20,13 +20,35 @@ import (
 	"gopkg.in/tomb.v2"
 )
 
-// Byte to indicate the end of a SignalR message
-const TerminatorByte = 0x1E
+// Rate at which the signalR client sends pings to the server. The server is
+// using the default client timeout of 30s so ensure we are sending pings at
+// least 2x more frequently than that for some additional buffer. These
+// messages only need to be sent if no other activity is occurring in the
+// signalR websocket. Not a constant so it can be updated in unit tests
+// Ref: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md#ping-aka-keep-alive
+// variable only so it can be modified in unit tests
+var ClientPingRate = 15 * time.Second
+
+// Timeout before closing the connection after not receiving any messages from
+// the server. The signalR server should be sending ping messages at least every
+// 15s by default
+// Ref: https://github.com/dotnet/aspnetcore/blob/34a16dcf5043b4f02756e9d0727943c385cd2810/src/SignalR/server/Core/src/HubOptions.cs#L26-L29
+// variable only so it can be modified in unit tests
+var ServerPingTimeout = 30 * time.Second
+
+const (
+	// Byte to indicate the end of a SignalR message
+	TerminatorByte = 0x1E
+)
+
+type sendQueueMessage struct {
+	msg      []byte
+	doneChan chan error
+}
 
 type SignalR struct {
-	tmb      tomb.Tomb
-	logger   *logger.Logger
-	doneChan chan struct{}
+	tmb    tomb.Tomb
+	logger *logger.Logger
 
 	client  transporter.Transporter
 	inbound chan *SignalRMessage
@@ -37,6 +59,8 @@ type SignalR struct {
 	// Thread-safe implementation for tracking whether SignalR messages
 	// are received/processed successfully or not
 	invocator Invocator
+
+	sendQueue chan sendQueueMessage
 }
 
 func New(
@@ -46,9 +70,9 @@ func New(
 	return &SignalR{
 		logger:    logger,
 		client:    client,
-		doneChan:  make(chan struct{}),
 		inbound:   make(chan *SignalRMessage, 200),
 		invocator: NewInvocationTracker(),
+		sendQueue: make(chan sendQueueMessage),
 	}
 }
 
@@ -66,7 +90,7 @@ func (s *SignalR) Err() error {
 }
 
 func (s *SignalR) Done() <-chan struct{} {
-	return s.doneChan
+	return s.tmb.Dead()
 }
 
 func (s *SignalR) Inbound() <-chan *SignalRMessage {
@@ -85,12 +109,12 @@ func (s *SignalR) Connect(
 	// Reset variables
 	if !s.tmb.Alive() {
 		s.tmb = tomb.Tomb{}
-		s.doneChan = make(chan struct{})
+		s.invocator = NewInvocationTracker()
 	}
 
 	// Normally SignalR would require a negotiate call here to initiate the connection,
 	// however since we're only making websockets, we can omit that
-	// https://github.com/aspnet/SignalR/blob/master/specs/TransportProtocols.md#websockets-full-duplex
+	// https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/TransportProtocols.md#websockets-full-duplex
 
 	// Build our Url
 	u, err := buildUrl(targetUrl, params)
@@ -120,10 +144,46 @@ func (s *SignalR) Connect(
 	// start listening and sending on it
 	s.tmb.Go(func() error {
 		defer s.logger.Info("SignalR processing done")
-		defer close(s.doneChan)
+
+		// Process send queue
+		s.tmb.Go(func() error {
+			// Send an initial ping message to the server. After receiving the
+			// initial ping the server will timeout and close the connection
+			// after 30s if no more messages are received
+			if err := s.ping(); err != nil {
+				return fmt.Errorf("Failed to send initial ping message to server. Error: %w", err)
+			}
+
+			ticker := time.NewTicker(ClientPingRate)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-s.tmb.Dying():
+					s.logger.Info("Send queue processing done because tmb is dying.")
+					return nil
+				case <-ticker.C:
+					if err := s.ping(); err != nil {
+						s.logger.Errorf("Failed to send ping message. Error: %s", err)
+					}
+				case sendQueueMessage, ok := <-s.sendQueue:
+					if !ok {
+						s.logger.Errorf("Send queue was closed")
+						return nil
+					}
+
+					err := s.client.Send(sendQueueMessage.msg)
+					sendQueueMessage.doneChan <- err
+					ticker.Reset(ClientPingRate)
+				}
+			}
+		})
 
 		// Unwrap and forward inbound messages
 		for {
+			ticker := time.NewTicker(ServerPingTimeout)
+			defer ticker.Stop()
+
 			select {
 			case <-s.tmb.Dying(): // death from Close() call
 				err := s.avengersEndgame()
@@ -135,7 +195,12 @@ func (s *SignalR) Connect(
 				return err
 			case <-s.client.Done():
 				return fmt.Errorf("closed websocket")
+			case <-ticker.C:
+				err := fmt.Errorf("server ping timeout: failed to receive any messages from the server after %s", ServerPingTimeout)
+				s.client.Close(err)
+				return err
 			case messageBytes := <-s.client.Inbound():
+				ticker.Reset(ServerPingTimeout)
 				if err := s.unwrap(*messageBytes); err != nil {
 					s.logger.Errorf("error unwrapping SignalR message: %s", err)
 				}
@@ -145,12 +210,27 @@ func (s *SignalR) Connect(
 	return nil
 }
 
+func (s *SignalR) ping() error {
+	pingMessage := PingMessage{
+		Type: int(Ping),
+	}
+
+	pingMessageBytes, err := json.Marshal(pingMessage)
+	if err != nil {
+		return fmt.Errorf("error marshalling outgoing SignalR Ping Message: %+v", pingMessageBytes)
+	}
+
+	return s.client.Send(append(pingMessageBytes, TerminatorByte))
+}
+
 func (s *SignalR) avengersEndgame() error {
 	finalCountdown := time.NewTicker(time.Minute)
 	checkDoneInterval := time.Second
 
 	for {
 		select {
+		case <-s.client.Done():
+			return nil
 		case messageBytes := <-s.client.Inbound():
 			if err := s.unwrap(*messageBytes); err != nil {
 				s.logger.Errorf("error unwrapping SignalR message: %s", err)
@@ -226,7 +306,7 @@ func (s *SignalR) processCloseMessage(msg []byte) error {
 		return fmt.Errorf("error unmarshalling SignalR close message: %s", string(msg))
 	}
 
-	s.tmb.Kill(fmt.Errorf("server closed the connection with error: %s", closeMessage.Error))
+	s.tmb.Kill(&WebsocketNormalClosure{ServerError: closeMessage.Error})
 
 	return nil
 }
@@ -289,8 +369,14 @@ func (s *SignalR) Send(message am.AgentMessage) error {
 	// that it has received the entire message and can start processing it
 	terminatedMessageBytes := append(trackedMessageBytes, TerminatorByte)
 
-	// Write our message to our connection
-	err = s.client.Send(terminatedMessageBytes)
+	sendQueueMessage := sendQueueMessage{
+		msg:      terminatedMessageBytes,
+		doneChan: make(chan error),
+	}
+
+	s.sendQueue <- sendQueueMessage
+	err = <-sendQueueMessage.doneChan
+	close(sendQueueMessage.doneChan)
 
 	// Since above send could fail, we want to untrack our tracked message
 	if err != nil {

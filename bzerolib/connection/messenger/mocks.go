@@ -15,6 +15,11 @@ type MockMessenger struct {
 	mock.Mock
 }
 
+func (m *MockMessenger) Err() error {
+	args := m.Called()
+	return args.Error(0)
+}
+
 func (m *MockMessenger) Close(reason error) {
 	m.Called()
 }

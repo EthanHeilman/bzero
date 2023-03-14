@@ -90,6 +90,7 @@ var _ = Describe("SignalR", Ordered, func() {
 
 			It("is able to send without error", func() {
 				Expect(err).ToNot(HaveOccurred(), "Websocket failed to send to server")
+				mockTransport.AssertCalled(GinkgoT(), "Send")
 			})
 
 			It("Correctly matches an invocation message after a completion message", func() {
@@ -196,6 +197,29 @@ var _ = Describe("SignalR", Ordered, func() {
 				}
 			})
 		})
+
+		When("Server ping timeout", func() {
+			defaultServerTimeout := ServerPingTimeout
+			testServerTimeout := time.Second
+
+			BeforeEach(func() {
+				ServerPingTimeout = testServerTimeout
+				setupHappyTransport()
+			})
+
+			AfterEach(func() {
+				ServerPingTimeout = defaultServerTimeout
+			})
+
+			It("Times out and closing the tomb after the server ping timeout", func() {
+				select {
+				case <-signalR.Done():
+					Expect(signalR.Err()).Should(MatchError(fmt.Errorf("server ping timeout: failed to receive any messages from the server after %s", ServerPingTimeout)))
+				case <-time.After(2 * testServerTimeout):
+					Expect(nil).ToNot(BeNil(), "SignalR failed to close after server ping timeout!")
+				}
+			})
+		})
 	})
 
 	Context("Processing SignalR Close Message", func() {
@@ -216,7 +240,56 @@ var _ = Describe("SignalR", Ordered, func() {
 			inboundChan <- &testCloseSignalRMessageBytes
 
 			Eventually(signalR.Done()).WithTimeout(2 * time.Second).Should(BeClosed())
-			Expect(signalR.Err()).Should(MatchError(fmt.Errorf("server closed the connection with error: %s", closeError)))
+			Expect(signalR.Err()).Should(MatchError(&WebsocketNormalClosure{ServerError: closeError}))
+		})
+	})
+
+	Context("Sends keep alive ping messages", func() {
+		defaultPingRate := ClientPingRate
+		testPingRate := time.Second
+
+		pingMessage := PingMessage{Type: int(Ping)}
+		pingMessageBytes, _ := json.Marshal(pingMessage)
+		pingMessageBytes = append(pingMessageBytes, TerminatorByte)
+
+		testAgentMessage := agentmessage.AgentMessage{
+			MessageType:    "Test",
+			MessagePayload: testBytes,
+		}
+
+		BeforeEach(func() {
+			// mock the ping rate time for these tests to make sure they execute quickly
+			ClientPingRate = testPingRate
+			setupHappyTransport()
+		})
+
+		AfterEach(func() {
+			ClientPingRate = defaultPingRate
+		})
+
+		It("Sends a ping message if idle for at least PingRate", func(ctx SpecContext) {
+			Eventually(func() {
+				mockTransport.AssertCalled(GinkgoT(), "Send", pingMessageBytes)
+			}).WithContext(ctx)
+
+		}, SpecTimeout(time.Second*2))
+
+		It("Does not send a ping message if other activity occurs in the connection within the PingRate", func(ctx SpecContext) {
+			// Send test messages more frequently than the PingRate in the background
+			go func() {
+				for {
+					select {
+					case <-ctx.Done():
+						break
+					default:
+						signalR.Send(testAgentMessage)
+						time.Sleep(testPingRate / 2)
+					}
+				}
+			}()
+
+			time.Sleep(5 * testPingRate)
+			mockTransport.AssertNotCalled(GinkgoT(), "Send", pingMessageBytes)
 		})
 	})
 })

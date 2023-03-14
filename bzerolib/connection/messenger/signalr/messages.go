@@ -37,11 +37,16 @@ func (s SignalRMessageType) String() string {
 	}
 }
 
+// signalR message types. Ref: https://github.com/dotnet/aspnetcore/blob/main/src/SignalR/docs/specs/HubProtocol.md
+
 type MessageTypeOnly struct {
 	Type int `json:"type"`
 }
 
-// Ref: https://docs.microsoft.com/en-us/javascript/api/@microsoft/signalr/closemessage?view=signalr-js-latest
+type PingMessage struct {
+	Type int `json:"type"`
+}
+
 type CloseMessage struct {
 	Type           int    `json:"type"`
 	Error          string `json:"error"`
@@ -49,7 +54,6 @@ type CloseMessage struct {
 }
 
 // The pointers are so the fields can be nil because they're not always there
-// Ref: https://github.com/aspnet/SignalR/blob/master/specs/HubProtocol.md#completion-message-encoding
 type CompletionMessage struct {
 	Type         int            `json:"type"`
 	InvocationId *string        `json:"invocationId"`
@@ -62,7 +66,6 @@ type ResultMessage struct {
 	Error        bool    `json:"error"`
 }
 
-// Ref: https://github.com/aspnet/SignalR/blob/master/specs/HubProtocol.md#invocation-message-encoding
 type SignalRMessage struct {
 	Type         int               `json:"type"`
 	Target       string            `json:"target"` // hub name

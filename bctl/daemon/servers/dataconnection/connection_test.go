@@ -61,6 +61,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 		mockClient.On("Close").Return()
 		mockClient.On("Done").Return(doneChan)
 		mockClient.On("Inbound").Return(inboundChan)
+		mockClient.On("Err").Return(nil)
 	}
 
 	setupHappyConnection := func(mockClient *messenger.MockMessenger) connection.Connection {

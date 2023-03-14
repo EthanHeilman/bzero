@@ -22,6 +22,7 @@ import (
 type Messenger interface {
 	Close(reason error)
 	Done() <-chan struct{}
+	Err() error
 	Inbound() <-chan *signalr.SignalRMessage
 	Connect(ctx context.Context, targetUrl string, headers http.Header, params url.Values, targetSelectHandler func(msg agentmessage.AgentMessage) (string, error)) error
 	Send(message agentmessage.AgentMessage) error
