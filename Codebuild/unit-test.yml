@@ -44,6 +44,7 @@ phases:
       - chmod -R 777 /go/pkg/mod/cache/download
       - chmod -R 777 /codebuild/output
       - chmod -R 777 /go/pkg/mod
+      - chown -R codebuild-user ~/.cache
   pre_build:
     run-as: codebuild-user
     commands:
@@ -73,7 +74,11 @@ reports:
     files:
       - 'bzerolib/bzerolibcoverage.xml'
     file-format: 'COBERTURAXML'
-  bctl-unittest-report:
+  agent-unittest-report:
     files:
-      - 'bctl/bctlcoverage.xml'
+      - 'bctl/agent/agentcoverage.xml'
+    file-format: 'COBERTURAXML'
+  daemon-unittest-report:
+    files:
+      - 'bctl/daemon/daemoncoverage.xml'
     file-format: 'COBERTURAXML'

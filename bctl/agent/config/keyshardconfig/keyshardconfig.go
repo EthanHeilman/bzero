@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config"
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	"bastionzero.com/agent/config"
+	"bastionzero.com/agent/config/keyshardconfig/data"
 )
 
 type keyShardConfigClient interface {

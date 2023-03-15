@@ -1,8 +1,8 @@
 package client
 
 import (
-	agentdata "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
-	ksdata "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	agentdata "bastionzero.com/agent/config/agentconfig/data"
+	ksdata "bastionzero.com/agent/config/keyshardconfig/data"
 	"github.com/stretchr/testify/mock"
 )
 

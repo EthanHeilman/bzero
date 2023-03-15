@@ -3,11 +3,11 @@ package mrtap
 import (
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
+	bzcrt "bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/mrtap/message"
+	"bastionzero.com/bzerolib/mrtap/util"
 	"github.com/Masterminds/semver"
 )
 

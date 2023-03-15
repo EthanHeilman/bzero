@@ -15,13 +15,14 @@ import (
 	"net/http"
 	"net/url"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
 )
 
 type Messenger interface {
 	Close(reason error)
 	Done() <-chan struct{}
+	Err() error
 	Inbound() <-chan *signalr.SignalRMessage
 	Connect(ctx context.Context, targetUrl string, headers http.Header, params url.Values, targetSelectHandler func(msg agentmessage.AgentMessage) (string, error)) error
 	Send(message agentmessage.AgentMessage) error

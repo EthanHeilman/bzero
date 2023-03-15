@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/logger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"
@@ -61,6 +61,7 @@ var _ = Describe("Daemon Datachannel Connection", Ordered, func() {
 		mockClient.On("Close").Return()
 		mockClient.On("Done").Return(doneChan)
 		mockClient.On("Inbound").Return(inboundChan)
+		mockClient.On("Err").Return(nil)
 	}
 
 	setupHappyConnection := func(mockClient *messenger.MockMessenger) connection.Connection {

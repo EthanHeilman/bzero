@@ -20,6 +20,7 @@ package dataconnection
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -27,12 +28,12 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )
@@ -52,7 +53,7 @@ const (
 )
 
 // This is a variable to control test duration
-var maxBackoffInterval = 5 * time.Second // at most 3 seconds in between requests
+var maxBackoffInterval = 5 * time.Minute // at most 5 minutes in between requests
 
 const (
 	daemonHubEndpoint = "hub/daemon"
@@ -64,7 +65,15 @@ const (
 	// How long the daemon waits for the agent to connect
 	agentConnectedTimeout = time.Minute
 
-	maximumReconnectWaitTime = 5 * time.Minute
+	// How long we will keep trying to connect to the connection node for the
+	// initial connection
+	maximumConnectWaitTime = 5 * time.Minute
+
+	// How long we will keep trying to reconnect to the connection node before
+	// giving up and killing the daemon process. This is much longer than the
+	// connect time so that we can recover from, for example, temporary internet
+	// connectivity issues
+	maximumReconnectWaitTime = 7 * 24 * time.Hour
 )
 
 type DataConnection struct {
@@ -113,7 +122,7 @@ func New(
 		agentReadyChan: make(chan bool, 1),
 	}
 
-	if err := conn.connect(connectionUrl, headers, params); err != nil {
+	if err := conn.connect(connectionUrl, headers, params, maximumConnectWaitTime); err != nil {
 		return nil, err
 	}
 
@@ -122,6 +131,9 @@ func New(
 	conn.tmb.Go(func() error {
 		conn.logger.Infof("Connection has started")
 		defer conn.logger.Infof("Connection has stopped")
+
+		// Wait for the agent to connect before sending any messages
+		conn.waitForAgentReady()
 
 		for {
 			select {
@@ -169,21 +181,35 @@ func New(
 
 				return nil
 			case <-conn.client.Done():
+				logger.Infof("signalR client exited with error: %s", conn.client.Err())
 				conn.ready = false
 
+				// If the websocket client was closed normally by the server
+				// then do not try and reconnect as this most likely indicates
+				// an issue with authentication or some other backend error that
+				// will continue to prevent this connection from working.
+				var websocketNormalClosureError *signalr.WebsocketNormalClosure
+				err := conn.client.Err()
+
+				if errors.As(err, &websocketNormalClosureError) {
+					logger.Infof("websocket closed normally with error: %s", err)
+					return err
+				}
+
 				logger.Infof("Lost connection to BastionZero, reconnecting...")
-				if err := conn.connect(connectionUrl, headers, params); err != nil {
+				if err := conn.connect(connectionUrl, headers, params, maximumReconnectWaitTime); err != nil {
 					logger.Errorf("failed to reconnect to BastionZero: %s", err)
 					return err
 				}
+
+				// Wait for the agent to connect before sending any messages
+				// after the daemon reconnects. If the agent is still connected
+				// this message will be sent right away from the backend,
+				// however, we still need to read from the unbuffered
+				// agentReadyChan to prevent receive() from blocking when it
+				// processes the new AgentConnected message.
+				conn.waitForAgentReady()
 			case message := <-conn.sendQueue:
-				if !conn.ready {
-					// Wait for the agent to connect before sending any messages
-					// from the output queue. We only do this on the initial connection
-					// because daemon will only try to reconnect if the agent is
-					// still connected
-					conn.waitForAgentReady()
-				}
 				if err := conn.client.Send(*message); err != nil {
 					conn.logger.Errorf("failed to send message: %s", err)
 				} else {
@@ -309,7 +335,7 @@ func (d *DataConnection) sendRemainingMessages() {
 	}
 }
 
-func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values) error {
+func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params url.Values, connectTimeout time.Duration) error {
 	d.logger.Infof("Establishing connection with %s", connUrl.String())
 
 	// Make a context and tie it in with our tomb and then send it everywhere
@@ -327,7 +353,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 
 	// Setup our exponential backoff parameters
 	backoffParams := backoff.NewExponentialBackOff()
-	backoffParams.MaxElapsedTime = maximumReconnectWaitTime
+	backoffParams.MaxElapsedTime = connectTimeout
 	backoffParams.MaxInterval = maxBackoffInterval
 
 	ticker := backoff.NewTicker(backoffParams)
@@ -354,6 +380,8 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 
 func (d *DataConnection) waitForAgentReady() {
 	select {
+	case <-d.client.Done():
+		return
 	case <-d.tmb.Dying():
 		return
 	case <-d.agentReadyChan:

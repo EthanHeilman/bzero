@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/mrtap/util"
 	"github.com/stretchr/testify/mock"
 	"gopkg.in/square/go-jose.v2"
 )

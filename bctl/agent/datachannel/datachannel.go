@@ -11,21 +11,21 @@ import (
 	"github.com/Masterminds/semver"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/kube"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/shell"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/ssh"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/web"
+	"bastionzero.com/agent/plugin/db"
+	"bastionzero.com/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/agent/plugin/kube"
+	"bastionzero.com/agent/plugin/shell"
+	"bastionzero.com/agent/plugin/ssh"
+	"bastionzero.com/agent/plugin/web"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	bzerror "bastionzero.com/bctl/v1/bzerolib/error"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/message"
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	bzerror "bastionzero.com/bzerolib/error"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/mrtap/message"
+	bzplugin "bastionzero.com/bzerolib/plugin"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (
@@ -64,7 +64,7 @@ type DataChannel struct {
 	payloadClean bool
 
 	// Client for sending requests to and from bastion
-	bastion *client.BastionClient
+	bastion bastion.ApiClient
 }
 
 func New(
@@ -73,7 +73,7 @@ func New(
 	conn connection.Connection,
 	keyshardConfig pwdb.PWDBConfig,
 	mrtap IMrtap,
-	bastion *client.BastionClient,
+	bastion bastion.ApiClient,
 	id string,
 	syn []byte,
 ) (*DataChannel, error) {

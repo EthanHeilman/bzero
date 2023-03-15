@@ -1,8 +1,8 @@
 package controlchannel
 
 import (
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
+	"bastionzero.com/agent/config/keyshardconfig/data"
+	bzcrt "bastionzero.com/bzerolib/mrtap/bzcert"
 )
 
 type HeartbeatMessage struct {

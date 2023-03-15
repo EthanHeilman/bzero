@@ -7,10 +7,10 @@ import (
 
 	"github.com/golang-jwt/jwt/v4"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert/zliconfig"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/mrtap/bzcert/zliconfig"
+	"bastionzero.com/bzerolib/mrtap/util"
 )
 
 type IDaemonBZCert interface {

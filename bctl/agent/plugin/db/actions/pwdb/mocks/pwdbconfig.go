@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	data "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
+	data "bastionzero.com/agent/config/keyshardconfig/data"
 	mock "github.com/stretchr/testify/mock"
 )
 

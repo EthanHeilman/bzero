@@ -1,6 +1,6 @@
 package controlconnection
 
-import am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
+import am "bastionzero.com/bzerolib/connection/agentmessage"
 
 type GetConnectionServiceResponse struct {
 	ConnectionServiceUrl string `json:"connectionServiceUrl"`

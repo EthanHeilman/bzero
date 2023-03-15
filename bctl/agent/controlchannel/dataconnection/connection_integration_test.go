@@ -5,17 +5,18 @@ import (
 	"net/url"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/mocks"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
-	"bastionzero.com/bctl/v1/bzerolib/tests/connectionnode"
-	"bastionzero.com/bctl/v1/bzerolib/tests/server"
+	agentidentity "bastionzero.com/agent/bastion/agentidentity/mocks"
+	bastion "bastionzero.com/agent/bastion/mocks"
+	"bastionzero.com/agent/mrtap"
+	"bastionzero.com/agent/plugin/db/actions/pwdb/mocks"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/tests"
+	"bastionzero.com/bzerolib/tests/connectionnode"
+	"bastionzero.com/bzerolib/tests/server"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -24,7 +25,6 @@ import (
 )
 
 var _ = Describe("Agent Data Connection Integration", Ordered, func() {
-	serviceUrl := "doesn't matter"
 	logger := logger.MockLogger(GinkgoWriter)
 
 	params := url.Values{}
@@ -37,8 +37,10 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 	mockMrtapConfig.On("GetPrivateKey").Return(privateKey)
 	mockMrtapConfig.On("GetPublicKey").Return(publicKey)
 
-	mockAgentIdentityProvider := &agentidentity.MockAgentIdentityProvider{}
-	mockAgentIdentityProvider.On("GetToken", mock.Anything).Return("fake-agent-identity-token", nil)
+	mockAgentIdentityToken := &agentidentity.MockAgentIdentityToken{}
+	mockAgentIdentityToken.On("Get", mock.Anything).Return("fake-agent-identity-token", nil)
+
+	mockBastionApiClient := &bastion.MockApiClient{}
 
 	mockKeyShardConfig := &mocks.PWDBConfig{}
 
@@ -48,7 +50,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 		srLogger := logger.GetComponentLogger("SignalR")
 
 		client := signalr.New(srLogger, websocket.New(wsLogger))
-		conn, _ := New(logger, serviceUrl, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityProvider, privateKey, params, headers, client)
+		conn, _ := New(logger, mockBastionApiClient, cnUrl, connectionId, mockMrtapConfig, mockKeyShardConfig, mockAgentIdentityToken, privateKey, params, headers, client)
 
 		return conn
 	}
@@ -103,7 +105,7 @@ var _ = Describe("Agent Data Connection Integration", Ordered, func() {
 			})
 
 			It("retries to connect until it is able to successfully connect", func() {
-				time.Sleep(3 * time.Second)
+				time.Sleep(5 * time.Second)
 				Expect(conn.Ready()).To(Equal(true), "Connection never connected")
 
 				Expect(len(badStatusCodes)).To(Equal(0), "Connect flow did not cycle through all bad status codes before connecting")

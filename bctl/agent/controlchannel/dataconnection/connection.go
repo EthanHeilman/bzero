@@ -23,17 +23,17 @@ import (
 	"path"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/datachannel"
-	"bastionzero.com/bctl/v1/bctl/agent/mrtap"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/bastion/agentidentity"
+	"bastionzero.com/agent/datachannel"
+	"bastionzero.com/agent/mrtap"
+	"bastionzero.com/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 )
@@ -42,8 +42,9 @@ import (
 var maxBackoffInterval = 5 * time.Second // At most 3 seconds in between requests
 
 const (
-	MaximumReconnectWaitTime = 5 * time.Minute
-	agentHubEndpoint         = "hub/agent/v2"
+	MaximumReconnectWaitTime    = 5 * time.Minute
+	agentHubEndpoint            = "hub/agent/v2"
+	initialDaemonConnectTimeout = 60 * time.Second
 
 	// Websocket methods
 	requestBastionToAgentV1 = "RequestBastionToAgentV1"
@@ -69,32 +70,31 @@ type DataConnection struct {
 	// Buffered channel to keep track of outbound messages
 	sendQueue chan *am.AgentMessage
 
-	// config values needed for MrTAP when creating datachannels
+	// Config values needed for MrTAP when creating datachannels
 	mrtapConfig mrtap.MrtapConfig
 
 	// Config interface for interacting with key shards
 	keyshardConfig pwdb.PWDBConfig
 
-	// provider of agent identity token and message signer for authenticating messages to the backend
-	agentIdentityProvider agentidentity.IAgentIdentityProvider
-	privateKey            *keypair.PrivateKey
+	// Agent identity attributes
+	agentIdToken agentidentity.AgentIdentityToken
+	privateKey   *keypair.PrivateKey // for signing
 
-	// Channel indicating when the DaemonConnected control message is sent in the websocket
-	daemonReadyChan chan bool
+	// Idle timeout duration
+	idleTimeout time.Duration
 
-	serviceUrl string
-	// Channel indicating when daemon connection events occurs which should delay closing the connection due to an idle timeout
-	daemonIdleTimeoutChan chan string
+	// Client for communicated with the bastion
+	bastionClient bastion.ApiClient
 }
 
 func New(
 	logger *logger.Logger,
-	serviceUrl string,
+	bastion bastion.ApiClient,
 	connUrl string,
 	connectionId string,
 	mrtapConfig mrtap.MrtapConfig,
 	keyshardConfig pwdb.PWDBConfig,
-	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	agentIdToken agentidentity.AgentIdentityToken,
 	privateKey *keypair.PrivateKey,
 	params url.Values,
 	headers http.Header,
@@ -109,17 +109,16 @@ func New(
 	connectionUrl.Path = path.Join(connectionUrl.Path, agentHubEndpoint)
 
 	conn := DataConnection{
-		logger:                logger,
-		serviceUrl:            serviceUrl,
-		connectionId:          connectionId,
-		client:                client,
-		broker:                broker.New(),
-		sendQueue:             make(chan *am.AgentMessage, 50),
-		mrtapConfig:           mrtapConfig,
-		keyshardConfig:        keyshardConfig,
-		agentIdentityProvider: agentIdentityProvider,
-		privateKey:            privateKey,
-		daemonReadyChan:       make(chan bool),
+		logger:         logger,
+		bastionClient:  bastion,
+		connectionId:   connectionId,
+		client:         client,
+		broker:         broker.New(),
+		sendQueue:      make(chan *am.AgentMessage, 50),
+		mrtapConfig:    mrtapConfig,
+		keyshardConfig: keyshardConfig,
+		agentIdToken:   agentIdToken,
+		privateKey:     privateKey,
 	}
 
 	if err := conn.connect(connectionUrl, headers, params); err != nil {
@@ -188,18 +187,17 @@ func New(
 }
 
 func (d *DataConnection) receive() {
+	idleTimer := time.NewTimer(d.idleTimeout)
+	defer idleTimer.Stop()
+
 	for {
 		select {
 		case <-d.tmb.Dead():
 			return
+		case <-idleTimer.C:
+			// Close the connection after the idleTimeout if we have not received any messages
+			d.Close(connection.NewIdleTimeoutConnectionClosedError(d.idleTimeout), 10*time.Second)
 		case message := <-d.client.Inbound():
-			// if the daemon is already connected then push a new event to
-			// daemonIdleTimeout chan to delay closing this connection due to
-			// idle timeout
-			if d.daemonIdleTimeoutChan != nil {
-				d.daemonIdleTimeoutChan <- fmt.Sprintf("received %s message in data connection at %s", message.Target, time.Now().UTC())
-			}
-
 			switch message.Target {
 			case closeConnection:
 				var rerr error
@@ -215,22 +213,15 @@ func (d *DataConnection) receive() {
 				if err := json.Unmarshal(message.Arguments[0], &dcMessage); err != nil {
 					d.logger.Errorf("error unmarshalling daemon connected websocket message. Error: %s", err)
 				} else {
-					d.logger.Infof("daemon connected. This daemon will exit if left idle for %s", dcMessage.IdleTimeout)
-					if d.daemonIdleTimeoutChan != nil {
-						d.logger.Errorf("received a daemon connect message after daemon was already connected")
-					} else {
-						go d.waitForIdleTimeout(dcMessage.IdleTimeout.Duration)
-					}
-					d.daemonReadyChan <- true
+					d.logger.Infof("daemon connected. This daemon will exit if left idle for %s", dcMessage.IdleTimeout.Duration)
+
+					// Set the idle timeout value from the daemon connected
+					// message so that this timeout is configurable from the
+					// backend per connection
+					d.idleTimeout = dcMessage.IdleTimeout.Duration
 				}
 			case daemonDisconnected:
-				reconnectTimeout := 60 * time.Second
-				d.logger.Infof("daemon disconnected...waiting %s for daemon to reconnect", reconnectTimeout)
-				if d.daemonIdleTimeoutChan != nil {
-					close(d.daemonIdleTimeoutChan)
-					d.daemonIdleTimeoutChan = nil
-				}
-				go d.waitForDaemonToConnect(reconnectTimeout)
+				d.logger.Infof("daemon disconnected. Waiting %s for reconnect before closing", d.idleTimeout.Round(time.Second).String())
 			case openDataChannel:
 				var odMessage OpenDataChannelMessage
 				err := json.Unmarshal(message.Arguments[0], &odMessage)
@@ -267,6 +258,12 @@ func (d *DataConnection) receive() {
 			default:
 				d.logger.Errorf("Unhandled method target: %s", message.Target)
 			}
+
+			// Reset the idle timeout after processing the message
+			if !idleTimer.Stop() {
+				<-idleTimer.C
+			}
+			idleTimer.Reset(d.idleTimeout)
 		}
 	}
 }
@@ -278,12 +275,10 @@ func (d *DataConnection) openDataChannel(odMessage OpenDataChannelMessage) error
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 	ksSubLogger := d.logger.GetComponentLogger("mrtap")
 
-	bastion := client.New(d.serviceUrl, d.agentIdentityProvider)
-
 	if mt, err := mrtap.New(ksSubLogger, d.mrtapConfig); err != nil {
 		return err
 	} else {
-		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, bastion, dcId, odMessage.Syn)
+		_, err := datachannel.New(&d.tmb, subLogger, d, d.keyshardConfig, mt, d.bastionClient, dcId, odMessage.Syn)
 		return err
 	}
 }
@@ -383,7 +378,7 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 				return fmt.Errorf("failed to connect after %s", backoffParams.MaxElapsedTime)
 			}
 
-			agentIdentityToken, err := d.agentIdentityProvider.GetToken(ctx)
+			agentIdentityToken, err := d.agentIdToken.Get(ctx)
 			if err != nil {
 				d.logger.Errorf("Retrying in %s because failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
@@ -420,39 +415,14 @@ func (d *DataConnection) connect(connUrl *url.URL, headers http.Header, params u
 			d.logger.Infof("Successfully connected to %s", connUrl)
 			d.ready = true
 
-			go d.waitForDaemonToConnect(60 * time.Second)
+			// Set the idleTimeout to 60s for the initial daemon connection so
+			// that we close the connection quickly when the daemon doesn't
+			// connect right away. After the daemon connects this idleTimeout
+			// will be reset to the value in the DaemonConnected message
+			d.logger.Infof("Waiting for daemon to connect or timing out in %s", initialDaemonConnectTimeout)
+			d.idleTimeout = initialDaemonConnectTimeout
+
 			return nil
-		}
-	}
-}
-
-// wait for daemon connect message or timeout and close the connection
-func (d *DataConnection) waitForDaemonToConnect(timeout time.Duration) {
-	select {
-	case <-d.tmb.Dying():
-	case <-d.daemonReadyChan:
-	case <-time.After(timeout):
-		d.Close(fmt.Errorf("timed out waiting for daemon to connect after %s", timeout), 10*time.Second)
-	}
-}
-
-func (d *DataConnection) waitForIdleTimeout(idleTimeout time.Duration) {
-	lastDaemonEvent := fmt.Sprintf("daemon connected at %s", time.Now().UTC())
-	d.daemonIdleTimeoutChan = make(chan string)
-
-	for {
-		select {
-		case <-d.tmb.Dying():
-			return
-		case daemonEvent, ok := <-d.daemonIdleTimeoutChan:
-			lastDaemonEvent = daemonEvent
-			if !ok {
-				// If idleTimeoutChan is closed then return
-				return
-			}
-			// Otherwise continue but reset the timer for idleTimeout
-		case <-time.After(idleTimeout):
-			d.Close(connection.NewIdleTimeoutConnectionClosedError(idleTimeout, lastDaemonEvent), 10*time.Second)
 		}
 	}
 }

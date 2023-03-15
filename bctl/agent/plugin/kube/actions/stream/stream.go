@@ -11,11 +11,11 @@ import (
 	"net/url"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	kubeaction "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/stream"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	kubeaction "bastionzero.com/bzerolib/plugin/kube"
+	"bastionzero.com/bzerolib/plugin/kube/actions/stream"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
+	smsg "bastionzero.com/bzerolib/stream/message"
 	"gopkg.in/tomb.v2"
 )
 

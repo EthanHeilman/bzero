@@ -6,12 +6,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/web/actions/webdial"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/web/actions/webwebsocket"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzweb "bastionzero.com/bctl/v1/bzerolib/plugin/web"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzweb "bastionzero.com/bzerolib/plugin/web"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/daemon/plugin/web/actions/webdial"
+	"bastionzero.com/daemon/plugin/web/actions/webwebsocket"
 )
 
 // Perhaps unnecessary but it is nice to make sure that each action is implementing a common function set

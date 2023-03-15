@@ -37,8 +37,8 @@ type IdleTimeoutConnectionClosedError struct {
 	Reason string
 }
 
-func NewIdleTimeoutConnectionClosedError(idleTimeout time.Duration, lastDaemonEvent string) *IdleTimeoutConnectionClosedError {
-	idleTimeoutErrMsg := fmt.Sprintf("%s of %s. Last daemon event was: %s", IdleTimeoutTemplate, idleTimeout, lastDaemonEvent)
+func NewIdleTimeoutConnectionClosedError(idleTimeout time.Duration) *IdleTimeoutConnectionClosedError {
+	idleTimeoutErrMsg := fmt.Sprintf("%s of %s.", IdleTimeoutTemplate, idleTimeout)
 	return &IdleTimeoutConnectionClosedError{Reason: idleTimeoutErrMsg}
 }
 

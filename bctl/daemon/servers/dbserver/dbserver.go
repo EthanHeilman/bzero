@@ -9,18 +9,18 @@ import (
 
 	"github.com/google/uuid"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/datachannel"
-	"bastionzero.com/bctl/v1/bctl/daemon/mrtap"
-	"bastionzero.com/bctl/v1/bctl/daemon/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db"
-	"bastionzero.com/bctl/v1/bctl/daemon/servers/dataconnection"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
+	bzplugin "bastionzero.com/bzerolib/plugin"
+	bzdb "bastionzero.com/bzerolib/plugin/db"
+	"bastionzero.com/daemon/datachannel"
+	"bastionzero.com/daemon/mrtap"
+	"bastionzero.com/daemon/mrtap/bzcert"
+	"bastionzero.com/daemon/plugin/db"
+	"bastionzero.com/daemon/servers/dataconnection"
 )
 
 const (

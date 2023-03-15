@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog/pkgerrors"
 	"gopkg.in/natefinch/lumberjack.v2"
 
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
+	bzplugin "bastionzero.com/bzerolib/plugin"
 )
 
 const (

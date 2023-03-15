@@ -26,14 +26,14 @@ import (
 	"github.com/cenkalti/backoff/v4"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	am "bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/broker"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/agent/bastion/agentidentity"
+	"bastionzero.com/bzerolib/connection"
+	am "bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/broker"
+	"bastionzero.com/bzerolib/connection/httpclient"
+	"bastionzero.com/bzerolib/connection/messenger"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
 )
 
 var (
@@ -62,7 +62,7 @@ type ControlConnection struct {
 	broker *broker.Broker
 
 	// Provider of agent identity token and message signer for authenticating messages to the backend
-	agentIdentityProvider agentidentity.IAgentIdentityProvider
+	agentIdToken agentidentity.AgentIdentityToken
 
 	// signing key
 	privateKey *keypair.PrivateKey
@@ -78,16 +78,16 @@ func New(
 	params url.Values,
 	headers http.Header,
 	client messenger.Messenger,
-	agentIdentityProvider agentidentity.IAgentIdentityProvider,
+	agentIdToken agentidentity.AgentIdentityToken,
 ) (connection.Connection, error) {
 
 	conn := ControlConnection{
-		logger:                logger,
-		client:                client,
-		broker:                broker.New(),
-		agentIdentityProvider: agentIdentityProvider,
-		privateKey:            privateKey,
-		sendQueue:             make(chan *am.AgentMessage, 50),
+		logger:       logger,
+		client:       client,
+		broker:       broker.New(),
+		agentIdToken: agentIdToken,
+		privateKey:   privateKey,
+		sendQueue:    make(chan *am.AgentMessage, 50),
 	}
 
 	go conn.receive()
@@ -236,7 +236,7 @@ func (c *ControlConnection) connect(bastionUrl string, headers http.Header, para
 				continue
 			}
 
-			agentIdentityToken, err := c.agentIdentityProvider.GetToken(ctx)
+			agentIdentityToken, err := c.agentIdToken.Get(ctx)
 			if err != nil {
 				c.logger.Infof("Retrying in %s because we failed to get agent identity token: %s", backoffParams.NextBackOff().Round(time.Second), err)
 				continue
@@ -353,8 +353,7 @@ func (c *ControlConnection) getControlChannel(ctx context.Context, connUrl strin
 	}
 
 	// Decode and return response
-	defer response.Body.Close()
-	responseDecoded := GetControlChannelResponse{}
+	var responseDecoded GetControlChannelResponse
 	json.NewDecoder(response.Body).Decode(&responseDecoded)
 	return &responseDecoded, nil
 }

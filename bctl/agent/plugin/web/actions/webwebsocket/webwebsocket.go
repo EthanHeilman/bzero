@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"net/url"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/logger"
 	"gopkg.in/tomb.v2"
 
-	webaction "bastionzero.com/bctl/v1/bzerolib/plugin/web"
-	webwebsocket "bastionzero.com/bctl/v1/bzerolib/plugin/web/actions/webwebsocket"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	webaction "bastionzero.com/bzerolib/plugin/web"
+	webwebsocket "bastionzero.com/bzerolib/plugin/web/actions/webwebsocket"
+	smsg "bastionzero.com/bzerolib/stream/message"
 	"github.com/gorilla/websocket"
 )
 

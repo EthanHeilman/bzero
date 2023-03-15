@@ -20,3 +20,7 @@ bzerolib/bzerolibcoverage.xml
 
 # Ginkgo
 **/*.test
+
+# Ignore any golang work files
+*.work
+*.work.sum

@@ -11,11 +11,11 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/transport/spdy"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	kubeaction "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/portforward"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	kubeaction "bastionzero.com/bzerolib/plugin/kube"
+	"bastionzero.com/bzerolib/plugin/kube/actions/portforward"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 // wrap this code so at test-time we can mock the dial / config

@@ -11,8 +11,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/unix/unixuser"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/unix/unixuser"
 )
 
 func TestAuthorizedKeys(t *testing.T) {

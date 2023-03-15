@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/dial"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/plugin/db/actions/dial"
+	"bastionzero.com/agent/plugin/db/actions/pwdb"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/db"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type IDbAction interface {
@@ -33,7 +33,7 @@ type DbPlugin struct {
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	keyshardConfig pwdb.PWDBConfig,
-	bastion *client.BastionClient,
+	bastion bastion.ApiClient,
 	action string,
 	payload []byte,
 ) (*DbPlugin, error) {

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	bzcrt "bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	bzcrt "bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/mrtap/util"
 )
 
 // Repetition in MrTAP messages is requires to maintain flat

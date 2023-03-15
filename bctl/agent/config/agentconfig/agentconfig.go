@@ -5,9 +5,9 @@ import (
 	"net/url"
 	"sync"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config"
-	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
+	"bastionzero.com/agent/config"
+	"bastionzero.com/agent/config/agentconfig/data"
+	"bastionzero.com/bzerolib/keypair"
 )
 
 type agentConfigClient interface {

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
+	"bastionzero.com/agent/config/keyshardconfig/data"
+	"bastionzero.com/bzerolib/plugin/db"
 	"github.com/crunchydata/crunchy-proxy/protocol"
 )
 

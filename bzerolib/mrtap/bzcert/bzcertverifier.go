@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/mrtap/util"
 	oidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/sha3"
 	"gopkg.in/square/go-jose.v2"

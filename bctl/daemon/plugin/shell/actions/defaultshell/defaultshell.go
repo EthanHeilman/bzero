@@ -12,10 +12,10 @@ import (
 	"golang.org/x/term"
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzshell "bastionzero.com/bzerolib/plugin/shell"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (

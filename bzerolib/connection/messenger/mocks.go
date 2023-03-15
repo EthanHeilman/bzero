@@ -5,14 +5,19 @@ import (
 	"net/http"
 	"net/url"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/agentmessage"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/agentmessage"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
 	"github.com/stretchr/testify/mock"
 )
 
 type MockMessenger struct {
 	Messenger
 	mock.Mock
+}
+
+func (m *MockMessenger) Err() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
 func (m *MockMessenger) Close(reason error) {

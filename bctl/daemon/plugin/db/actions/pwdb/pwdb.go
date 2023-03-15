@@ -10,10 +10,10 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/pwdb"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	"bastionzero.com/bzerolib/plugin/db/actions/pwdb"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (

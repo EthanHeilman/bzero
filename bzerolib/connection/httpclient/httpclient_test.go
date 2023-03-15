@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bzerolib/tests"
 	"github.com/cenkalti/backoff/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

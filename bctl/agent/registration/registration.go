@@ -10,10 +10,10 @@ import (
 	"os"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	"bastionzero.com/bctl/v1/bzerolib/connection/httpclient"
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/bzerolib/connection/httpclient"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/logger"
 	"github.com/cenkalti/backoff/v4"
 )
 

@@ -3,7 +3,7 @@ package exec
 import (
 	"encoding/base64"
 
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type StdWriter struct {

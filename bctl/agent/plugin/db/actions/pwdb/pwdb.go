@@ -10,12 +10,12 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/db/actions/pwdb/client"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db/actions/pwdb"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/config/keyshardconfig/data"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/db"
+	"bastionzero.com/bzerolib/plugin/db/actions/pwdb"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 const (
@@ -42,17 +42,17 @@ type Pwdb struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig PWDBConfig
 
-	bastion    *client.BastionClient
-	remoteHost string
-	remotePort int
-	remoteConn net.Conn
+	bastionClient bastion.ApiClient
+	remoteHost    string
+	remotePort    int
+	remoteConn    net.Conn
 }
 
 func New(logger *logger.Logger,
 	ch chan smsg.StreamMessage,
 	doneChan chan struct{},
 	keyshardConfig PWDBConfig,
-	bastion *client.BastionClient,
+	bastion bastion.ApiClient,
 	remoteHost string,
 	remotePort int) (*Pwdb, error) {
 
@@ -60,7 +60,7 @@ func New(logger *logger.Logger,
 		logger:           logger,
 		doneChan:         doneChan,
 		keyshardConfig:   keyshardConfig,
-		bastion:          bastion,
+		bastionClient:    bastion,
 		streamOutputChan: ch,
 		remoteHost:       remoteHost,
 		remotePort:       remotePort,

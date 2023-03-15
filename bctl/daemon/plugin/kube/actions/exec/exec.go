@@ -9,11 +9,11 @@ import (
 
 	"gopkg.in/tomb.v2"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/exec"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	"bastionzero.com/bzerolib/plugin/kube/actions/exec"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
+	smsg "bastionzero.com/bzerolib/stream/message"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 

@@ -10,19 +10,19 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agentreport"
-	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel"
-	"bastionzero.com/bctl/v1/bctl/agent/controlchannel/agentidentity"
-	"bastionzero.com/bctl/v1/bctl/agent/controlconnection"
-	"bastionzero.com/bctl/v1/bctl/agent/registration"
-	"bastionzero.com/bctl/v1/bzerolib/connection"
-	"bastionzero.com/bctl/v1/bzerolib/connection/messenger/signalr"
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter/websocket"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/report"
 	"github.com/google/uuid"
 	"gopkg.in/tomb.v2"
+
+	"bastionzero.com/agent/agenttype"
+	"bastionzero.com/agent/bastion"
+	"bastionzero.com/agent/bastion/agentidentity"
+	"bastionzero.com/agent/controlchannel"
+	"bastionzero.com/agent/controlconnection"
+	"bastionzero.com/agent/registration"
+	"bastionzero.com/bzerolib/connection"
+	"bastionzero.com/bzerolib/connection/messenger/signalr"
+	"bastionzero.com/bzerolib/connection/transporter/websocket"
+	"bastionzero.com/bzerolib/logger"
 )
 
 const (
@@ -40,7 +40,7 @@ type IRegistration interface {
 type AgentConfig interface {
 	controlchannel.ControlChannelConfig
 	registration.RegistrationConfig
-	agentidentity.IAgentIdentityTokenStore
+	agentidentity.AgentIdentityTokenConfig
 
 	GetTargetId() string
 	GetShutdownInfo() (string, map[string]string)
@@ -58,15 +58,19 @@ type Agent struct {
 
 	agentConfig    AgentConfig
 	keyShardConfig controlchannel.KeyShardConfig
-	agentType      agenttype.AgentType
-	version        string
-	osSignalChan   <-chan os.Signal
+
+	agentType agenttype.AgentType
+	version   string
+
+	osSignalChan <-chan os.Signal
 
 	ctx    context.Context
 	cancel context.CancelFunc
 
 	controlConn    connection.Connection
 	controlChannel *controlchannel.ControlChannel
+
+	bastionClient bastion.ApiClient
 }
 
 func (a *Agent) Run() (err error) {
@@ -124,14 +128,17 @@ func (a *Agent) startControlChannel() error {
 	privateKey := a.agentConfig.GetPrivateKey()
 	serviceUrl := a.agentConfig.GetServiceUrl()
 
-	aipLogger := a.logger.GetComponentLogger("AgentIdentityProvider")
-	agentIdentityProvider := agentidentity.New(
+	aipLogger := a.logger.GetComponentLogger("AgentIdentityToken")
+	agentIdToken := agentidentity.New(
 		aipLogger,
 		serviceUrl,
 		targetId,
 		a.agentConfig,
 		privateKey,
 	)
+
+	bcLogger := a.logger.GetComponentLogger("Bastion")
+	a.bastionClient = bastion.New(bcLogger, serviceUrl, agentIdToken, a.version)
 
 	ccId := uuid.New().String()
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
@@ -150,13 +157,13 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Create our control channel's connection to BastionZero
-	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdentityProvider)
+	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdToken)
 	if err != nil {
 		return err
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, ccId, conn, serviceUrl, string(a.agentType), a.agentConfig.GetTargetId(), agentIdentityProvider, privateKey, a.agentConfig, a.keyShardConfig)
+	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdToken, privateKey, a.agentConfig, a.keyShardConfig)
 	a.controlConn = conn
 
 	return err
@@ -183,19 +190,13 @@ func (a *Agent) Close(reason error) {
 
 // report early errors to the bastion so we have greater visibility
 func (a *Agent) reportError(reason error) {
-	errReport := report.ErrorReport{
-		Reporter:  fmt.Sprintf("%s-agent", a.agentType),
-		Timestamp: fmt.Sprint(time.Now().UTC().Unix()),
-		Message:   reason.Error(),
-		State:     a.state(),
-	}
-
 	// If we passed in the Agent's context here, we would have to instantly cancel this.
 	// We want to give this code a fair chance of reporting our error
 	ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Second)
 	defer cancel()
-	if err := report.ReportError(ctx, a.agentConfig.GetServiceUrl(), errReport); err != nil {
-		a.logger.Errorf("failed to report error: %s", err)
+
+	if err := a.bastionClient.ReportError(ctx, fmt.Sprintf("%s-agent", a.agentType), reason, a.state()); err != nil {
+		a.logger.Error(err)
 	}
 }
 
@@ -206,16 +207,7 @@ func (a *Agent) reportQualifiedShutdown() {
 	if shutdownReason == stoppedProcessingPongsMsg || strings.Contains(shutdownReason, controlchannel.ManualRestartMsg) {
 		a.logger.Infof("Notifying Bastion that we restarted because: %s", shutdownReason)
 
-		if err := agentreport.ReportRestart(
-			a.ctx,
-			a.agentConfig.GetServiceUrl(),
-			agentreport.RestartReport{
-				TargetId:       a.agentConfig.GetTargetId(),
-				AgentPublicKey: a.agentConfig.GetPublicKey().String(),
-				Timestamp:      fmt.Sprint(time.Now().UTC().Unix()),
-				Message:        shutdownReason,
-				State:          shutdownState,
-			}); err != nil {
+		if err := a.bastionClient.ReportRestart(a.ctx, a.agentConfig.GetTargetId(), a.agentConfig.GetPublicKey().String(), shutdownReason, shutdownState); err != nil {
 			a.logger.Errorf("failed to report restart: %s", err)
 		}
 	}

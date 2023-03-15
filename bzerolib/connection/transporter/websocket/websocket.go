@@ -13,8 +13,8 @@ import (
 	"net/http"
 	"net/url"
 
-	"bastionzero.com/bctl/v1/bzerolib/connection/transporter"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/bzerolib/connection/transporter"
+	"bastionzero.com/bzerolib/logger"
 	gorilla "github.com/gorilla/websocket"
 	"gopkg.in/tomb.v2"
 )

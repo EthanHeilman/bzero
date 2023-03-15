@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"bastionzero.com/bctl/v1/bzerolib/unix/sudoers"
+	"bastionzero.com/bzerolib/unix/sudoers"
 )
 
 // These are the users we're allowed to create, if someone is trying to look them up

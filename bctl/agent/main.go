@@ -9,14 +9,14 @@ import (
 	"os"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bctl/agent/agenttype"
-	agentconfig "bastionzero.com/bctl/v1/bctl/agent/config/agentconfig"
-	"bastionzero.com/bctl/v1/bctl/agent/config/client"
-	ksconfig "bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig"
-	"bastionzero.com/bctl/v1/bctl/agent/rbac"
-	"bastionzero.com/bctl/v1/bctl/agent/registration"
-	"bastionzero.com/bctl/v1/bzerolib/bzos"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
+	"bastionzero.com/agent/agenttype"
+	agentconfig "bastionzero.com/agent/config/agentconfig"
+	"bastionzero.com/agent/config/client"
+	ksconfig "bastionzero.com/agent/config/keyshardconfig"
+	"bastionzero.com/agent/rbac"
+	"bastionzero.com/agent/registration"
+	"bastionzero.com/bzerolib/bzos"
+	"bastionzero.com/bzerolib/logger"
 )
 
 var (

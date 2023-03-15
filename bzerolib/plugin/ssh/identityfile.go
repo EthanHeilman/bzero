@@ -1,7 +1,7 @@
 package ssh
 
 import (
-	"bastionzero.com/bctl/v1/bzerolib/bzio"
+	"bastionzero.com/bzerolib/bzio"
 )
 
 type IIdentityFile interface {

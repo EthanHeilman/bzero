@@ -10,10 +10,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/portforward"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin/kube/actions/portforward"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/tests"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/rest"
 )

@@ -1,7 +1,7 @@
 package exec
 
 import (
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/exec"
+	"bastionzero.com/bzerolib/plugin/kube/actions/exec"
 	"k8s.io/client-go/tools/remotecommand"
 )
 

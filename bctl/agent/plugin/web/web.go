@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/web/actions/webdial"
-	"bastionzero.com/bctl/v1/bctl/agent/plugin/web/actions/webwebsocket"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzweb "bastionzero.com/bctl/v1/bzerolib/plugin/web"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/agent/plugin/web/actions/webdial"
+	"bastionzero.com/agent/plugin/web/actions/webwebsocket"
+	"bastionzero.com/bzerolib/logger"
+	bzweb "bastionzero.com/bzerolib/plugin/web"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type IWebAction interface {

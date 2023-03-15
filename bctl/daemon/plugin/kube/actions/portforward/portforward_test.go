@@ -11,12 +11,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/portforward"
-	kubeutils "bastionzero.com/bctl/v1/bzerolib/plugin/kube/utils"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
-	"bastionzero.com/bctl/v1/bzerolib/tests"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	"bastionzero.com/bzerolib/plugin/kube/actions/portforward"
+	kubeutils "bastionzero.com/bzerolib/plugin/kube/utils"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/tests"
 	"golang.org/x/build/kubernetes/api"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 )

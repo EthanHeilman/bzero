@@ -10,8 +10,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	kuberest "bastionzero.com/bctl/v1/bzerolib/plugin/kube/actions/restapi"
+	"bastionzero.com/bzerolib/logger"
+	kuberest "bastionzero.com/bzerolib/plugin/kube/actions/restapi"
 )
 
 // what restapi action will receive from "bastion"

@@ -3,8 +3,8 @@ package agentconfig
 import (
 	"testing"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/agentconfig/data"
-	"bastionzero.com/bctl/v1/bctl/agent/config/client"
+	"bastionzero.com/agent/config/agentconfig/data"
+	"bastionzero.com/agent/config/client"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/mock"

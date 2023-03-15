@@ -1,7 +1,7 @@
 package dial
 
 import (
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	smsg "bastionzero.com/bzerolib/stream/message"
 )
 
 type DialSubAction string

@@ -4,14 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube/actions/exec"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube/actions/portforward"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube/actions/restapi"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/kube/actions/stream"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzkube "bastionzero.com/bctl/v1/bzerolib/plugin/kube"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzkube "bastionzero.com/bzerolib/plugin/kube"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/daemon/plugin/kube/actions/exec"
+	"bastionzero.com/daemon/plugin/kube/actions/portforward"
+	"bastionzero.com/daemon/plugin/kube/actions/restapi"
+	"bastionzero.com/daemon/plugin/kube/actions/stream"
 	"github.com/google/uuid"
 )
 

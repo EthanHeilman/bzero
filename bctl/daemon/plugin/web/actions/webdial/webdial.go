@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	"bastionzero.com/bctl/v1/bzerolib/bzhttp"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzwebdial "bastionzero.com/bctl/v1/bzerolib/plugin/web/actions/webdial"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/bzhttp"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzwebdial "bastionzero.com/bzerolib/plugin/web/actions/webdial"
+	smsg "bastionzero.com/bzerolib/stream/message"
 	"gopkg.in/tomb.v2"
 )
 

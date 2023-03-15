@@ -6,12 +6,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db/actions/dial"
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/db/actions/pwdb"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	"bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzdb "bastionzero.com/bctl/v1/bzerolib/plugin/db"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	"bastionzero.com/bzerolib/plugin"
+	bzdb "bastionzero.com/bzerolib/plugin/db"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/daemon/plugin/db/actions/dial"
+	"bastionzero.com/daemon/plugin/db/actions/pwdb"
 )
 
 // Perhaps unnecessary but it is nice to make sure that each action is implementing a common function set

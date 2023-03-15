@@ -6,14 +6,17 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"fmt"
 	"time"
 
-	"bastionzero.com/bctl/v1/bctl/agent/config/keyshardconfig/data"
-	"bastionzero.com/bctl/v1/bzerolib/plugin/db"
+	"bastionzero.com/agent/config/keyshardconfig/data"
+	"bastionzero.com/bzerolib/plugin/db"
 	"github.com/bastionzero/go-toolkit/certificate"
 	"github.com/bastionzero/go-toolkit/certificate/ca"
 	"github.com/bastionzero/go-toolkit/certificate/splitclient"
+	"github.com/bastionzero/keysplitting"
+	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -72,7 +75,7 @@ func (p *Pwdb) generateClientCert(keyData data.KeyEntry, targetUser string) (tls
 
 	p.logger.Infof("Generated SplitCert in %s with key size %d", time.Since(start).Round(time.Millisecond).String(), rsaKeyLength)
 
-	signedCert, err := p.bastion.RequestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
+	signedCert, err := p.requestCosign(targetUser, clientCert, certKey.PublicKey, *agentCA.SplitPrivateKey())
 	if err != nil {
 		return ret, db.NewClientCertCosignError(err)
 	}
@@ -88,4 +91,22 @@ func (p *Pwdb) generateClientCert(keyData data.KeyEntry, targetUser string) (tls
 	}
 
 	return tls.X509KeyPair([]byte(certPem), []byte(keyPem))
+}
+
+func (p *Pwdb) requestCosign(targetUser string, clientCert *splitclient.SplitClientCertificate, clientPubKey rsa.PublicKey, privKey keysplitting.PrivateKeyShard) (*splitclient.SplitClientCertificate, error) {
+	// Hash the agent's private key as an identifier for which certificate Bastion needs
+	agentKeyPem, err := privKey.EncodePEM()
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode split private key: %s", err)
+	}
+
+	hash := sha3.Sum256([]byte(agentKeyPem))
+	agentKeyHash := base64.StdEncoding.EncodeToString(hash[:])
+
+	signed, err := p.bastionClient.CosignCertificate(targetUser, clientCert, clientPubKey, agentKeyHash)
+	if err != nil {
+		return nil, fmt.Errorf("cosign request to bastion failed: %s", err)
+	}
+
+	return signed, nil
 }

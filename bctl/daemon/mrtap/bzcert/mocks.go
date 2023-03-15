@@ -3,9 +3,9 @@ package bzcert
 import (
 	"encoding/base64"
 
-	"bastionzero.com/bctl/v1/bzerolib/keypair"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bctl/v1/bzerolib/mrtap/util"
+	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/mrtap/bzcert"
+	"bastionzero.com/bzerolib/mrtap/util"
 	mock "github.com/stretchr/testify/mock"
 )
 

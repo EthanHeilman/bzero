@@ -3,11 +3,11 @@ package shell
 import (
 	"fmt"
 
-	"bastionzero.com/bctl/v1/bctl/daemon/plugin/shell/actions/defaultshell"
-	"bastionzero.com/bctl/v1/bzerolib/logger"
-	bzplugin "bastionzero.com/bctl/v1/bzerolib/plugin"
-	bzshell "bastionzero.com/bctl/v1/bzerolib/plugin/shell"
-	smsg "bastionzero.com/bctl/v1/bzerolib/stream/message"
+	"bastionzero.com/bzerolib/logger"
+	bzplugin "bastionzero.com/bzerolib/plugin"
+	bzshell "bastionzero.com/bzerolib/plugin/shell"
+	smsg "bastionzero.com/bzerolib/stream/message"
+	"bastionzero.com/daemon/plugin/shell/actions/defaultshell"
 )
 
 type IShellAction interface {
