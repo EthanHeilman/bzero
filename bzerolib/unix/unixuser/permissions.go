@@ -1,3 +1,5 @@
+//go:build unix
+
 /*
 This file covers the functions that check whether a user has a certain given file permissions
 based on the file path.

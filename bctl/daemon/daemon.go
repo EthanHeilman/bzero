@@ -17,6 +17,7 @@ import (
 	"bastionzero.com/bzerolib/report"
 	"bastionzero.com/daemon/exit"
 	"bastionzero.com/daemon/mrtap/bzcert"
+	"bastionzero.com/daemon/mrtap/bzcert/zliconfig"
 	"bastionzero.com/daemon/servers/dataconnection"
 	"bastionzero.com/daemon/servers/dbserver"
 	"bastionzero.com/daemon/servers/kubeserver"
@@ -25,7 +26,6 @@ import (
 	"bastionzero.com/daemon/servers/webserver"
 
 	bzlogger "bastionzero.com/bzerolib/logger"
-	"bastionzero.com/bzerolib/mrtap/bzcert/zliconfig"
 	bzplugin "bastionzero.com/bzerolib/plugin"
 )
 

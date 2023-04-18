@@ -1,3 +1,5 @@
+//go:build unix
+
 /*
 This package extends golang's user package, to be specifically for unix and specifically for the use cases
 Bastion Zero has.
