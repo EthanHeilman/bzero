@@ -26,7 +26,7 @@ var (
 	activationToken, registrationKey string
 	namespace                        string
 	targetId, targetName             string
-	logLevel, configDir              string
+	logLevel                         string
 	forceReregistration              bool
 	wait                             bool
 	printVersion                     bool
@@ -38,9 +38,9 @@ var (
 )
 
 const (
-	prodServiceUrl         = "https://cloud.bastionzero.com/"
-	defaultLogFilePath     = "/var/log/bzero/bzero-agent.log"
-	defaultConfigDirectory = "/etc/bzero"
+	prodServiceUrl     = "https://cloud.bastionzero.com/"
+	defaultLogFilePath = "/var/log/bzero/bzero-agent.log"
+	configDir          = "/etc/bzero"
 
 	// Env var to flag if we are in a kube cluster
 	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
@@ -139,8 +139,6 @@ func parseFlags() bool {
 	// new env flags
 	flag.StringVar(&environmentId, "envId", "", "(Deprecated) Please use -environmentId")
 	flag.StringVar(&environmentName, "envName", "", "(Deprecated) Please use -environmentId")
-
-	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
 
 	/* key-shard configuration command */
 	keyShardsCmd := flag.NewFlagSet("keyshards", flag.ExitOnError)
