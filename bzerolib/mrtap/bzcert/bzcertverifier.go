@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/url"
+	"regexp"
 	"time"
 
 	"bastionzero.com/bzerolib/keypair"
@@ -60,6 +61,7 @@ const (
 	Microsoft ProviderType = "microsoft"
 	Okta      ProviderType = "okta"
 	OneLogin  ProviderType = "onelogin"
+	Keycloak  ProviderType = "keycloak"
 	// Custom    ProviderType = "custom" // plan for custom IdP support
 )
 
@@ -76,6 +78,14 @@ func NewVerifier(idpProvider string, idpOrgId string, jwksUrlPatterns []string) 
 		issuerUrl = fmt.Sprintf("https://%s.okta.com", idpOrgId)
 	case OneLogin:
 		issuerUrl = fmt.Sprintf("https://%s.onelogin.com/oidc/2", idpOrgId)
+	case Keycloak:
+		// Keycloak is self-hosted and has a custom issuer url, so idpOrgId will contain the whole domain
+		// We will still validate the Keycloak issuer url for general format using regex
+		keycloakUrlPattern := regexp.MustCompile("^https://.*/realms/.*")
+		if !keycloakUrlPattern.MatchString(idpOrgId) {
+			return nil, fmt.Errorf("Invalid Keycloak issuer url: %s", idpOrgId)
+		}
+		issuerUrl = idpOrgId
 	// case Custom:
 	// 	issUrl = customIss
 	default:
