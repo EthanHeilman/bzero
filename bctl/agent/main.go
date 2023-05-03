@@ -20,12 +20,13 @@ import (
 )
 
 var (
-	serviceUrl, orgId                string
+	serviceUrl                       string
+	idpProvider, idpOrgId            string
 	environmentId, environmentName   string
 	activationToken, registrationKey string
-	idpProvider, namespace, idpOrgId string
+	namespace                        string
 	targetId, targetName             string
-	logLevel, configDir              string
+	logLevel                         string
 	forceReregistration              bool
 	wait                             bool
 	printVersion                     bool
@@ -37,9 +38,9 @@ var (
 )
 
 const (
-	prodServiceUrl         = "https://cloud.bastionzero.com/"
-	defaultLogFilePath     = "/var/log/bzero/bzero-agent.log"
-	defaultConfigDirectory = "/etc/bzero"
+	prodServiceUrl     = "https://cloud.bastionzero.com/"
+	defaultLogFilePath = "/var/log/bzero/bzero-agent.log"
+	configDir          = "/etc/bzero"
 
 	// Env var to flag if we are in a kube cluster
 	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
@@ -109,15 +110,15 @@ func main() {
 func parseFlags() bool {
 	/* default command */
 	// Helpful flags
-	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent")
-	flag.BoolVar(&listLogFile, "logs", false, "Print the agent log file path")
+	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent.")
+	flag.BoolVar(&listLogFile, "logs", false, "Print the agent log file path.")
 
 	// Our required registration flags
-	flag.StringVar(&activationToken, "activationToken", "", "Single-use token used to register the agent")
-	flag.StringVar(&registrationKey, "registrationKey", "", "API Key used to register the agent")
+	flag.StringVar(&activationToken, "activationToken", "", "Single-use token used to register the agent.")
+	flag.StringVar(&registrationKey, "registrationKey", "", "The registration secret is an API key provisioned using the web app.")
 
 	// forced re-registration flags
-	flag.BoolVar(&forceReregistration, "y", false, "Boolean flag if you want to force the agent to re-register")
+	flag.BoolVar(&forceReregistration, "y", false, `Boolean flag if you want to force the agent to re-register. The old target will be deactivated. You must to restart the agent using 'sudo systemctl restart bzero'.`)
 	flag.BoolVar(&forceReregistration, "f", false, "Same as -y")
 
 	// Our flag to determine if this is systemd and will therefore wait for successful registration
@@ -125,19 +126,19 @@ func parseFlags() bool {
 
 	// All optional flags
 	flag.StringVar(&serviceUrl, "serviceUrl", prodServiceUrl, "Service URL to use")
-	flag.StringVar(&orgId, "orgId", "", "OrgID to use")
-	flag.StringVar(&targetName, "targetName", "", "Target name to use")
+	flag.StringVar(&targetName, "targetName", "", "The desired name of the target. If no name is provided, this will default to the target’s host name.")
 	flag.StringVar(&targetId, "targetId", "", "Target ID to use")
 	flag.StringVar(&logLevel, "logLevel", "debug", "The log level to use -- must be one of 'disabled', 'debug', 'info', 'error'")
 
-	flag.StringVar(&environmentId, "environmentId", "", "Policy environment ID to associate with agent")
-	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Policy environment Name to associate with agent")
+	flag.StringVar(&idpOrgId, "orgId", "", "The unique identifier for your SSO instance. For more information locating it please see https://docs.bastionzero.com/docs/deployment/installing-the-agent#bzero-flags")
+	flag.StringVar(&idpProvider, "orgProvider", "", "Your identity provider, e.g., “Google”, “Microsoft”, “Okta”, etc. If neither the -orgId nor the -orgProvider are set, the information defaults to values provided by BastionZero during the registration process.")
+
+	flag.StringVar(&environmentId, "environmentId", "", "The uuid of the environment you want to put the agent in. If environmentId is not provided, the target will be placed in the default environment and can be assigned a new environment via cloud.bastionzero.com.")
+	flag.StringVar(&environmentName, "environmentName", "", "(Deprecated) Please use -environmentId")
 
 	// new env flags
-	flag.StringVar(&environmentId, "envId", "", "(Deprecated) Please use environmentId")
-	flag.StringVar(&environmentName, "envName", "", "(Deprecated) Policy environment Name to associate with agent")
-
-	flag.StringVar(&configDir, "configDir", defaultConfigDirectory, "Specify a unique config path for running multiple agents on the same box")
+	flag.StringVar(&environmentId, "envId", "", "(Deprecated) Please use -environmentId")
+	flag.StringVar(&environmentName, "envName", "", "(Deprecated) Please use -environmentId")
 
 	/* key-shard configuration command */
 	keyShardsCmd := flag.NewFlagSet("keyshards", flag.ExitOnError)

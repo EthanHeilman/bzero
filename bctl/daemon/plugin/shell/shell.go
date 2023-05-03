@@ -10,7 +10,7 @@ import (
 	"bastionzero.com/daemon/plugin/shell/actions/defaultshell"
 )
 
-type IShellAction interface {
+type ShellAction interface {
 	ReceiveStream(stream smsg.StreamMessage)
 	Start(attach bool) error
 	Replay(replayData []byte) error
@@ -24,7 +24,7 @@ type ShellDaemonPlugin struct {
 	outboxQueue chan bzplugin.ActionWrapper
 	doneChan    chan struct{}
 	killed      bool
-	action      IShellAction
+	action      ShellAction
 }
 
 func New(logger *logger.Logger) *ShellDaemonPlugin {

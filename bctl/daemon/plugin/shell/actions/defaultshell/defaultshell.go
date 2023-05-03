@@ -5,11 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
 	"time"
 
-	"golang.org/x/sys/unix"
-	"golang.org/x/term"
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/bzerolib/logger"
@@ -19,8 +16,8 @@ import (
 )
 
 const (
-	InputBufferSize   = 8 * 1024
-	InputDebounceTime = 5 * time.Millisecond
+	inputBufferSize   = 8 * 1024
+	inputDebounceTime = 5 * time.Millisecond
 )
 
 type DefaultShell struct {
@@ -41,7 +38,7 @@ func New(logger *logger.Logger, outboxQueue chan plugin.ActionWrapper, doneChan 
 		logger:     logger,
 		outputChan: outboxQueue,
 		doneChan:   doneChan,
-		stdInChan:  make(chan byte, InputBufferSize),
+		stdInChan:  make(chan byte, inputBufferSize),
 	}
 }
 
@@ -71,62 +68,13 @@ func (d *DefaultShell) Start(attach bool) error {
 		}
 		d.sendOutputMessage(bzshell.ShellOpen, openShellDataMessage)
 	}
-
-	// Set initial terminal dimensions and then listen for any changes to
-	// terminal size
-	d.sendTerminalSize()
-	d.listenForTerminalSizeChanges()
-
-	// reading Stdin in raw mode and forward keypresses after debouncing
-	go d.sendStdIn()
 	go func() {
 		defer close(d.doneChan)
 		<-d.tmb.Dying()
 	}()
 
-	d.tmb.Go(func() error {
-		defer d.logger.Infof("closing action: %s", d.tmb.Err())
-
-		// switch stdin into 'raw' mode
-		// https://pkg.go.dev/golang.org/x/term#pkg-overview
-		oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-		if err != nil {
-			return fmt.Errorf("error switching std to raw mode: %s", err)
-		}
-		defer term.Restore(int(os.Stdin.Fd()), oldState)
-
-		b := make([]byte, 1)
-
-		for {
-			select {
-			case <-d.tmb.Dying():
-				return nil
-			default:
-				if n, err := os.Stdin.Read(b); !d.tmb.Alive() {
-					return nil
-				} else if err != nil || n != 1 {
-					return fmt.Errorf("error reading last keypress from Stdin: %s", err)
-				}
-
-				if !d.isConnected {
-					switch b[0] {
-					// this appears to be cross-platform between Linux and MacOS
-					// NOTE: there is a brief period when the user could press ctrl+\ right
-					// 		when the zli is starting up that can put them in a weird state.
-					//		This is not something we can catch right now but the user can
-					//		press ctrl+d to get out of it
-					case uint8(3), uint8(4), uint8(28):
-						return &bzshell.ShellCancelledError{}
-					default:
-					}
-				}
-
-				d.stdInChan <- b[0]
-			}
-		}
-	})
-
-	return nil
+	// Os-specific specialized setup
+	return d.start(attach)
 }
 
 func (d *DefaultShell) Replay(replayData []byte) error {
@@ -160,9 +108,41 @@ func (d *DefaultShell) ReceiveStream(smessage smsg.StreamMessage) {
 	}
 }
 
+func (d *DefaultShell) readFromStdIn() error {
+	b := make([]byte, 1)
+
+	for {
+		select {
+		case <-d.tmb.Dying():
+			return nil
+		default:
+			if n, err := os.Stdin.Read(b); !d.tmb.Alive() {
+				return nil
+			} else if err != nil || n != 1 {
+				return fmt.Errorf("error reading last keypress from Stdin: %w", err)
+			}
+
+			if !d.isConnected {
+				switch b[0] {
+				// this appears to be cross-platform between Linux and MacOS
+				// NOTE: there is a brief period when the user could press ctrl+\ right
+				// 		when the zli is starting up that can put them in a weird state.
+				//		This is not something we can catch right now but the user can
+				//		press ctrl+d to get out of it
+				case uint8(3), uint8(4), uint8(28):
+					return &bzshell.ShellCancelledError{}
+				default:
+				}
+			}
+
+			d.stdInChan <- b[0]
+		}
+	}
+}
+
 // processes input channel by debouncing all keypresses within a time interval
 func (d *DefaultShell) sendStdIn() {
-	inputBuf := make([]byte, InputBufferSize)
+	inputBuf := make([]byte, inputBufferSize)
 
 	// slice the inputBuf to len 0 (but still keep capacity allocated)
 	inputBuf = inputBuf[:0]
@@ -173,7 +153,7 @@ func (d *DefaultShell) sendStdIn() {
 			return
 		case b := <-d.stdInChan:
 			inputBuf = append(inputBuf, b)
-		case <-time.After(InputDebounceTime):
+		case <-time.After(inputDebounceTime):
 			if len(inputBuf) >= 1 {
 				// Send all accumulated keypresses in a shellInput data message
 				shellInputDataMessage := bzshell.ShellInputMessage{
@@ -189,18 +169,6 @@ func (d *DefaultShell) sendStdIn() {
 	}
 }
 
-func (d *DefaultShell) sendTerminalSize() {
-	if w, h, err := term.GetSize(int(os.Stdout.Fd())); err != nil {
-		d.logger.Errorf("Failed to get current terminal size %s", err)
-	} else {
-		shellResizeMessage := bzshell.ShellResizeMessage{
-			Rows: uint32(h),
-			Cols: uint32(w),
-		}
-		d.sendOutputMessage(bzshell.ShellResize, shellResizeMessage)
-	}
-}
-
 func (d *DefaultShell) sendOutputMessage(action bzshell.ShellSubAction, payload interface{}) {
 	// Send payload to plugin output queue
 	payloadBytes, _ := json.Marshal(payload)
@@ -208,25 +176,4 @@ func (d *DefaultShell) sendOutputMessage(action bzshell.ShellSubAction, payload 
 		Action:        string(action),
 		ActionPayload: payloadBytes,
 	}
-}
-
-// Captures any terminal resize events using the SIGWINCH signal and send the
-// new terminal size
-func (d *DefaultShell) listenForTerminalSizeChanges() {
-	ch := make(chan os.Signal, 1)
-	sig := unix.SIGWINCH
-
-	signal.Notify(ch, sig)
-	go func() {
-		for {
-			select {
-			case <-d.tmb.Dying():
-				signal.Reset(sig)
-				close(ch)
-				return
-			case <-ch:
-				d.sendTerminalSize()
-			}
-		}
-	}()
 }

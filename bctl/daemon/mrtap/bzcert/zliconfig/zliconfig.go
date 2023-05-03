@@ -1,10 +1,7 @@
 package zliconfig
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -51,19 +48,8 @@ func New(configPath string, refreshCommand string) (*ZLIConfig, error) {
 }
 
 func (z *ZLIConfig) Load() error {
-	if z.configPath == "" {
-		return fmt.Errorf("no config path provided")
-	}
-
-	if configFile, err := os.Open(z.configPath); err != nil {
-		return fmt.Errorf("could not open config file %s: %w", z.configPath, err)
-	} else if configFileBytes, err := io.ReadAll(configFile); err != nil {
-		return fmt.Errorf("failed to read config file %s: %w", z.configPath, err)
-	} else if err := json.Unmarshal(configFileBytes, z); err != nil {
-		return fmt.Errorf("could not unmarshal config file %s: %w", z.configPath, err)
-	}
-
-	return nil
+	// load based on operating system defined in the appropriate files
+	return z.load()
 }
 
 func (z *ZLIConfig) Refresh() error {

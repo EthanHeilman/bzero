@@ -9,8 +9,9 @@ import (
 
 	"bastionzero.com/bzerolib/keypair"
 	"bastionzero.com/bzerolib/mrtap/bzcert"
-	"bastionzero.com/bzerolib/mrtap/bzcert/zliconfig"
 	"bastionzero.com/bzerolib/mrtap/util"
+
+	"bastionzero.com/daemon/mrtap/bzcert/zliconfig"
 )
 
 type IDaemonBZCert interface {
