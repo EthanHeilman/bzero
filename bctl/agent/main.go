@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 
 	"bastionzero.com/agent/agenttype"
@@ -32,21 +33,30 @@ var (
 	printVersion                     bool
 	listLogFile                      bool
 	attemptedRegistration            bool
+	successfulRegistration           bool
+	svcFlag                          string
 
 	// key-shard vars
 	getKeyShards, clearKeyShards, addKeyShards, addTargets, removeTargets bool
 )
 
 const (
-	prodServiceUrl     = "https://cloud.bastionzero.com/"
-	defaultLogFilePath = "/var/log/bzero/bzero-agent.log"
-	configDir          = "/etc/bzero"
+	prodServiceUrl = "https://cloud.bastionzero.com/"
 
 	// Env var to flag if we are in a kube cluster
 	inClusterEnvVar = "BASTIONZERO_IN_CLUSTER"
 )
 
+var (
+	// configDir specifies the directory we use to store the BZ agent config data.
+	configDir string
+	// defaultLogPath specifies the path to the file we use to store the BZ agent logs.
+	defaultLogPath string
+)
+
 func main() {
+	initConstants()
+
 	// if running a special subcommand, we handle it separately and don't need to continue execution
 	proceed := parseFlags()
 	if !proceed {
@@ -65,7 +75,7 @@ func main() {
 	if listLogFile {
 		switch agentType {
 		case agenttype.Systemd:
-			fmt.Println(defaultLogFilePath)
+			fmt.Println(defaultLogPath)
 		case agenttype.Kubernetes:
 			fmt.Println("BastionZero Agent logs can be accessed via the Kube API server by tailing the pods logs")
 		}
@@ -96,19 +106,31 @@ func main() {
 	}
 
 	if err != nil {
+		// The agent actually starts in agent.Run(), this message simplifies it to the user
 		fmt.Printf("ERROR: failed to start agent: %s\n", err)
 		os.Exit(1)
 	}
 
-	if exitError := agent.Run(); exitError == nil {
+	var agentService *AgentService
+	if agentService, err = NewAgentService(agent); err != nil {
+		agent.logger.Errorf("failed to configure and start the agent service: %s", err)
+		os.Exit(1)
+	} else if agentService == nil { // if there were no error and the service is nil this was a service command invocation, exit gracefully
 		os.Exit(0)
+	} else if exitError := agentService.Run(); exitError != nil {
+		os.Exit(1)
 	}
-
-	os.Exit(1)
+	os.Exit(0)
 }
 
 func parseFlags() bool {
 	/* default command */
+
+	// Service related flags
+	if runtime.GOOS == "windows" {
+		flag.StringVar(&svcFlag, "service", "", "Manually control the windows system service")
+	}
+
 	// Helpful flags
 	flag.BoolVar(&printVersion, "version", false, "Print current version of the agent.")
 	flag.BoolVar(&listLogFile, "logs", false, "Print the agent log file path.")
@@ -240,7 +262,7 @@ func NewSystemdAgent(
 	// Create our logger
 	if a.logger, err = logger.New(&logger.Config{
 		ConsoleWriters: []io.Writer{os.Stdout},
-		FilePath:       defaultLogFilePath,
+		FilePath:       defaultLogPath,
 		LogLevel:       logger.ToLogLevel(logLevel),
 	}); err != nil {
 		return
@@ -287,6 +309,8 @@ func NewSystemdAgent(
 		}
 	}
 
+	isRegistered = !a.agentConfig.GetPublicKey().IsEmpty()
+
 	// Register if we aren't already
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
@@ -295,6 +319,11 @@ func NewSystemdAgent(
 		// is designed to essentially be a cli command and not fully start up the agent
 		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return
+		}
+		successfulRegistration = true
+		// In windows we need to setup the service as well so we cannot exit yet
+		if runtime.GOOS == "windows" {
+			return a, nil
 		}
 		os.Exit(0)
 	} else {

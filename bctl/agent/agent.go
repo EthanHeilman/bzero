@@ -33,10 +33,6 @@ const (
 	stoppedProcessingPongsMsg = "control channel stopped processing pongs"
 )
 
-type IRegistration interface {
-	Register(logger *logger.Logger, config registration.RegistrationConfig) error
-}
-
 type AgentConfig interface {
 	controlchannel.ControlChannelConfig
 	registration.RegistrationConfig
@@ -71,6 +67,14 @@ type Agent struct {
 	controlChannel *controlchannel.ControlChannel
 
 	bastionClient bastion.ApiClient
+}
+
+func (a *Agent) Done() <-chan struct{} {
+	return a.tmb.Dead()
+}
+
+func (a *Agent) Err() error {
+	return a.tmb.Err()
 }
 
 func (a *Agent) Run() (err error) {
