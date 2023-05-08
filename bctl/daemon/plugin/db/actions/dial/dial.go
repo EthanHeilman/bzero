@@ -93,6 +93,7 @@ func (d *DialAction) Start(lconn net.Conn) error {
 					return nil
 				} else if n > 0 {
 					// Build and send whatever we get from the local tcp connection to the agent
+					d.logger.Infof("read %d bytes", n)
 					dataToSend := base64.StdEncoding.EncodeToString(buf[:n])
 					payload := dial.DialInputActionPayload{
 						RequestId:      d.requestId,
@@ -133,6 +134,7 @@ func (d *DialAction) Start(lconn net.Conn) error {
 						if contentBytes, err := base64.StdEncoding.DecodeString(streamMessage.Content); err != nil {
 							d.logger.Errorf("could not decode db stream content: %s", err)
 						} else {
+							d.logger.Infof("writing %d bytes", len(contentBytes))
 							// Set a deadline for the write so we don't block forever
 							lconn.SetWriteDeadline(time.Now().Add(writeDeadline))
 							if _, err := lconn.Write(contentBytes); err != nil && d.tmb.Alive() {
@@ -185,6 +187,7 @@ func (d *DialAction) Kill(err error) {
 func (d *DialAction) sendOutputMessage(action dial.DialSubAction, payload interface{}) {
 	// Send payload to plugin output queue
 	payloadBytes, _ := json.Marshal(payload)
+	d.logger.Infof("sending...")
 	d.outputChan <- plugin.ActionWrapper{
 		Action:        string(action),
 		ActionPayload: payloadBytes,
