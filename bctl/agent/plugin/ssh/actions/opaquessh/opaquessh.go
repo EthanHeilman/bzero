@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"gopkg.in/tomb.v2"
@@ -77,7 +78,7 @@ func (s *OpaqueSsh) Receive(action string, actionPayload []byte) ([]byte, error)
 		var openRequest bzssh.SshOpenMessage
 		if err := json.Unmarshal(actionPayload, &openRequest); err != nil {
 			return nil, fmt.Errorf("malformed opaque ssh action payload %s", string(actionPayload))
-		} else if err = s.authorizedKeys.Add(string(openRequest.PublicKey)); err != nil {
+		} else if err = s.authorizedKeys.Add(string(openRequest.PublicKey)); runtime.GOOS != "windows" && err != nil {
 			return nil, err
 		}
 

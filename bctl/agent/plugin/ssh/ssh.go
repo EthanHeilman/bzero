@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"runtime"
 	"time"
 
 	gossh "golang.org/x/crypto/ssh"
@@ -62,18 +63,21 @@ func New(logger *logger.Logger, ch chan smsg.StreamMessage, action string, paylo
 		return nil, err
 	}
 
-	// Create will create the user with the given username if it is allowed, or it will return the existing user
-	usr, err := unixuser.LookupOrCreateFromList(synPayload.TargetUser)
-	if err != nil {
-		return nil, fmt.Errorf("failed to use ssh as user %s: %s", synPayload.TargetUser, err)
-	}
+	var authKeys *authorizedkeys.AuthorizedKeys
+	if runtime.GOOS != "windows" {
+		// Create will create the user with the given username if it is allowed, or it will return the existing user
+		usr, err := unixuser.LookupOrCreateFromList(synPayload.TargetUser)
+		if err != nil {
+			return nil, fmt.Errorf("failed to use ssh as user %s: %s", synPayload.TargetUser, err)
+		}
 
-	// we place the authorized keys lock file inside the user's /home/.ssh/ directory because that is the least bad place for it
-	// source: https://i.stack.imgur.com/BlpRb.png
-	authorizedKeysLogger := subLogger.GetComponentLogger("authorized_keys")
-	authKeys, err := authorizedkeys.New(authorizedKeysLogger, plugin.doneChan, usr, sshDir, sshDir, maxKeyLifetime)
-	if err != nil {
-		return nil, fmt.Errorf("failed to set up authorized_keys file: %s", err)
+		// we place the authorized keys lock file inside the user's /home/.ssh/ directory because that is the least bad place for it
+		// source: https://i.stack.imgur.com/BlpRb.png
+		authorizedKeysLogger := subLogger.GetComponentLogger("authorized_keys")
+		authKeys, err = authorizedkeys.New(authorizedKeysLogger, plugin.doneChan, usr, sshDir, sshDir, maxKeyLifetime)
+		if err != nil {
+			return nil, fmt.Errorf("failed to set up authorized_keys file: %s", err)
+		}
 	}
 
 	remoteAddress := fmt.Sprintf("%s:%d", synPayload.RemoteHost, synPayload.RemotePort)
