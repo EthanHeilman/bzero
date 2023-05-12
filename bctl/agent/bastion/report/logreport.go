@@ -40,7 +40,7 @@ func ReportLogs(ctx context.Context,
 		} else {
 			archiveToPost = kubeLogArchive
 		}
-	case agenttype.Systemd:
+	case agenttype.Linux, agenttype.Windows:
 		// create a temporary zip file with current log file and at most, last 2 rotated log files
 		if bzeroLogArchive, err := createBzeroLogArchive(); err != nil {
 			return err

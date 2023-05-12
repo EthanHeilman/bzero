@@ -7,5 +7,6 @@ type AgentType string
 
 const (
 	Kubernetes AgentType = "cluster"
-	Systemd    AgentType = "bzero"
+	Linux      AgentType = "bzero" // maintain compatibility with bastion
+	Windows    AgentType = "windows"
 )

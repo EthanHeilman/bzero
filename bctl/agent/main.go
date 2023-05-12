@@ -74,7 +74,7 @@ func main() {
 
 	if listLogFile {
 		switch agentType {
-		case agenttype.Systemd:
+		case agenttype.Linux, agenttype.Windows:
 			fmt.Println(defaultLogPath)
 		case agenttype.Kubernetes:
 			fmt.Println("BastionZero Agent logs can be accessed via the Kube API server by tailing the pods logs")
@@ -99,8 +99,8 @@ func main() {
 	var agent *Agent
 	var err error
 	switch agentType {
-	case agenttype.Systemd:
-		agent, err = NewSystemdAgent(version, reg)
+	case agenttype.Linux, agenttype.Windows:
+		agent, err = NewServerAgent(version, reg, agentType)
 	case agenttype.Kubernetes:
 		agent, err = NewKubeAgent(version, reg)
 	}
@@ -232,9 +232,10 @@ func parseFlags() bool {
 	}
 }
 
-func NewSystemdAgent(
+func NewServerAgent(
 	version string,
 	registration *registration.Registration,
+	agentType agenttype.AgentType,
 ) (a *Agent, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a = &Agent{
@@ -242,7 +243,7 @@ func NewSystemdAgent(
 		cancel:       cancel,
 		osSignalChan: bzos.OsShutdownChan(),
 		version:      version,
-		agentType:    agenttype.Systemd,
+		agentType:    agentType,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -268,7 +269,7 @@ func NewSystemdAgent(
 		return
 	}
 	a.logger.AddAgentVersion(version)
-	a.logger.AddAgentType(string(agenttype.Systemd))
+	a.logger.AddAgentType(string(agentType))
 
 	// Now that we have our logger, make sure that any error from statements below
 	// gets logged
@@ -442,7 +443,9 @@ func getAgentType() agenttype.AgentType {
 	// determine agent type
 	if val := os.Getenv(inClusterEnvVar); val != "" {
 		return agenttype.Kubernetes
+	} else if runtime.GOOS == "windows" {
+		return agenttype.Windows
 	} else {
-		return agenttype.Systemd
+		return agenttype.Linux
 	}
 }
