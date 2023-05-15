@@ -28,9 +28,9 @@ func getKeyShardConfig() (*keyshardconfig.KeyShardConfig, error) {
 		} else if keyShardConfig, err = keyshardconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 			return nil, fmt.Errorf("failed to load key shard config: %w", err)
 		}
-	case agenttype.Systemd:
-		if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
-			return nil, fmt.Errorf("failed to initialize systemd key shard config client: %w", err)
+	case agenttype.Linux, agenttype.Windows:
+		if keyShardClient, err := client.NewServerClient(configDir, client.KeyShard); err != nil {
+			return nil, fmt.Errorf("failed to initialize server key shard config client: %w", err)
 		} else if keyShardConfig, err = keyshardconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 			return nil, fmt.Errorf("failed to load key shard config: %w", err)
 		}

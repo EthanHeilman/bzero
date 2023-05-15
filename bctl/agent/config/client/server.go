@@ -32,7 +32,7 @@ type SystemdClient struct {
 	lastKeyShardMod int64
 }
 
-func NewSystemdClient(configDir string, configType ConfigType) (*SystemdClient, error) {
+func NewServerClient(configDir string, configType ConfigType) (*SystemdClient, error) {
 	var configPath string
 	switch configType {
 	case Agent:

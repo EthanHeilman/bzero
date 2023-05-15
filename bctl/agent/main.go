@@ -171,8 +171,8 @@ func parseFlags() bool {
 	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds to this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
 	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
 
-	// check if we're in key-shard mode (only supported on the systemd agent)
-	if getAgentType() == agenttype.Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
+	// check if we're in key-shard mode (only supported on the linux agent)
+	if getAgentType() == agenttype.Linux && len(os.Args) > 1 && os.Args[1] == "keyshards" {
 		// parse the flags, call this function with args
 		// should probably put this in a separate file, with separate handlers
 		keyShardsCmd.Parse(os.Args[2:])
@@ -210,7 +210,7 @@ func parseFlags() bool {
 		// no need to continue normal execution
 		return false
 	} else {
-		// either we're a kube agent or we're in a normal systemd execution
+		// either we're a kube agent or we're in a normal server execution
 		flag.Parse()
 
 		attemptedRegistration = activationToken != "" || registrationKey != ""
@@ -279,14 +279,14 @@ func NewServerAgent(
 		}
 	}()
 
-	agentClient, err := client.NewSystemdClient(configDir, client.Agent)
+	agentClient, err := client.NewServerClient(configDir, client.Agent)
 	if err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
 	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
-	if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewServerClient(configDir, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
@@ -316,7 +316,7 @@ func NewServerAgent(
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		// Regardless of the response, we're done here. Registration for the Systemd agent
+		// Regardless of the response, we're done here. Registration for the linux Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
 		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return

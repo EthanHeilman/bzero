@@ -12,7 +12,7 @@ import (
 	"bastionzero.com/bzerolib/filelock"
 )
 
-var _ = Describe("Systemd Client", Ordered, func() {
+var _ = Describe("Server Client", Ordered, func() {
 	var agentConfigFile *os.File
 	var keyShardConfigFile *os.File
 	var fileLock *filelock.FileLock
@@ -66,7 +66,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 			testDir := path.Join(os.TempDir(), "bzero")
 
 			BeforeEach(func() {
-				client, err = NewSystemdClient(testDir, Agent)
+				client, err = NewServerClient(testDir, Agent)
 				Expect(err).ToNot(HaveOccurred())
 				By("Creating a new config file: " + client.configPath)
 			})
@@ -97,7 +97,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 			testDir := path.Join(os.TempDir(), "bzero")
 
 			BeforeEach(func() {
-				client, err = NewSystemdClient(testDir, KeyShard)
+				client, err = NewServerClient(testDir, KeyShard)
 				By("Creating a new config file: " + client.configPath)
 			})
 
@@ -134,7 +134,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 
 				err = populateAgentConfigFiile(sysdClient, agentdata.NewMockDataV2())
 				Expect(err).ToNot(HaveOccurred())
-				client, err = NewSystemdClient(path.Dir(sysdClient.configPath), Agent)
+				client, err = NewServerClient(path.Dir(sysdClient.configPath), Agent)
 			})
 
 			It("instantiates without error", func() {
@@ -165,7 +165,7 @@ var _ = Describe("Systemd Client", Ordered, func() {
 				err = populateKeyShardConfigFiile(sysdClient, ksdata.DefaultMockKeyShardDataSmall())
 				Expect(err).ToNot(HaveOccurred())
 
-				client, err = NewSystemdClient(path.Dir(sysdClient.configPath), KeyShard)
+				client, err = NewServerClient(path.Dir(sysdClient.configPath), KeyShard)
 			})
 
 			It("instantiates without error", func() {
