@@ -21,6 +21,8 @@ const (
 )
 
 type AgentIdentityTokenConfig interface {
+	GetTargetId() string
+	GetPrivateKey() *keypair.PrivateKey
 	GetAgentIdentityToken() string
 	SetAgentIdentityToken(string) error
 }
@@ -32,25 +34,19 @@ type AgentIdentityToken interface {
 type AgentIdentityProvider struct {
 	logger       *logger.Logger
 	serviceUrl   string
-	targetId     string
 	store        AgentIdentityTokenConfig
 	agentIdToken *oidc.Provider
-	privateKey   *keypair.PrivateKey
 }
 
 func New(
 	logger *logger.Logger,
 	serviceUrl string,
-	targetId string,
 	agentIdentityTokenStore AgentIdentityTokenConfig,
-	privateKey *keypair.PrivateKey,
 ) *AgentIdentityProvider {
 	return &AgentIdentityProvider{
 		logger:     logger,
 		serviceUrl: serviceUrl,
-		targetId:   targetId,
 		store:      agentIdentityTokenStore,
-		privateKey: privateKey,
 	}
 }
 
@@ -130,11 +126,13 @@ func (a *AgentIdentityProvider) getTokenFromBastion(ctx context.Context) (*GetAg
 	}
 
 	// Sign the message
-	sig := a.privateKey.Sign(getAgentIdentityTokenPayload)
+	targetId := a.store.GetTargetId()
+	privateKey := a.store.GetPrivateKey()
+	sig := privateKey.Sign(getAgentIdentityTokenPayload)
 
 	// Build the http client and request
 	options := httpclient.HTTPOptions{
-		Endpoint: fmt.Sprintf(agentIdentityEndpoint, a.targetId),
+		Endpoint: fmt.Sprintf(agentIdentityEndpoint, targetId),
 		Params: url.Values{
 			"message":   {base64.StdEncoding.EncodeToString(getAgentIdentityTokenPayload)},
 			"signature": {sig},
