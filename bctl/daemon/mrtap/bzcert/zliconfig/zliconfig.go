@@ -1,9 +1,13 @@
 package zliconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 type ZLIConfig struct {
@@ -48,8 +52,37 @@ func New(configPath string, refreshCommand string) (*ZLIConfig, error) {
 }
 
 func (z *ZLIConfig) Load() error {
+	db, err := leveldb.OpenFile("/Users/moleperson/Library/Preferences/bastionzero-zli-nodejs/dev/store", &opt.Options{
+		ReadOnly: true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to open leveldb: %w", err)
+	}
+
+	defer db.Close()
+
+	data, err := db.Get([]byte("mrtap"), nil)
+	if err != nil || len(data) == 0 {
+		return fmt.Errorf("failed to retrieve leveldb value associated with key %s: %w", "mrtap", err)
+	}
+
+	if err := json.Unmarshal(data, &z.CertConfig); err != nil {
+		return fmt.Errorf("malformed mrtap entry: %w", err)
+	}
+
+	data, err = db.Get([]byte("tokenSet"), nil)
+	if err != nil || len(data) == 0 {
+		return fmt.Errorf("failed to retrieve leveldb value associated with key %s: %w", "tokenSet", err)
+	}
+
+	if err := json.Unmarshal(data, &z.TokenSet); err != nil {
+		return fmt.Errorf("malformed tokenset entry: %w", err)
+	}
+
+	return nil
+
 	// load based on operating system defined in the appropriate files
-	return z.load()
+	// return z.load()
 }
 
 func (z *ZLIConfig) Refresh() error {
