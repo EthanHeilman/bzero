@@ -5,6 +5,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/kardianos/service"
 )
@@ -15,6 +17,8 @@ type AgentService struct {
 	serviceLogger    service.Logger
 }
 
+const agentServiceName = "BastionZeroAgent"
+
 // This configures the service that is responsible for the agent lifecycle.
 // The resulting service has Start/Stop handler methods which are invoked by the service manager
 // and handle the respective Start/Stop service signals.
@@ -24,8 +28,8 @@ type AgentService struct {
 // handles also Start/Stop signals sent by the service manager during an OS startup/shutdown.
 // To create a new Agent Service we pass the "install" command to the service library, to start
 // it we pass the "start" command and respectively to uninstall, we firstly "stop" and then "uninstall"
-func NewAgentService(agent *Agent) (as *AgentService, err error) {
-	agentService := &AgentService{
+func NewAgentService(agent *Agent) (agentService *AgentService, err error) {
+	agentService = &AgentService{
 		agent: agent,
 	}
 
@@ -36,7 +40,7 @@ func NewAgentService(agent *Agent) (as *AgentService, err error) {
 	options["StartType"] = "automatic"
 	options["OnFailure"] = "restart"
 	svcConfig := &service.Config{
-		Name:        "BastionZeroAgent",
+		Name:        agentServiceName,
 		DisplayName: "BastionZero Agent Service",
 		Description: "This is a service responsible for the lifecycle of the BastionZero Agent.",
 		Option:      options,
@@ -70,8 +74,33 @@ func NewAgentService(agent *Agent) (as *AgentService, err error) {
 	}
 
 	if successfulRegistration {
+		agent.logger.Info("Setting up agent system service")
+
 		err = service.Control(agentService.kardianosService, "install")
-		if err != nil {
+		serviceExistsErrMessage := fmt.Sprintf("service %s already exists", agentServiceName)
+
+		// In case of a re-registration or other corner case situations, the service is probably already installed and running. If so, we should remove it first.
+		if err != nil && strings.Contains(err.Error(), serviceExistsErrMessage) {
+			agentService.agent.logger.Debug("removing existing service and installing a new one")
+
+			err = service.Control(agentService.kardianosService, "stop")
+			if err != nil {
+				return nil, err
+			}
+
+			err = service.Control(agentService.kardianosService, "uninstall")
+			if err != nil {
+				return nil, err
+			}
+
+			// Uninstalling takes a second, by waiting here we ensure the service has been uninstalled before installing it again
+			time.Sleep(2 * time.Second)
+
+			err = service.Control(agentService.kardianosService, "install")
+			if err != nil {
+				return nil, err
+			}
+		} else if err != nil {
 			return nil, err
 		}
 
