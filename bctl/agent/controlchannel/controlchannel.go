@@ -93,6 +93,8 @@ type ControlChannel struct {
 
 	// for communicating with the bastion
 	bastionClient bastion.ApiClient
+
+	logFilePath string
 }
 
 func Start(logger *logger.Logger,
@@ -104,6 +106,7 @@ func Start(logger *logger.Logger,
 	privateKey *keypair.PrivateKey,
 	cConfig ControlChannelConfig,
 	keyShardConfig KeyShardConfig,
+	logFilePath string,
 ) (*ControlChannel, error) {
 
 	control := &ControlChannel{
@@ -122,6 +125,7 @@ func Start(logger *logger.Logger,
 		runtimeErrChan:   make(chan error),
 		isSendingPongs:   conn.Ready(),
 		clusterUserCache: []string{},
+		logFilePath:      logFilePath,
 	}
 
 	// Since the CC has its own websocket and Bastion doesn't know what it is, there's no point
@@ -304,7 +308,7 @@ func (c *ControlChannel) processInput(agentMessage am.AgentMessage, ctx context.
 		}
 
 		c.logger.Infof("Retrieving logs")
-		if err := report.ReportLogs(ctx, c.bastionClient, c.agentType, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId); err != nil {
+		if err := report.ReportLogs(ctx, c.bastionClient, c.agentType, retrieveLogsRequest.UserEmail, retrieveLogsRequest.UploadLogsRequestId, c.logFilePath); err != nil {
 			return fmt.Errorf("failed to send agent logs to Bastion: %s", err)
 		} else {
 			c.logger.Infof("Successfully sent agent logs to Bastion")

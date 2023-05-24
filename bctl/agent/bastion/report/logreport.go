@@ -22,15 +22,17 @@ import (
 
 const (
 	uploadLogsEndpoint = "/api/v2/upload-logs/agent"
-	bzeroLogFilePath   = "/var/log/bzero/bzero-agent.log"
 	dateFormatFull     = "2006-01-02"
 )
 
-func ReportLogs(ctx context.Context,
+func ReportLogs(
+	ctx context.Context,
 	bastion bastion.ApiClient,
 	agentType agenttype.AgentType,
 	userEmail string,
-	uploadLogsRequestId string) error {
+	uploadLogsRequestId string,
+	logFilePath string,
+) error {
 
 	var archiveToPost *bytes.Buffer
 	switch agentType {
@@ -42,7 +44,7 @@ func ReportLogs(ctx context.Context,
 		}
 	case agenttype.Linux, agenttype.Windows:
 		// create a temporary zip file with current log file and at most, last 2 rotated log files
-		if bzeroLogArchive, err := createBzeroLogArchive(); err != nil {
+		if bzeroLogArchive, err := createBzeroLogArchive(logFilePath); err != nil {
 			return err
 		} else {
 			archiveToPost = bzeroLogArchive
@@ -117,8 +119,8 @@ func createKubeLogArchive(ctx context.Context) (*bytes.Buffer, error) {
 	return zipArchive, nil
 }
 
-func createBzeroLogArchive() (*bytes.Buffer, error) {
-	filesFilteredByDate, err := retrieveFilePaths()
+func createBzeroLogArchive(logFilePath string) (*bytes.Buffer, error) {
+	filesFilteredByDate, err := retrieveFilePaths(logFilePath)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +135,7 @@ func createBzeroLogArchive() (*bytes.Buffer, error) {
 	// does this for 3 files max
 	for _, file := range filesFilteredByDate {
 		// build full file path for each log file
-		fullpath := filepath.Join(filepath.Dir(bzeroLogFilePath), file)
+		fullpath := filepath.Join(filepath.Dir(logFilePath), file)
 		logFile, err := os.Open(fullpath)
 		if err != nil {
 			return nil, fmt.Errorf("failed opening filtered bzero log file: %s", err)
@@ -151,8 +153,8 @@ func createBzeroLogArchive() (*bytes.Buffer, error) {
 	return zipArchive, nil
 }
 
-func retrieveFilePaths() ([]string, error) {
-	directory, err := os.Open(filepath.Dir(bzeroLogFilePath))
+func retrieveFilePaths(logFilePath string) ([]string, error) {
+	directory, err := os.Open(filepath.Dir(logFilePath))
 	if err != nil {
 		return nil, fmt.Errorf("failed opening bzero agent log directory: %s", err)
 	}
@@ -170,7 +172,7 @@ func retrieveFilePaths() ([]string, error) {
 
 	// filter the files by the date in timestamp
 	var filesFilteredByDate []string
-	filesFilteredByDate = append(filesFilteredByDate, filepath.Base(bzeroLogFilePath))
+	filesFilteredByDate = append(filesFilteredByDate, filepath.Base(logFilePath))
 	for _, filename := range filenames {
 		if strings.Contains(filename, todayFull) || strings.Contains(filename, yesterdayFull) {
 			filesFilteredByDate = append(filesFilteredByDate, filename)

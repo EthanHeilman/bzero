@@ -167,7 +167,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdToken, privateKey, a.agentConfig, a.keyShardConfig)
+	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdToken, privateKey, a.agentConfig, a.keyShardConfig, defaultLogPath)
 	a.controlConn = conn
 
 	return err
