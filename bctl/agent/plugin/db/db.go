@@ -55,9 +55,13 @@ func New(logger *logger.Logger,
 
 	// Start up the action for this plugin
 	subLogger := plugin.logger.GetActionLogger(action)
-	if parsedAction, err := parseAction(action); err != nil {
+	if parsedAction, parsedTcpApp, err := parseActionTCPApp(action); err != nil {
 		return nil, err
 	} else {
+		// NOTE : Make sure this is backwards compatible
+		if parsedTcpApp == "" {
+			plugin.logger.Debugf("Unrecognized tcp application: %s", parsedTcpApp)
+		}
 		var rerr error
 
 		switch parsedAction {
@@ -98,10 +102,11 @@ func (d *DbPlugin) Receive(action string, actionPayload []byte) ([]byte, error) 
 	}
 }
 
-func parseAction(action string) (db.DbAction, error) {
+// Parses the provided plugin action and the specified TCP application
+func parseActionTCPApp(action string) (db.DbAction, db.TCPApplication, error) {
 	parsedAction := strings.Split(action, "/")
-	if len(parsedAction) < 2 {
-		return "", fmt.Errorf("malformed action: %s", action)
+	if len(parsedAction) < 3 {
+		return "", "", fmt.Errorf("malformed action: %s", action)
 	}
-	return db.DbAction(parsedAction[1]), nil
+	return db.DbAction(parsedAction[1]), db.TCPApplication(parsedAction[2]), nil
 }

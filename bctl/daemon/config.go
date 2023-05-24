@@ -47,6 +47,7 @@ const (
 
 	// db plugin variables
 	DB_ACTION = "DB_ACTION" // One of ['dial', 'pwdb']
+	TCP_APP   = "TCP_APP"   // ['rdp', 'db']
 )
 
 var (

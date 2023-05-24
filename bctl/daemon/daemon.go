@@ -277,8 +277,16 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
-
-	params["connectionType"] = []string{string(dataconnection.Db)}
+	
+	switch config[TCP_APP].Value {
+	case "rdp":
+		params["connectionType"] = []string{string(dataconnection.RDP)}
+	case "db":
+		params["connectionType"] = []string{string(dataconnection.Db)}
+	default:
+		return nil, fmt.Errorf("failed to parse tcp application type: %s", config[TCP_APP].Value)
+	}
+	
 	params["target_id"] = []string{config[TARGET_ID].Value}
 	params["target_user"] = []string{config[TARGET_USER].Value}
 
@@ -291,6 +299,7 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 		config[REMOTE_HOST].Value,
 		cert,
 		config[DB_ACTION].Value,
+		config[TCP_APP].Value,
 		config[TARGET_USER].Value,
 		config[TARGET_ID].Value,
 		config[CONNECTION_SERVICE_URL].Value,
