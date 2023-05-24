@@ -112,4 +112,5 @@ var config = map[string]EnvVar{
 
 	// db plugin variables
 	DB_ACTION: {},
+	TCP_APP: {},
 }
