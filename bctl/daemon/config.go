@@ -19,8 +19,9 @@ const (
 	DEBUG                         = "DEBUG"                         // Flag to indicate if we should start the daemon in debug mode
 
 	// for interacting with the user and the ZLI
-	LOCAL_PORT            = "LOCAL_PORT"            // Daemon port To Use
-	LOCAL_HOST            = "LOCAL_HOST"            // Daemon host To Use
+	LOCAL_PORT            = "LOCAL_PORT"            // Used to serve the selected plugin
+	LOCAL_HOST            = "LOCAL_HOST"            // Used to serve the selected plugin
+	CONTROL_PORT          = "CONTROL_PORT"          // Used by the zli to trigger actions in the daemon
 	CONFIG_PATH           = "CONFIG_PATH"           // Local storage path to zli config
 	LOG_PATH              = "LOG_PATH"              // Path to log file for daemon
 	REFRESH_TOKEN_COMMAND = "REFRESH_TOKEN_COMMAND" // zli constructed command for refreshing id tokens
@@ -85,6 +86,7 @@ var config = map[string]EnvVar{
 	// for interacting with the user and the ZLI
 	LOCAL_PORT:            {},
 	LOCAL_HOST:            {},
+	CONTROL_PORT:          {},
 	CONFIG_PATH:           {},
 	LOG_PATH:              {},
 	REFRESH_TOKEN_COMMAND: {},

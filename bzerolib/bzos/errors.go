@@ -1,8 +1,8 @@
 package bzos
 
-// The OsInterruptError is used when the daemon is interrupted by SIGINT, SIGTERM, or SIGQUIT
-type OsInterruptError struct{}
+// The ShutdownError is used when the daemon receives a graceful shutdown request via its control server
+type ShutdownError struct{}
 
-func (e *OsInterruptError) Error() string { return "interrupted by OS signal" }
+func (e *ShutdownError) Error() string { return "received a graceful shutdown request" }
 
-func (e *OsInterruptError) Unwrap() error { return nil }
+func (e *ShutdownError) Unwrap() error { return nil }

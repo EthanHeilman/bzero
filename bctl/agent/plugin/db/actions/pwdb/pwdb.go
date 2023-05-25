@@ -1,13 +1,17 @@
 package pwdb
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
+	"cloud.google.com/go/cloudsqlconn"
+	"google.golang.org/api/impersonate"
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/agent/bastion"
@@ -114,27 +118,39 @@ func (p *Pwdb) Receive(action string, actionPayload []byte) ([]byte, error) {
 }
 
 func (p *Pwdb) start(targetId, targetUser, action string) error {
-	p.logger.Infof("Connecting to database at %s:%d", p.remoteHost, p.remotePort)
 
-	// Grab our key shard data from the vault
-	keydata, err := p.keyshardConfig.LastKey(targetId)
-	if err != nil {
-		return db.NewMissingKeyError(err)
-	}
-	p.logger.Info("Loaded SplitCert key")
-
-	// Make a tls connection using pwdb to database
-	if conn, err := p.connect(keydata, targetUser); err != nil {
-		return db.NewConnectionFailedError(err)
+	// If this is a GCP connection use GCP IAM Authentication rather than IAM.
+	if strings.HasPrefix(p.remoteHost, "gcp://") {
+		// Make a GCP  connection using attach IAM service account to database
+		if conn, err := p.gcpDial(targetUser); err != nil {
+			return db.NewConnectionFailedError(err)
+		} else {
+			p.remoteConn = conn
+		}
 	} else {
-		p.remoteConn = conn
+		p.logger.Infof("Connecting to database at %s:%d", p.remoteHost, p.remotePort)
+
+		// Grab our key shard data from the vault
+		keydata, err := p.keyshardConfig.LastKey(targetId)
+		if err != nil {
+			return db.NewMissingKeyError(err)
+		}
+		p.logger.Info("Loaded SplitCert key")
+
+		// Make a tls connection using pwdb to database
+		if conn, err := p.connect(keydata, targetUser); err != nil {
+			return db.NewConnectionFailedError(err)
+		} else {
+			p.remoteConn = conn
+		}
+		p.logger.Infof("Successfully established SplitCert connection")
 	}
-	p.logger.Infof("Successfully established SplitCert connection")
 
 	// Read from connection and stream back to daemon
 	p.tmb.Go(p.readFromConnection)
 
 	return nil
+
 }
 
 func (p *Pwdb) writeToConnection(data []byte) error {
@@ -151,6 +167,38 @@ func (p *Pwdb) writeToConnection(data []byte) error {
 	}
 
 	return nil
+}
+
+func (p *Pwdb) gcpDial(targetUser string) (net.Conn, error) {
+	p.logger.Infof("Connecting to GCP database with instance name %s", p.remoteHost)
+	instanceConnectionName := strings.Split(p.remoteHost, "gcp://")[1]
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*60))
+	defer cancel()
+
+	// Get the GCP Token to let us talk and auth to the database
+	gcpToken, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{
+		TargetPrincipal: targetUser,
+		Scopes:          []string{"https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/sqlservice.admin"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	dialer, err := cloudsqlconn.NewDialer(
+		ctx,
+		cloudsqlconn.WithIAMAuthNTokenSources(gcpToken, gcpToken),
+		cloudsqlconn.WithIAMAuthN(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	if remoteConn, err := dialer.Dial(ctx, instanceConnectionName); err != nil {
+		p.logger.Errorf("Failed to dial remote address: %s", err)
+		return nil, err
+	} else {
+		p.logger.Infof("Successfully established GCP IAM connection")
+		return remoteConn, nil
+	}
 }
 
 func (p *Pwdb) readFromConnection() error {

@@ -133,16 +133,14 @@ func (a *Agent) startControlChannel() error {
 	serviceUrl := a.agentConfig.GetServiceUrl()
 
 	aipLogger := a.logger.GetComponentLogger("AgentIdentityToken")
-	agentIdToken := agentidentity.New(
+	agentIdProvider := agentidentity.New(
 		aipLogger,
 		serviceUrl,
-		targetId,
 		a.agentConfig,
-		privateKey,
 	)
 
 	bcLogger := a.logger.GetComponentLogger("Bastion")
-	a.bastionClient = bastion.New(bcLogger, serviceUrl, agentIdToken, a.version)
+	a.bastionClient = bastion.New(bcLogger, serviceUrl, agentIdProvider, a.version)
 
 	ccId := uuid.New().String()
 	ccLogger := a.logger.GetControlChannelLogger(ccId)
@@ -161,13 +159,13 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Create our control channel's connection to BastionZero
-	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdToken)
+	conn, err := controlconnection.New(ccLogger, serviceUrl, privateKey, params, headers, client, agentIdProvider)
 	if err != nil {
 		return err
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdToken, privateKey, a.agentConfig, a.keyShardConfig, defaultLogPath)
+	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdProvider, privateKey, a.agentConfig, a.keyShardConfig, defaultLogPath)
 	a.controlConn = conn
 
 	return err
