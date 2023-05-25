@@ -18,6 +18,7 @@ import (
 	"bastionzero.com/daemon/exit"
 	"bastionzero.com/daemon/mrtap/bzcert"
 	"bastionzero.com/daemon/mrtap/bzcert/zliconfig"
+	"bastionzero.com/daemon/servers/controlserver"
 	"bastionzero.com/daemon/servers/dataconnection"
 	"bastionzero.com/daemon/servers/dbserver"
 	"bastionzero.com/daemon/servers/kubeserver"
@@ -34,7 +35,7 @@ const (
 	prodServiceUrl = "https://cloud.bastionzero.com"
 )
 
-type Server interface {
+type PluginServer interface {
 	Start() error
 	Close(err error)
 }
@@ -49,21 +50,27 @@ func main() {
 		if envErr != nil {
 			reportError(logger, envErr)
 		} else {
-
-			// how the daemon tells the server to stop
+			// how the zli tells the daemon to stop
 			daemonShutdownChan := make(chan struct{})
+
+			// initialize the server used to control the daemon
+			controlServer := controlserver.New(logger, config[CONTROL_PORT].Value, daemonShutdownChan)
+			controlServer.Start()
+
+			// how the daemon tells the plugin server to stop
+			pluginShutdownChan := make(chan struct{})
 			// any server that experiences a fatal error writes to this channel
 			// additionally, ephemeral servers write to this channel when their datachannel is done
 			serverErrChan := make(chan error)
-			go startServer(logger, daemonShutdownChan, serverErrChan)
+			go startPluginServer(logger, pluginShutdownChan, serverErrChan)
 
 			for {
 				select {
 				// we should never exit without allowing our server to shutdown gracefully
-				// therefore our response to a SIGINT or SIGTERM is to tell the server to say its goodbyes
-				case signal := <-bzos.OsShutdownChan():
-					logger.Errorf("received shutdown signal: %s", signal.String())
-					close(daemonShutdownChan)
+				// therefore our response to an external shutdown request is to tell the plugin server to wrap it up
+				case <-controlServer.ReceivedShutdown():
+					logger.Errorf("initiating daemon shutdown")
+					close(pluginShutdownChan)
 					// but we still wait for it to signal that it's ready to die
 				case err := <-serverErrChan:
 					/* "If your daemon cleanup code isn't in this block, it's in the wrong place!" -management */
@@ -114,7 +121,7 @@ func reportError(logger *bzlogger.Logger, err error) {
 	}
 }
 
-func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errChan chan error) {
+func startPluginServer(logger *bzlogger.Logger, pluginShutdownChan chan struct{}, errChan chan error) {
 	plugin := config[PLUGIN].Value
 	logger.Infof("Opening connection to the Connection Node: %s for %s plugin", config[CONNECTION_SERVICE_URL].Value, plugin)
 
@@ -155,7 +162,7 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 		"authToken":    {config[CONNECTION_SERVICE_AUTH_TOKEN].Value},
 	}
 
-	var server Server
+	var server PluginServer
 
 	switch bzplugin.PluginName(plugin) {
 	case bzplugin.Db:
@@ -176,7 +183,7 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 		errChan <- fmt.Errorf("failed to initialize %s server: %w", plugin, err)
 	} else {
 		// await external shutdown
-		go listenForShutdown(daemonShutdownChan, server)
+		go listenForShutdown(pluginShutdownChan, server)
 
 		// start accepting requests
 		if err := server.Start(); err != nil {
@@ -185,9 +192,9 @@ func startServer(logger *bzlogger.Logger, daemonShutdownChan chan struct{}, errC
 	}
 }
 
-func listenForShutdown(shutdownChan <-chan struct{}, server Server) {
+func listenForShutdown(shutdownChan <-chan struct{}, server PluginServer) {
 	if _, ok := <-shutdownChan; !ok {
-		server.Close(&bzos.OsInterruptError{})
+		server.Close(&bzos.ShutdownError{})
 	}
 }
 

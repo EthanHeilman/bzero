@@ -49,7 +49,7 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	// https://go.dev/blog/go1.13-errors targets
 	var initialIdTokenError *bzcert.InitialIdTokenError
 	var currentIdTokenError *bzcert.CurrentIdTokenError
-	var osInterruptError *bzos.OsInterruptError
+	var gracefulShutdown *bzos.ShutdownError
 	var shellQuitError *bzshell.ShellQuitError
 	var shellCancelledError *bzshell.ShellCancelledError
 	var sshStdinClosedError *bzssh.SshStdinClosedError
@@ -68,10 +68,13 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	var serverCertExpired *db.ServerCertificateExpired
 	var incorrectServerName *db.IncorrectServerName
 
-	// Check if the error is either a bzcert.InitialIdTokenError (IdP key
-	// rotation) or bzcert.CurrentIdTokenError (id token needs to be
-	// refreshed) token error and prompt user to re-login
-	if errors.As(err, &initialIdTokenError) || errors.As(err, &currentIdTokenError) {
+	if errors.As(err, &gracefulShutdown) {
+		logger.Info("Daemon shut down successfully")
+		os.Exit(Success)
+		// Check if the error is either a bzcert.InitialIdTokenError (IdP key
+		// rotation) or bzcert.CurrentIdTokenError (id token needs to be
+		// refreshed) token error and prompt user to re-login
+	} else if errors.As(err, &initialIdTokenError) || errors.As(err, &currentIdTokenError) {
 		logger.Errorf("Error constructing BastionZero certificate: %s", err)
 		logger.Errorf("IdP tokens are invalid/expired. Please try to re-login with the zli")
 		os.Exit(BZCertIdTokenError)
@@ -94,11 +97,11 @@ func HandleDaemonExit(err error, logger *logger.Logger) {
 	} else if errors.As(err, &idleTimeoutError) {
 		logger.Error(err)
 		os.Exit(IdleTimeout)
-	} else if errors.As(err, &shellQuitError) || errors.As(err, &osInterruptError) || errors.As(err, &sshStdinClosedError) {
-		logger.Error(err)
+	} else if errors.As(err, &shellQuitError) || errors.As(err, &sshStdinClosedError) {
+		logger.Infof("%s", err)
 		os.Exit(Success)
 	} else if errors.As(err, &shellCancelledError) {
-		logger.Error(err)
+		logger.Infof("%s", err)
 		os.Exit(CancelledByUser)
 	} else if errors.As(err, &connectionRefused) {
 		os.Exit(ConnectionRefused)
