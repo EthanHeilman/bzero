@@ -52,13 +52,13 @@ func New(logger *logger.Logger, targetUser string, targetId string) *DbDaemonPlu
 	}
 }
 
-func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, conn net.Conn) error {
+func (d *DbDaemonPlugin) StartAction(action bzdb.DbAction, tcpApp bzdb.TCPApplication, conn net.Conn) error {
 	if d.killed {
 		return fmt.Errorf("plugin has already been killed, cannot create a new shell action")
 	}
 
 	requestId := uuid.New().String()
-	actLogger := d.logger.GetActionLogger(string(action))
+	actLogger := d.logger.GetActionLogger(string(action) + "/" + string(tcpApp))
 
 	switch action {
 	case bzdb.Dial:

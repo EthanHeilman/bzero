@@ -200,7 +200,7 @@ func (d *DbServer) newAction(conn net.Conn) error {
 	}
 
 	d.logger.Infof("Starting plugin action")
-	if err := plugin.StartAction(d.action, conn); err != nil {
+	if err := plugin.StartAction(d.action, d.tcpApp, conn); err != nil {
 		return fmt.Errorf("error starting action: %w", err)
 	}
 
