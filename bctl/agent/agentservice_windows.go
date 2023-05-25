@@ -18,6 +18,7 @@ type AgentService struct {
 }
 
 const agentServiceName = "BastionZeroAgent"
+const serviceDisplayName = "BastionZero Agent Service"
 
 // This configures the service that is responsible for the agent lifecycle.
 // The resulting service has Start/Stop handler methods which are invoked by the service manager
@@ -41,7 +42,7 @@ func NewAgentService(agent *Agent) (agentService *AgentService, err error) {
 	options["OnFailure"] = "restart"
 	svcConfig := &service.Config{
 		Name:        agentServiceName,
-		DisplayName: "BastionZero Agent Service",
+		DisplayName: serviceDisplayName,
 		Description: "This is a service responsible for the lifecycle of the BastionZero Agent.",
 		Option:      options,
 	}
@@ -84,7 +85,9 @@ func NewAgentService(agent *Agent) (agentService *AgentService, err error) {
 			agentService.agent.logger.Debug("removing existing service and installing a new one")
 
 			err = service.Control(agentService.kardianosService, "stop")
-			if err != nil {
+			serviceStoppedErrMessage := fmt.Sprintf("Failed to stop %s: The service has not been started.", serviceDisplayName)
+			// It's possible that the user stopped the service before re-registering. If so, we can just continue
+			if err != nil && !strings.Contains(err.Error(), serviceStoppedErrMessage) {
 				return nil, err
 			}
 
