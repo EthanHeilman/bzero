@@ -101,13 +101,16 @@ func (d *DbPlugin) Receive(action string, actionPayload []byte) ([]byte, error) 
 	}
 }
 
-// Parses the provided plugin action and the specified TCP application
+// Parses the specified TCP application and the provided plugin action. The template is plugin/tcpApp/action
 func parseActionTCPApp(action string) (db.DbAction, db.TCPApplication, error) {
 	parsedAction := strings.Split(action, "/")
 	if len(parsedAction) < 2 {
 		return "", "", fmt.Errorf("malformed action: %s", action)
 	} else if len(parsedAction) == 2 {
-		return db.DbAction(parsedAction[1]), db.DB, nil
+		return db.DbAction(parsedAction[1]), db.DB, nil // The old template was plugin/action
+	} else if len(parsedAction) < 3 {
+		return "", "", fmt.Errorf("malformed action: %s", action)
+	} else {
+		return db.DbAction(parsedAction[2]), db.TCPApplication(parsedAction[1]), nil
 	}
-	return db.DbAction(parsedAction[1]), db.TCPApplication(parsedAction[2]), nil
 }

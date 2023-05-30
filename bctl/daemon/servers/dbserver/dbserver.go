@@ -235,7 +235,7 @@ func (d *DbServer) newDataChannel(dcId string, plugin *db.DbDaemonPlugin) error 
 		return err
 	}
 
-	action := "db/" + string(d.action) + "/" + string(d.tcpApp)
+	action := "db/" + string(d.tcpApp) + "/" + string(d.action)
 	attach := false
 	_, err = datachannel.New(subLogger, dcId, d.conn, mt, plugin, action, synPayload, attach, true)
 	if err != nil {
