@@ -6,7 +6,7 @@ package agenttype
 type AgentType string
 
 const (
-	Kubernetes AgentType = "kubernetes"
+	Kubernetes AgentType = "cluster"
 	Linux      AgentType = "linux"
 	Windows    AgentType = "windows"
 )

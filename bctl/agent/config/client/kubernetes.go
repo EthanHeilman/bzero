@@ -27,7 +27,7 @@ const (
 	keyShardSecretFormula = "bctl-%s-keyshards-secret" // used for formatting with the target name
 )
 
-type kubernetesClient struct {
+type kubeConfigClient struct {
 	client     coreV1Types.SecretInterface
 	secretName string
 	configType ConfigType
@@ -38,7 +38,7 @@ type kubernetesClient struct {
 	lastKeyShardVersion string
 }
 
-func NewKubernetesClient(ctx context.Context, namespace string, targetName string, configType ConfigType) (*kubernetesClient, error) {
+func NewKubeConfigClient(ctx context.Context, namespace string, targetName string, configType ConfigType) (*kubeConfigClient, error) {
 	// Create our api object
 	kubeConf, err := rest.InClusterConfig()
 	if err != nil {
@@ -72,7 +72,7 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	}
 
 	// Create our secrets client
-	config := kubernetesClient{
+	config := kubeConfigClient{
 		client:     clientset.CoreV1().Secrets(namespace),
 		secretName: fmt.Sprintf(secretFormula, targetName),
 		configType: configType,
@@ -106,7 +106,7 @@ func NewKubernetesClient(ctx context.Context, namespace string, targetName strin
 	return &config, nil
 }
 
-func (k *kubernetesClient) FetchAgentData() (agentdata.AgentDataV2, error) {
+func (k *kubeConfigClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	if k.configType != Agent {
 		return agentdata.AgentDataV2{}, fmt.Errorf("cannot fetch agent data with %s client", k.configType)
 	}
@@ -138,7 +138,7 @@ func (k *kubernetesClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	}
 }
 
-func (k *kubernetesClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
+func (k *kubeConfigClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	if k.configType != KeyShard {
 		return ksdata.KeyShardData{}, fmt.Errorf("cannot fetch key shard data with %s client", k.configType)
 	}
@@ -167,7 +167,7 @@ func (k *kubernetesClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	return config, err
 }
 
-func (k *kubernetesClient) Save(d interface{}) error {
+func (k *kubeConfigClient) Save(d interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
