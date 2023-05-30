@@ -14,6 +14,7 @@ import (
 
 	"bastionzero.com/bzerolib/bzos"
 	"bastionzero.com/bzerolib/keypair"
+	"bastionzero.com/bzerolib/plugin/db"
 	"bastionzero.com/bzerolib/report"
 	"bastionzero.com/daemon/exit"
 	"bastionzero.com/daemon/mrtap/bzcert"
@@ -285,10 +286,10 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 		return nil, fmt.Errorf("failed to parse remote port: %s", err)
 	}
 	
-	switch config[TCP_APP].Value {
-	case "rdp":
+	switch db.TCPApplication(config[TCP_APP].Value) {
+	case db.RDP:
 		params["connectionType"] = []string{string(dataconnection.RDP)}
-	case "db":
+	case db.DB:
 		params["connectionType"] = []string{string(dataconnection.Db)}
 	default:
 		return nil, fmt.Errorf("failed to parse tcp application type: %s", config[TCP_APP].Value)
