@@ -22,7 +22,8 @@ const (
 	keyShardConfigFileName = "keyshards.json"
 )
 
-type SystemdClient struct {
+// for Linux and Windows agents (i.e. excluding Kuberenetes)
+type ServerClient struct {
 	configPath string
 	fileLock   *filelock.FileLock
 	configType ConfigType
@@ -32,7 +33,7 @@ type SystemdClient struct {
 	lastKeyShardMod int64
 }
 
-func NewServerClient(configDir string, configType ConfigType) (*SystemdClient, error) {
+func NewServerClient(configDir string, configType ConfigType) (*ServerClient, error) {
 	var configPath string
 	switch configType {
 	case Agent:
@@ -43,7 +44,7 @@ func NewServerClient(configDir string, configType ConfigType) (*SystemdClient, e
 		return nil, fmt.Errorf("unsupported config type: %s", configType)
 	}
 
-	config := &SystemdClient{
+	config := &ServerClient{
 		configPath: configPath,
 		configType: configType,
 		fileLock:   filelock.NewFileLock(path.Join(configDir, configFileLockName)),
@@ -68,7 +69,7 @@ func NewServerClient(configDir string, configType ConfigType) (*SystemdClient, e
 	return config, nil
 }
 
-func (s *SystemdClient) FetchAgentData() (agentdata.AgentDataV2, error) {
+func (s *ServerClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	var config agentdata.AgentDataV2
 
 	if s.configType != Agent {
@@ -103,7 +104,7 @@ func (s *SystemdClient) FetchAgentData() (agentdata.AgentDataV2, error) {
 	return config, nil
 }
 
-func (s *SystemdClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
+func (s *ServerClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	var config ksdata.KeyShardData
 
 	if s.configType != KeyShard {
@@ -138,7 +139,7 @@ func (s *SystemdClient) FetchKeyShardData() (ksdata.KeyShardData, error) {
 	return config, nil
 }
 
-func (s *SystemdClient) Save(d interface{}) error {
+func (s *ServerClient) Save(d interface{}) error {
 	// grab our file lock so we're not accidentally writing at the same time
 	// as other processes which is possible during registration
 	lock, err := s.fileLock.AcquireLock()
@@ -175,7 +176,7 @@ func (s *SystemdClient) Save(d interface{}) error {
 	return nil
 }
 
-func (s *SystemdClient) WaitForRegistration(ctx context.Context) error {
+func (s *ServerClient) WaitForRegistration(ctx context.Context) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("error starting new file watcher: %w", err)

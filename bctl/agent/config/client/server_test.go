@@ -24,7 +24,7 @@ var _ = Describe("Server Client", Ordered, func() {
 		tmpDir = GinkgoT().TempDir()
 	})
 
-	populateAgentConfigFiile := func(client *SystemdClient, mockV2 agentdata.AgentDataV2) error {
+	populateAgentConfigFiile := func(client *ServerClient, mockV2 agentdata.AgentDataV2) error {
 		By("Fetching our file to set our last mod correctly")
 		_, err := client.FetchAgentData()
 		Expect(err).ToNot(HaveOccurred())
@@ -33,7 +33,7 @@ var _ = Describe("Server Client", Ordered, func() {
 		return client.Save(mockV2)
 	}
 
-	populateKeyShardConfigFiile := func(client *SystemdClient, mockData ksdata.KeyShardData) error {
+	populateKeyShardConfigFiile := func(client *ServerClient, mockData ksdata.KeyShardData) error {
 		By("Fetching our file to set our last mod correctly")
 		_, err := client.FetchKeyShardData()
 		Expect(err).ToNot(HaveOccurred())
@@ -60,7 +60,7 @@ var _ = Describe("Server Client", Ordered, func() {
 
 	Context("New", func() {
 		When("The config file does not exist / Agent config", func() {
-			var client *SystemdClient
+			var client *ServerClient
 			var err error
 
 			testDir := path.Join(os.TempDir(), "bzero")
@@ -91,7 +91,7 @@ var _ = Describe("Server Client", Ordered, func() {
 		})
 
 		When("The config file does not exist / KeyShard config", func() {
-			var client *SystemdClient
+			var client *ServerClient
 			var err error
 
 			testDir := path.Join(os.TempDir(), "bzero")
@@ -123,10 +123,10 @@ var _ = Describe("Server Client", Ordered, func() {
 
 		When("The config file exists / Agent config", func() {
 			var err error
-			var client *SystemdClient
+			var client *ServerClient
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: Agent,
@@ -153,10 +153,10 @@ var _ = Describe("Server Client", Ordered, func() {
 
 		When("The config file exists / Keyshard config", func() {
 			var err error
-			var client *SystemdClient
+			var client *ServerClient
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: keyShardConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: KeyShard,
@@ -191,7 +191,7 @@ var _ = Describe("Server Client", Ordered, func() {
 			mockV2 := agentdata.NewMockDataV2()
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: Agent,
@@ -220,7 +220,7 @@ var _ = Describe("Server Client", Ordered, func() {
 			var err error
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: Agent,
@@ -245,7 +245,7 @@ var _ = Describe("Server Client", Ordered, func() {
 			mockV2 := agentdata.NewMockDataV2()
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: Agent,
@@ -272,7 +272,7 @@ var _ = Describe("Server Client", Ordered, func() {
 			var err error
 
 			BeforeEach(func() {
-				sysdClient := &SystemdClient{
+				sysdClient := &ServerClient{
 					configPath: agentConfigFile.Name(),
 					fileLock:   fileLock,
 					configType: Agent,
