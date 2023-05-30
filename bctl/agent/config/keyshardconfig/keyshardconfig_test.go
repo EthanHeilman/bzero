@@ -164,7 +164,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				tempDir = GinkgoT().TempDir()
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
-				client, _ := client.NewServerConfigClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
@@ -201,7 +201,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				tempDir = GinkgoT().TempDir()
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
-				client, _ := client.NewServerConfigClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
@@ -480,7 +480,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				By("starting with a ksConfig with many entries")
 				initializeConfigFile(checkPath, data.MockKeyShardLargeWithTargetsRaw())
 
-				client, _ := client.NewServerConfigClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 

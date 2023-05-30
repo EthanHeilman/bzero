@@ -100,7 +100,7 @@ func main() {
 	var err error
 	switch agentType {
 	case agenttype.Linux, agenttype.Windows:
-		agent, err = NewServerAgent(version, reg, agentType)
+		agent, err = NewAgent(version, reg, agentType)
 	case agenttype.Kubernetes:
 		agent, err = NewKubeAgent(version, reg)
 	}
@@ -232,7 +232,7 @@ func parseFlags() bool {
 	}
 }
 
-func NewServerAgent(
+func NewAgent(
 	version string,
 	registration *registration.Registration,
 	agentType agenttype.AgentType,
@@ -279,14 +279,14 @@ func NewServerAgent(
 		}
 	}()
 
-	agentClient, err := client.NewServerConfigClient(configDir, client.Agent)
+	agentClient, err := client.NewFileStore(configDir, client.Agent)
 	if err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
 	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
-	if keyShardClient, err := client.NewServerConfigClient(configDir, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewFileStore(configDir, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
@@ -387,13 +387,13 @@ func NewKubeAgent(
 	}()
 
 	// Initialize our config
-	if agentClient, err := client.NewKubeConfigClient(ctx, namespace, targetName, client.Agent); err != nil {
+	if agentClient, err := client.NewSecretsStore(ctx, namespace, targetName, client.Agent); err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
 	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
-	if keyShardClient, err := client.NewKubeConfigClient(ctx, namespace, targetName, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewSecretsStore(ctx, namespace, targetName, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
