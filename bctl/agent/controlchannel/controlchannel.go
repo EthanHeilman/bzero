@@ -444,9 +444,8 @@ func (c *ControlChannel) reportHealth() error {
 		return err
 	}
 
-	// TODO: make an actual agent type enum
 	// Let bastion know a list of valid cluster users if they have changed
-	if c.agentType == "cluster" {
+	if c.agentType == agenttype.Kubernetes {
 		if err := c.reportClusterUsers(); err != nil {
 			c.logger.Errorf("failed to report valid cluster users: %s", err)
 		}
