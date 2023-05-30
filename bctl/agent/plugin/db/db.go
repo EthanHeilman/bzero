@@ -58,9 +58,8 @@ func New(logger *logger.Logger,
 	if parsedAction, parsedTcpApp, err := parseActionTCPApp(action); err != nil {
 		return nil, err
 	} else {
-		// NOTE : Make sure this is backwards compatible
 		if parsedTcpApp == "" {
-			plugin.logger.Debugf("Unrecognized tcp application: %s", parsedTcpApp)
+			return nil, fmt.Errorf("undefined tcp application: %s", parsedTcpApp)
 		}
 		var rerr error
 
