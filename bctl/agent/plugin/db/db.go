@@ -69,7 +69,7 @@ func New(logger *logger.Logger,
 		case db.Pwdb:
 			plugin.action, rerr = pwdb.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, bastion, syn.RemoteHost, syn.RemotePort)
 		default:
-			rerr = fmt.Errorf("unhandled DB action")
+			rerr = fmt.Errorf("unhandled DB action %s", parsedAction)
 		}
 
 		if rerr != nil {
