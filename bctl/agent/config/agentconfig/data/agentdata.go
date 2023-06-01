@@ -13,7 +13,7 @@ type AgentDataV2 struct {
 	// Agent Version
 	Version string
 
-	// Who is in charge of this agent? Kubernetes or Systemd
+	// Who is in charge of this agent? Kubernetes, Linux/Systemd, or Windows?
 	AgentType string
 
 	// Agent signature key pair

@@ -49,6 +49,7 @@ const (
 	Ssh   ConnectionType = "SSH"
 	Kube  ConnectionType = "CLUSTER"
 	Db    ConnectionType = "DB"
+	RDP   ConnectionType = "RDP"
 	Web   ConnectionType = "WEB"
 )
 

@@ -37,6 +37,7 @@ type DbServer struct {
 
 	// Db specific vars
 	action     bzdb.DbAction
+	tcpApp     bzdb.TCPApplication
 	remotePort int
 	remoteHost string
 	targetUser string
@@ -57,6 +58,7 @@ func New(logger *logger.Logger,
 	remoteHost string,
 	cert *bzcert.DaemonBZCert,
 	action string,
+	tcpApp string,
 	targetUser string,
 	targetId string,
 	connUrl string,
@@ -67,6 +69,11 @@ func New(logger *logger.Logger,
 	act := bzdb.DbAction(action)
 	if act == "" {
 		return nil, fmt.Errorf("unrecognized db action")
+	}
+
+	tcpApplication := bzdb.TCPApplication(tcpApp)
+	if tcpApplication == "" {
+		return nil, fmt.Errorf("unrecognized tcp application")
 	}
 
 	server := &DbServer{
@@ -80,6 +87,7 @@ func New(logger *logger.Logger,
 		remoteHost:  remoteHost,
 		remotePort:  remotePort,
 		action:      act,
+		tcpApp:      tcpApplication,
 		agentPubKey: agentPubKey,
 	}
 
@@ -187,28 +195,38 @@ func (d *DbServer) newAction(conn net.Conn) error {
 
 	plugin := db.New(pluginLogger, d.targetUser, d.targetId)
 
-	if err := d.newDataChannel(dcId, string(d.action), plugin); err != nil {
+	if err := d.newDataChannel(dcId, plugin); err != nil {
 		return fmt.Errorf("error starting datachannel: %w", err)
 	}
 
 	d.logger.Infof("Starting plugin action")
-	if err := plugin.StartAction(d.action, conn); err != nil {
+	if err := plugin.StartAction(d.action, d.tcpApp, conn); err != nil {
 		return fmt.Errorf("error starting action: %w", err)
 	}
 
 	return nil
 }
 
-// for creating new datachannels
-func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemonPlugin) error {
+func (d *DbServer) newDataChannel(dcId string, plugin *db.DbDaemonPlugin) error {
 	subLogger := d.logger.GetDatachannelLogger(dcId)
 
-	d.logger.Infof("Creating new datachannel id: %s", dcId)
+	d.logger.Infof("Creating new datachannel for db with id: %s", dcId)
 
 	// Build the synPayload to send to the datachannel to start the plugin
-	synPayload := bzdb.DbActionParams{
-		RemotePort: d.remotePort,
-		RemoteHost: d.remoteHost,
+	var synPayload interface{}
+	switch d.tcpApp {
+	case bzdb.DB:
+		synPayload = bzdb.DbActionParams{
+			RemotePort: d.remotePort,
+			RemoteHost: d.remoteHost,
+		}
+	case bzdb.RDP:
+		synPayload = bzdb.RDPActionParams{
+			RemotePort: d.remotePort,
+			RemoteHost: d.remoteHost,
+		}
+	default:
+		return fmt.Errorf("unsupported tcp application type: %s", d.tcpApp)
 	}
 
 	mtLogger := subLogger.GetComponentLogger("mrtap")
@@ -217,7 +235,7 @@ func (d *DbServer) newDataChannel(dcId string, action string, plugin *db.DbDaemo
 		return err
 	}
 
-	action = "db/" + action
+	action := "db/" + string(d.action) + "/" + string(d.tcpApp)
 	attach := false
 	_, err = datachannel.New(subLogger, dcId, d.conn, mt, plugin, action, synPayload, attach, true)
 	if err != nil {

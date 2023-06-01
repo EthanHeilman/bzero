@@ -74,7 +74,7 @@ func main() {
 
 	if listLogFile {
 		switch agentType {
-		case agenttype.Systemd:
+		case agenttype.Linux, agenttype.Windows:
 			fmt.Println(defaultLogPath)
 		case agenttype.Kubernetes:
 			fmt.Println("BastionZero Agent logs can be accessed via the Kube API server by tailing the pods logs")
@@ -99,8 +99,8 @@ func main() {
 	var agent *Agent
 	var err error
 	switch agentType {
-	case agenttype.Systemd:
-		agent, err = NewSystemdAgent(version, reg)
+	case agenttype.Linux, agenttype.Windows:
+		agent, err = NewAgent(version, reg, agentType)
 	case agenttype.Kubernetes:
 		agent, err = NewKubeAgent(version, reg)
 	}
@@ -171,8 +171,8 @@ func parseFlags() bool {
 	keyShardsCmd.BoolVar(&addTargets, "addTargets", false, "Add one or more targetIds to this agent's keyshard config. These targets will be accessible via SplitCert access if they use this agent as a proxy. Example: 'bzero keyShards -addTargets target1 target2'")
 	keyShardsCmd.BoolVar(&removeTargets, "removeTargets", false, "Remove one or more targetIds from this agent's keyshard config. These targets will no longer be accessible via SplitCert access from this agent. Example: 'bzero keyShards -removeTargets target1 target2'")
 
-	// check if we're in key-shard mode (only supported on the systemd agent)
-	if getAgentType() == agenttype.Systemd && len(os.Args) > 1 && os.Args[1] == "keyshards" {
+	// check if we're in key-shard mode (only supported on the linux agent)
+	if getAgentType() == agenttype.Linux && len(os.Args) > 1 && os.Args[1] == "keyshards" {
 		// parse the flags, call this function with args
 		// should probably put this in a separate file, with separate handlers
 		keyShardsCmd.Parse(os.Args[2:])
@@ -210,7 +210,7 @@ func parseFlags() bool {
 		// no need to continue normal execution
 		return false
 	} else {
-		// either we're a kube agent or we're in a normal systemd execution
+		// either we're a kube agent or we're in a normal server execution
 		flag.Parse()
 
 		attemptedRegistration = activationToken != "" || registrationKey != ""
@@ -232,9 +232,10 @@ func parseFlags() bool {
 	}
 }
 
-func NewSystemdAgent(
+func NewAgent(
 	version string,
 	registration *registration.Registration,
+	agentType agenttype.AgentType,
 ) (a *Agent, err error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	a = &Agent{
@@ -242,7 +243,7 @@ func NewSystemdAgent(
 		cancel:       cancel,
 		osSignalChan: bzos.OsShutdownChan(),
 		version:      version,
-		agentType:    agenttype.Systemd,
+		agentType:    agentType,
 	}
 
 	// This context will allow us to cancel everything concisely
@@ -268,7 +269,7 @@ func NewSystemdAgent(
 		return
 	}
 	a.logger.AddAgentVersion(version)
-	a.logger.AddAgentType(string(agenttype.Systemd))
+	a.logger.AddAgentType(string(agentType))
 
 	// Now that we have our logger, make sure that any error from statements below
 	// gets logged
@@ -278,14 +279,14 @@ func NewSystemdAgent(
 		}
 	}()
 
-	agentClient, err := client.NewSystemdClient(configDir, client.Agent)
+	agentClient, err := client.NewFileStore(configDir, client.Agent)
 	if err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %s", err)
 	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %s", err)
 	}
 
-	if keyShardClient, err := client.NewSystemdClient(configDir, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewFileStore(configDir, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
@@ -315,7 +316,7 @@ func NewSystemdAgent(
 	if !isRegistered || forceReregistration {
 		a.logger.Info("Agent is starting new registration")
 
-		// Regardless of the response, we're done here. Registration for the Systemd agent
+		// Regardless of the response, we're done here. Registration for the linux Systemd agent
 		// is designed to essentially be a cli command and not fully start up the agent
 		if err = registration.Register(a.ctx, a.logger, a.agentConfig); err != nil {
 			return
@@ -386,13 +387,13 @@ func NewKubeAgent(
 	}()
 
 	// Initialize our config
-	if agentClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.Agent); err != nil {
+	if agentClient, err := client.NewSecretsStore(ctx, namespace, targetName, client.Agent); err != nil {
 		return a, fmt.Errorf("failed to initialize agent config client: %w", err)
 	} else if a.agentConfig, err = agentconfig.LoadAgentConfig(agentClient); err != nil {
 		return a, fmt.Errorf("failed to load agent config: %w", err)
 	}
 
-	if keyShardClient, err := client.NewKubernetesClient(ctx, namespace, targetName, client.KeyShard); err != nil {
+	if keyShardClient, err := client.NewSecretsStore(ctx, namespace, targetName, client.KeyShard); err != nil {
 		return a, fmt.Errorf("failed to initialize key shard config client: %w", err)
 	} else if a.keyShardConfig, err = ksconfig.LoadKeyShardConfig(keyShardClient); err != nil {
 		return a, fmt.Errorf("failed to load key shard config: %w", err)
@@ -442,7 +443,9 @@ func getAgentType() agenttype.AgentType {
 	// determine agent type
 	if val := os.Getenv(inClusterEnvVar); val != "" {
 		return agenttype.Kubernetes
+	} else if runtime.GOOS == "windows" {
+		return agenttype.Windows
 	} else {
-		return agenttype.Systemd
+		return agenttype.Linux
 	}
 }

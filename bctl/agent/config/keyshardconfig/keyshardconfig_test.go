@@ -43,7 +43,7 @@ func expectEntryToEqual(actual data.MappedKeyEntry, expected data.MappedKeyEntry
 // note that this suite employs two methods of testing the ksConfig object's behavior. The first is by mocking the underlying client and
 // checking that load and save operations occur with the correct data. This is simpler and sufficient for many tests.
 // However, for concurrency tests we cannot make guarantees about what data might be loaded and saved in what order, so for these we actually
-// create a temporary ksConfig file with a real systemd client. We populate and check its contents directly.
+// create a temporary ksConfig file with a real server client. We populate and check its contents directly.
 var _ = Describe("Key Shard Config", Ordered, func() {
 	tmpConfigFile := "keyshards.json"
 	specialTarget := "targetId-special"
@@ -164,7 +164,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				tempDir = GinkgoT().TempDir()
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
-				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
@@ -201,7 +201,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				tempDir = GinkgoT().TempDir()
 				checkPath = filepath.Join(tempDir, tmpConfigFile)
 
-				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 
@@ -480,7 +480,7 @@ var _ = Describe("Key Shard Config", Ordered, func() {
 				By("starting with a ksConfig with many entries")
 				initializeConfigFile(checkPath, data.MockKeyShardLargeWithTargetsRaw())
 
-				client, _ := client.NewSystemdClient(tempDir, client.KeyShard)
+				client, _ := client.NewFileStore(tempDir, client.KeyShard)
 				ksConfig, err := LoadKeyShardConfig(client)
 				Expect(err).To(BeNil())
 

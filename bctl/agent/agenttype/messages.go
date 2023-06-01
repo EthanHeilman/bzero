@@ -1,11 +1,12 @@
 package agenttype
 
-// Our agent type specifically refers to the agent manager aka what environment are we
-// setup in? and is there anything we need to do differently in it? Minimally, it requires
-// a different setup which is implemented in separate "NewXAgent()" functions
+// AgentType serves two purposes. One is to inform certain decisions on the agent side (e.g., if running in a cluster,
+// logging and config work differently). The other is to let the backend know what kind of agent we are. This affects
+// what we show to the user, as well as what kind of connetions we serve them.
 type AgentType string
 
 const (
 	Kubernetes AgentType = "cluster"
-	Systemd    AgentType = "bzero"
+	Linux      AgentType = "linux"
+	Windows    AgentType = "windows"
 )

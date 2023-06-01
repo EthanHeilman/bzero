@@ -155,7 +155,7 @@ func (a *Agent) startControlChannel() error {
 		"public_key": {a.agentConfig.GetPublicKey().String()},
 		"version":    {a.version},
 		"target_id":  {targetId},
-		"agent_type": {string(agenttype.Systemd)},
+		"agent_type": {string(a.agentType)},
 	}
 
 	// Create our control channel's connection to BastionZero
@@ -165,7 +165,7 @@ func (a *Agent) startControlChannel() error {
 	}
 
 	// Start up our control channel
-	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdProvider, privateKey, a.agentConfig, a.keyShardConfig)
+	a.controlChannel, err = controlchannel.Start(ccLogger, a.bastionClient, ccId, conn, a.agentType, agentIdProvider, privateKey, a.agentConfig, a.keyShardConfig, defaultLogPath)
 	a.controlConn = conn
 
 	return err

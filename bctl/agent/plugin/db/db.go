@@ -55,9 +55,12 @@ func New(logger *logger.Logger,
 
 	// Start up the action for this plugin
 	subLogger := plugin.logger.GetActionLogger(action)
-	if parsedAction, err := parseAction(action); err != nil {
+	if parsedAction, parsedTcpApp, err := parseActionTCPApp(action); err != nil {
 		return nil, err
 	} else {
+		if parsedTcpApp == "" {
+			return nil, fmt.Errorf("undefined tcp application: %s", parsedTcpApp)
+		}
 		var rerr error
 
 		switch parsedAction {
@@ -66,7 +69,7 @@ func New(logger *logger.Logger,
 		case db.Pwdb:
 			plugin.action, rerr = pwdb.New(subLogger, plugin.streamOutputChan, plugin.doneChan, keyshardConfig, bastion, syn.RemoteHost, syn.RemotePort)
 		default:
-			rerr = fmt.Errorf("unhandled DB action")
+			rerr = fmt.Errorf("unhandled DB action %s", parsedAction)
 		}
 
 		if rerr != nil {
@@ -98,10 +101,13 @@ func (d *DbPlugin) Receive(action string, actionPayload []byte) ([]byte, error) 
 	}
 }
 
-func parseAction(action string) (db.DbAction, error) {
+// Parses the provided plugin action and the specified TCP application
+func parseActionTCPApp(action string) (db.DbAction, db.TCPApplication, error) {
 	parsedAction := strings.Split(action, "/")
 	if len(parsedAction) < 2 {
-		return "", fmt.Errorf("malformed action: %s", action)
+		return "", "", fmt.Errorf("malformed action: %s", action)
+	} else if len(parsedAction) == 2 {
+		return db.DbAction(parsedAction[1]), db.DB, nil
 	}
-	return db.DbAction(parsedAction[1]), nil
+	return db.DbAction(parsedAction[1]), db.TCPApplication(parsedAction[2]), nil
 }
