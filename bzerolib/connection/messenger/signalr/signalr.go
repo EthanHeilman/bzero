@@ -179,11 +179,11 @@ func (s *SignalR) Connect(
 			}
 		})
 
+		ticker := time.NewTicker(ServerPingTimeout)
+		defer ticker.Stop()
+
 		// Unwrap and forward inbound messages
 		for {
-			ticker := time.NewTicker(ServerPingTimeout)
-			defer ticker.Stop()
-
 			select {
 			case <-s.tmb.Dying(): // death from Close() call
 				err := s.avengersEndgame()
