@@ -24,3 +24,5 @@ bzerolib/bzerolibcoverage.xml
 # Ignore any golang work files
 *.work
 *.work.sum
+
+**/*.exe

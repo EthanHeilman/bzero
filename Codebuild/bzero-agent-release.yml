@@ -1,0 +1,51 @@
+# spec:
+# https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
+version: 0.2
+env:
+  variables:
+    TZ: "America/New_York date"
+    ReleaseDir: "/release"
+  parameter-store:
+    GITHUB_KEY_PATH: "/github/sshkey/path"
+    SSH_KEY_PATH: "/webshell/sshkey/path"
+phases:
+  install:
+    runtime-versions:
+      golang: 1.20
+  pre_build:
+    commands:
+      - echo Pre-Build phase...
+      - mkdir -p ~/.ssh
+      - chmod 700 ~/.ssh
+      - aws s3 cp $(dirname $GITHUB_KEY_PATH) ~/.ssh --recursive --include ".pem"
+      - aws s3 cp $(dirname $SSH_KEY_PATH) ~/.ssh --recursive --include ".pem"
+      - chmod 600 ~/.ssh/*
+      - ls -als ~/.ssh/*
+      - eval `ssh-agent -s`
+      - ssh-add ~/.ssh/*.pem
+  build:
+    # Right now we only need this process for the windows agent. 
+    # However we could easily revisit this to cross-compile for many versions.
+    commands:
+      - CWD=$(pwd)
+      - mkdir bin
+      - cd $CWD/bctl/agent
+      - GOOS=windows GOARCH=amd64 go build -o $CWD/bin
+  post_build:
+    commands:
+      - cd $CWD
+      - if ! [ -z "${DRY_RUN}" ]; then echo "Dry run exiting early before publishing" && exit 1; fi
+      - echo Post build started `date`
+      - Version=$(cat VERSION)
+      - if [ $env = "stage" ]; then ReleaseDir=/beta/release; fi
+      - echo "Uploading artifacts to $ReleaseDir"
+      - mkdir -p $ReleaseDir/$Version
+      - cp -a bin $ReleaseDir/$Version
+      - cp -a $ReleaseDir/$Version $ReleaseDir/latest
+      - sh release-scripts/create-manifest.sh > $ReleaseDir/latest/MANIFEST
+      - aws cloudfront create-invalidation --distribution-id=$DISTRIBUTION_ID --paths "$ReleaseDir/latest/*"
+artifacts:
+  files:
+    - "**/*"
+  base-directory: $ReleaseDir
+  name: $ReleaseDir
