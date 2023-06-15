@@ -289,6 +289,8 @@ func newDbServer(logger *bzlogger.Logger, publicKey *keypair.PublicKey, errChan 
 	switch db.TCPApplication(config[TCP_APP].Value) {
 	case db.RDP:
 		params["connectionType"] = []string{string(dataconnection.RDP)}
+	case db.SQLSERVER:
+		params["connectionType"] = []string{string(dataconnection.SQLSERVER)}
 	case db.DB:
 		params["connectionType"] = []string{string(dataconnection.Db)}
 	default:

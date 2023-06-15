@@ -225,6 +225,11 @@ func (d *DbServer) newDataChannel(dcId string, plugin *db.DbDaemonPlugin) error 
 			RemotePort: d.remotePort,
 			RemoteHost: d.remoteHost,
 		}
+	case bzdb.SQLSERVER:
+		synPayload = bzdb.SQLServerActionParams{
+			RemotePort: d.remotePort,
+			RemoteHost: d.remoteHost,
+		}
 	default:
 		return fmt.Errorf("unsupported tcp application type: %s", d.tcpApp)
 	}

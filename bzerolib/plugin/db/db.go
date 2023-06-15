@@ -16,11 +16,18 @@ type DbActionParams struct {
 type TCPApplication string
 
 const (
-	RDP TCPApplication = "rdp"
-	DB  TCPApplication = "db"
+	RDP       TCPApplication = "rdp"
+	DB        TCPApplication = "db"
+	SQLSERVER TCPApplication = "sqlserver"
 )
 
 type RDPActionParams struct {
+	SchemaVersion string `json:"schemaVersion"`
+	RemotePort    int    `json:"remotePort"`
+	RemoteHost    string `json:"remoteHost"`
+}
+
+type SQLServerActionParams struct {
 	SchemaVersion string `json:"schemaVersion"`
 	RemotePort    int    `json:"remotePort"`
 	RemoteHost    string `json:"remoteHost"`

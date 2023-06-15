@@ -45,12 +45,13 @@ type AgentConnectedMessage struct {
 type ConnectionType string
 
 const (
-	Shell ConnectionType = "SHELL"
-	Ssh   ConnectionType = "SSH"
-	Kube  ConnectionType = "CLUSTER"
-	Db    ConnectionType = "DB"
-	RDP   ConnectionType = "RDP"
-	Web   ConnectionType = "WEB"
+	Shell     ConnectionType = "SHELL"
+	Ssh       ConnectionType = "SSH"
+	Kube      ConnectionType = "CLUSTER"
+	Db        ConnectionType = "DB"
+	RDP       ConnectionType = "RDP"
+	SQLSERVER ConnectionType = "SQLSERVER"
+	Web       ConnectionType = "WEB"
 )
 
 // This is a variable to control test duration
