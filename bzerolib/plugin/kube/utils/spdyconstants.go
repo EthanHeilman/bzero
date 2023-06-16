@@ -54,5 +54,7 @@ const (
 	ExecChunkSize = 8192
 
 	// Default max buffer size for exec to send over the wire
-	ExecDefaultMaxBufferSize = 1024 * 1024 * 64
+	// need to accommodate SignalR here: https://learn.microsoft.com/en-us/aspnet/core/signalr/configuration?view=aspnetcore-3.0&tabs=dotnet#configure-server-options-3
+	// but we also observed we didn't get much of a speedup by boosting this, so keep at a safe 8kB
+	ExecDefaultMaxBufferSize = 8192
 )

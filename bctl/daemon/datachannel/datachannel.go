@@ -219,6 +219,11 @@ func (d *DataChannel) waitForRemainingMessages() {
 		select {
 		// even if the plugin says it's done, we need to keep processing acks from the agent
 		case agentMessage := <-d.inputChan:
+			if agentMessage.MessageType == am.Stream {
+				// but it is critical that we stop processing streams! The plugin is dead, so if we send these through,
+				// we will deadlock here, and the absolute timeout will not be able to fire and continue the proper shutdown
+				continue
+			}
 			if err := d.processInputMessage(agentMessage); err != nil {
 				d.logger.Error(err)
 			}
@@ -228,7 +233,7 @@ func (d *DataChannel) waitForRemainingMessages() {
 			if len(d.plugin.Outbox()) == 0 && d.mrtap.IsPipelineEmpty() {
 				return
 			}
-			// there are cases, such as during an iperf download, when the agent-side plugin closes
+			// there are cases, such as during an iperf download or a cancelled kubectl cp, when the agent-side plugin closes
 			// and thus stops sending acks. In this case, the pipeline does not empty completely,
 			// creating the need for an escape hatch
 		case <-absoluteTimeout.C:

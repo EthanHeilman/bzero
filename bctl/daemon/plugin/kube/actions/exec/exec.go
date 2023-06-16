@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"gopkg.in/tomb.v2"
 
@@ -30,6 +31,10 @@ type ExecAction struct {
 	// input and output channels relative to this plugin
 	outputChan      chan plugin.ActionWrapper
 	streamInputChan chan smsg.StreamMessage
+
+	// to prevent us from sending two stop messages to the same pugin on the agent
+	stopped     bool
+	stoppedLock sync.Mutex
 }
 
 func New(
@@ -137,12 +142,17 @@ func (e *ExecAction) Start(writer http.ResponseWriter, request *http.Request) er
 					e.logger.Errorf("unrecognized stream type: %s", streamMessage.Type)
 				}
 			case <-closeChan:
-				// Send message to agent to close the stream
-				payload := exec.KubeExecStopActionPayload{
-					RequestId: e.requestId,
-					LogId:     e.logId,
+				e.stoppedLock.Lock()
+				if !e.stopped {
+					// Send message to agent to close the stream
+					payload := exec.KubeExecStopActionPayload{
+						RequestId: e.requestId,
+						LogId:     e.logId,
+					}
+					e.outbox(exec.ExecStop, payload)
+					e.stopped = true
 				}
-				e.outbox(exec.ExecStop, payload)
+				e.stoppedLock.Unlock()
 				return nil
 			}
 		}
@@ -179,8 +189,13 @@ func (e *ExecAction) Start(writer http.ResponseWriter, request *http.Request) er
 								e.sendStdinMessage(buffer)
 							}
 
-							// Send ExecStop message to close the stdin stream on the agent
-							e.outbox(exec.ExecStop, exec.KubeExecStopActionPayload{})
+							e.stoppedLock.Lock()
+							if !e.stopped {
+								// Send ExecStop message to close the stdin stream on the agent
+								e.outbox(exec.ExecStop, exec.KubeExecStopActionPayload{})
+								e.stopped = true
+							}
+							e.stoppedLock.Unlock()
 							return
 						} else {
 							// Append the new chunk to our buffer

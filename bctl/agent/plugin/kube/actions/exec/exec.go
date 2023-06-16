@@ -47,6 +47,9 @@ type ExecAction struct {
 	targetUser          string
 	logId               string
 	requestId           string
+
+	// to prevent us from responding to two stop messages in the same plugin
+	stopped bool
 }
 
 func New(
@@ -112,7 +115,10 @@ func (e *ExecAction) Receive(action string, actionPayload []byte) ([]byte, error
 			if end > len(execInputAction.Stdin) {
 				end = len(execInputAction.Stdin)
 			}
-			e.execStdinChannel <- execInputAction.Stdin[i:end]
+			// we must not write to this channel if it is closed
+			if !e.stopped {
+				e.execStdinChannel <- execInputAction.Stdin[i:end]
+			}
 		}
 		return []byte{}, nil
 
@@ -136,7 +142,10 @@ func (e *ExecAction) Receive(action string, actionPayload []byte) ([]byte, error
 		// finishes reading all data in the execStdinChannel. This is in effect a "soft" close
 		// in contrast to the e.stdinReader.Close() above, which exits without waiting
 		// for all input to be processed
-		close(e.execStdinChannel)
+		if !e.stopped {
+			close(e.execStdinChannel)
+			e.stopped = true
+		}
 		return []byte{}, nil
 	default:
 		rerr := fmt.Errorf("unhandled exec action: %v", action)
