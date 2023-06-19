@@ -28,15 +28,20 @@ phases:
     # However we could easily revisit this to cross-compile for many versions.
     commands:
       - CWD=$(pwd)
+      - Version=$(cat VERSION)
+      - AgentVersion=$Version
+      # we do this so that bash leaves this as a literal string for sed to replace
+      - VersionStringToReplace='$AGENT_VERSION'
+      - if [ $env = "stage" ]; then AgentVersion=$Version-beta; fi
       - mkdir bin
       - cd $CWD/bctl/agent
+      - sed -i "s/$VersionStringToReplace/$AgentVersion/g" main.go
       - GOOS=windows GOARCH=amd64 go build -o $CWD/bin
   post_build:
     commands:
       - cd $CWD
       - if ! [ -z "${DRY_RUN}" ]; then echo "Dry run exiting early before publishing" && exit 1; fi
       - echo Post build started `date`
-      - Version=$(cat VERSION)
       - if [ $env = "stage" ]; then ReleaseDir=/beta/release; fi
       - echo "Uploading artifacts to $ReleaseDir"
       - mkdir -p $ReleaseDir/$Version
