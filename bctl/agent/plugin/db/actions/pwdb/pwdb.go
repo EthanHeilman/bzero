@@ -11,7 +11,10 @@ import (
 	"time"
 
 	"cloud.google.com/go/cloudsqlconn"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"google.golang.org/api/impersonate"
+	"google.golang.org/grpc/test/bufconn"
 	"gopkg.in/tomb.v2"
 
 	"bastionzero.com/agent/bastion"
@@ -27,6 +30,32 @@ const (
 	writeDeadline  = 5 * time.Second
 	dialTCPTimeout = 30 * time.Second
 )
+
+type Dialer interface {
+	Dial(network string, hostname string) (net.Conn, error)
+}
+type NetDialer struct{}
+
+func (n *NetDialer) Dial(network string, dbEndPoint string) (net.Conn, error) {
+	return net.Dial(network, dbEndPoint)
+}
+
+func RealRDSTokenBuilder(dbEndpoint string, region string, dbUser string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(time.Second*60))
+	defer cancel()
+
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return "", err
+	}
+	return auth.BuildAuthToken(
+		ctx,
+		dbEndpoint, // Database Endpoint (With Port)
+		region,     // AWS Region
+		dbUser,     // Database Account
+		cfg.Credentials,
+	)
+}
 
 type PWDBConfig interface {
 	LastKey(targetId string) (data.KeyEntry, error)
@@ -46,10 +75,12 @@ type Pwdb struct {
 	// config for interacting with key shard store needed for pwdb
 	keyshardConfig PWDBConfig
 
-	bastionClient bastion.ApiClient
-	remoteHost    string
-	remotePort    int
-	remoteConn    net.Conn
+	bastionClient   bastion.ApiClient
+	remoteHost      string
+	remotePort      int
+	remoteConn      net.Conn
+	DbDialer        Dialer
+	RDSTokenBuilder func(dbEndpoint string, region string, dbUser string) (string, error)
 }
 
 func New(logger *logger.Logger,
@@ -68,6 +99,8 @@ func New(logger *logger.Logger,
 		streamOutputChan: ch,
 		remoteHost:       remoteHost,
 		remotePort:       remotePort,
+		DbDialer:         &NetDialer{}, // This is used for tests so they can hook the net.Conn to the database
+		RDSTokenBuilder:  RealRDSTokenBuilder,
 	}, nil
 }
 
@@ -127,6 +160,15 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 		} else {
 			p.remoteConn = conn
 		}
+	} else if strings.HasPrefix(p.remoteHost, "rds://") {
+		// Make a RDS  connection using an AWS IAM role account to database
+		if conn, err := p.rdsDial(targetUser); err != nil {
+			p.logger.Errorf("Failed to establish RDS psql connection, %v", err)
+			return db.NewConnectionFailedError(err)
+		} else {
+			p.remoteConn = conn
+			p.logger.Infof("Successfully established RDS psql connection")
+		}
 	} else {
 		p.logger.Infof("Connecting to database at %s:%d", p.remoteHost, p.remotePort)
 
@@ -150,7 +192,6 @@ func (p *Pwdb) start(targetId, targetUser, action string) error {
 	p.tmb.Go(p.readFromConnection)
 
 	return nil
-
 }
 
 func (p *Pwdb) writeToConnection(data []byte) error {
@@ -170,6 +211,10 @@ func (p *Pwdb) writeToConnection(data []byte) error {
 }
 
 func (p *Pwdb) gcpDial(targetUser string) (net.Conn, error) {
+	if !strings.HasPrefix(p.remoteHost, "gcp://") {
+		return nil, fmt.Errorf("gcpDial called with remoteHost=%v and is non-conforming to the pattern for GCP hosts: gcp://*", p.remoteHost)
+	}
+
 	p.logger.Infof("Connecting to GCP database with instance name %s", p.remoteHost)
 	instanceConnectionName := strings.Split(p.remoteHost, "gcp://")[1]
 
@@ -201,6 +246,64 @@ func (p *Pwdb) gcpDial(targetUser string) (net.Conn, error) {
 	}
 }
 
+func (p *Pwdb) rdsDial(targetUser string) (net.Conn, error) {
+	p.logger.Infof("Connecting to RDS database with instance name %s", p.remoteHost)
+	if !strings.HasPrefix(p.remoteHost, "rds://") ||
+		!strings.Contains(p.remoteHost, ".rds.amazonaws.com") {
+		return nil, fmt.Errorf("rdsDial called with remoteHost=%v and is non-conforming to the pattern for RDS hosts: rds://*.<region>.rds.amazonaws.com", p.remoteHost)
+	}
+
+	instanceConnectionName := strings.Split(p.remoteHost, "rds://")[1]
+
+	dbUser := targetUser
+	dbHost := instanceConnectionName
+
+	dbPort := p.remotePort
+	dbEndpoint := fmt.Sprintf("%s:%d", dbHost, dbPort)
+
+	// Example DBbase "database-name.cdhu0l.us-east-1.rds.amazonaws.com"
+	// Extract the region, us-east-1. from the end.
+	hostParts := strings.Split(dbHost, ".")
+	region := hostParts[len(hostParts)-4]
+
+	authenticationToken, err := p.RDSTokenBuilder(
+		dbEndpoint, // Database Endpoint (With Port)
+		region,     // AWS Region
+		dbUser,     // Database Account
+	)
+	if err != nil {
+		return nil, err
+	}
+	p.logger.Debug("AWS Auth Token Granted")
+
+	// It is security critical that we use a bufconn rather than a localhost
+	//  socket because we add authentication to any connection that
+	//  connects to this listener. By using bufconn, no one outside the Agent
+	//  process can connet to this listener, this allows the Agent to  exclude
+	//  all unapproved connection.
+	ln := bufconn.Listen(4096)
+	dialer := p.DbDialer
+
+	proxyServer, sslProxyLn := psqlProxy(dbUser, authenticationToken, dbEndpoint, ln, dialer, p.logger)
+
+	go func() {
+		// To make sure we close and clean up all goroutines, we watch for a
+		//  signal from the doneChan and Shutdown the ProxyServer. This should
+		//  also shutdown the SSLProxy as well, but if through some accident
+		//  the dialer has not been called the SSLProxy will hold a goroutine
+		//  to accept connections from sslProxyLn. As a precaution we also
+		//  attempt to close sslProxyLn.
+		<-p.doneChan
+		proxyServer.Shutdown()
+		sslProxyLn.Close()
+	}()
+
+	p.logger.Debug("Started psql brokering proxy")
+	lconn, err := ln.Dial()
+
+	return lconn, err
+}
+
 func (p *Pwdb) readFromConnection() error {
 	defer close(p.doneChan)
 
@@ -221,7 +324,6 @@ func (p *Pwdb) readFromConnection() error {
 			}
 			return err
 		} else if n > 0 {
-			p.logger.Tracef("Sending %d bytes from local tcp connection to daemon", n)
 			p.sendStreamMessage(sequenceNumber, smsg.Stream, true, buf[:n])
 			sequenceNumber += 1
 		}
@@ -229,7 +331,7 @@ func (p *Pwdb) readFromConnection() error {
 }
 
 func (p *Pwdb) sendStreamMessage(sequenceNumber int, streamType smsg.StreamType, more bool, contentBytes []byte) {
-	p.logger.Infof("Sending sequence number %d", sequenceNumber)
+	p.logger.Debugf("Sending sequence number %d", sequenceNumber)
 	p.streamOutputChan <- smsg.StreamMessage{
 		SchemaVersion:  p.streamMessageVersion,
 		SequenceNumber: sequenceNumber,
